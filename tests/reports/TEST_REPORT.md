@@ -70,7 +70,7 @@
 | ADM-004 | POST /api/v1/admin/articles/ | 缺少 cover → 422 | ✅ |
 | ADM-005 | POST /api/v1/admin/articles/ | slug 重复 → 400 | ✅ |
 | ADM-006 | POST /api/v1/admin/articles/ | 封面格式错误 → 400 | ✅ |
-| ADM-007 | POST /api/v1/admin/articles/ | 封面超 5MB → 400 | ✅ |
+| ADM-007 | POST /api/v1/admin/articles/ | 封面超 20MB → 400 | ✅ |
 | ADM-008 | POST /api/v1/admin/articles/ | 附件格式错误 → 400 | ✅ |
 | ADM-009 | POST /api/v1/admin/articles/ | 中文文件名保留 | ✅ |
 | ADM-010 | POST /api/v1/admin/articles/ | category_id/tag_ids 传空串视为未填 | ✅ |

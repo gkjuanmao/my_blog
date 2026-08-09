@@ -563,7 +563,7 @@ class TestArticleSearchAPI:
 | ADM-004 | 缺少 cover | 无封面文件 | 422 | 文件必填 |
 | ADM-005 | slug 重复 | 已存在相同 slug | 201 | slug 自动加后缀 (如 `test-2`) |
 | ADM-006 | 封面格式错误 | cover=exe 文件 | 400 | "不支持的文件类型" |
-| ADM-007 | 封面超大 | cover=6MB | 400 | "封面不能超过 5MB" |
+| ADM-007 | 封面超大 | cover=21MB | 400 | "封面不能超过 20MB" |
 | ADM-008 | 附件格式错误 | attachment=exe | 400 | "不支持的文件类型" |
 | ADM-009 | 文件重命名 | cover="测试.jpg" | 201 | 物理文件 UUID，`cover_image_name="测试.jpg"` |
 | ADM-050 | 英文标题自动生成 slug | title="Hello World" | 201 | slug=`hello-world` |

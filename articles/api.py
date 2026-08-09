@@ -30,8 +30,8 @@ admin_router = Router(tags=['文章管理'])
 # 文件类型与大小限制
 COVER_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx'}
-COVER_MAX_SIZE = 5 * 1024 * 1024  # 5MB
-ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024  # 20MB
+COVER_MAX_SIZE = 20 * 1024 * 1024  # 20MB
+ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024  # 50MB
 
 jwt_auth = JWTAuth()
 
@@ -47,7 +47,7 @@ def _validate_cover(cover: UploadedFile) -> None:
     if _extension(name) not in COVER_EXTENSIONS:
         raise HttpError(400, '封面仅支持 JPG/PNG/WebP 格式')
     if (cover.size or 0) > COVER_MAX_SIZE:
-        raise HttpError(400, '封面大小不能超过 5MB')
+        raise HttpError(400, '封面大小不能超过 20MB')
 
 
 def _validate_attachment(attachment: UploadedFile) -> None:
@@ -56,7 +56,7 @@ def _validate_attachment(attachment: UploadedFile) -> None:
     if _extension(name) not in ATTACHMENT_EXTENSIONS:
         raise HttpError(400, '附件仅支持 PDF/Word 格式')
     if (attachment.size or 0) > ATTACHMENT_MAX_SIZE:
-        raise HttpError(400, '附件大小不能超过 20MB')
+        raise HttpError(400, '附件大小不能超过 50MB')
 
 
 def _published_articles() -> QuerySet[Article]:

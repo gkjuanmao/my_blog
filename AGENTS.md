@@ -23,7 +23,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 ## 应用结构
 
 - `users/` — 自定义 `User(AbstractUser + avatar + avatar_name)`；`AUTH_USER_MODEL='users.User'` 在 `base.py` 中设置 —— 不要再加其他用户模型。JWT 基于 `django-ninja-jwt`（读取 `base.py` 中的 `SIMPLE_JWT` 配置）：`users/api.py`（`POST /login/`、`POST /token/refresh/`、`GET /me/`）、`users/authentication.py` 中的 `JWTAuth(HttpBearer)`。
-- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（返回数组）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`POST/PUT/DELETE /admin/articles/...`（multipart；封面 JPG/PNG/WebP <=5MB，附件 PDF/Word <=20MB）。
+- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（返回数组）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`POST/PUT/DELETE /admin/articles/...`（multipart；封面 JPG/PNG/WebP <=20MB，附件 PDF/Word <=50MB）。
 - `common/` — 已实现：`responses.py`（信封 `{code,message,data}`，`code` = HTTP 状态码）、`exceptions.py`（`register_exception_handlers` 覆盖 HttpError/ValidationError/Exception）、`pagination.py`（`CustomPagination`）。`utils.py` 为空。
 - 无 `records/`、`comments/`、`blog/` app（已移除）。
 

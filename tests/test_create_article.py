@@ -120,9 +120,9 @@ class TestCreateArticleAPI:
         assert response.status_code == 400
 
     def test_adm_007_cover_too_large(self, api_client, auth_header, test_pdf, create_payload):
-        """ADM-007 封面超过 5MB。"""
+        """ADM-007 封面超过 20MB。"""
         big_file = SimpleUploadedFile(
-            'big.jpg', b'x' * (6 * 1024 * 1024), content_type='image/jpeg'
+            'big.jpg', b'x' * (21 * 1024 * 1024), content_type='image/jpeg'
         )
         response = api_client.post(
             '/api/v1/admin/articles/',

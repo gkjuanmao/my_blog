@@ -273,8 +273,8 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | category_id  | int               | ❌   | 分类 ID                         |
 | tag_ids      | array[int]        | ❌   | 标签 ID 列表                      |
 | is_published | bool              | ❌   | 是否发布 (默认 false)               |
-| cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤5MB)     |
-| attachment   | File              | ✅   | 附件文件 (PDF/DOCX, ≤20MB)        |
+| cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤20MB)     |
+| attachment   | File              | ✅   | 附件文件 (PDF/DOCX, ≤50MB)        |
 
 **响应** (201)：
 ```json
@@ -376,8 +376,8 @@ SIMPLE_JWT = {
 
 | 文件类型 | 存储路径模板 | 大小限制 | 允许格式 |
 | :--- | :--- | :--- | :--- |
-| 文章封面 | `media/covers/%Y/%m/UUID.ext` | ≤ 5MB | JPG, PNG, Webp |
-| 文章附件 | `media/files/%Y/%m/UUID.ext` | ≤ 20MB | PDF, DOCX |
+| 文章封面 | `media/covers/%Y/%m/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
+| 文章附件 | `media/files/%Y/%m/UUID.ext` | ≤ 50MB | PDF, DOCX |
 | 用户头像 | `media/avatars/%Y/%m/UUID.ext` | ≤ 2MB | JPG, PNG |
 
 ### 7.2 文件命名规则
