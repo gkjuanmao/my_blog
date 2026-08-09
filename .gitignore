@@ -1,0 +1,23 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+.env
+db.sqlite3
+staticfiles/
+media/
+.idea/
+.vscode/
+*.log
+server.pid
+
+# 测试与覆盖率产物
+.pytest_cache/
+.coverage
+htmlcov/
+tests/reports/htmlcov/
+
+# 本地编辑器 / 笔记
+.obsidian/
