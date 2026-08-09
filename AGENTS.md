@@ -10,7 +10,8 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
-- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 44 个用例）；报告在 `tests/reports/`
+- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 62 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
+- **测试完成后必须清理测试产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件
 
 ## 配置 / 环境变量
 
