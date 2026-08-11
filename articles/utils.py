@@ -1,4 +1,6 @@
 """文章工具函数：slug 自动生成与唯一化。"""
+from typing import Any
+
 from django.utils.text import slugify
 from pypinyin import Style, lazy_pinyin
 
@@ -12,12 +14,13 @@ def generate_slug(title: str) -> str:
     return slug or 'article'
 
 
-def unique_slug(slug: str, exclude_id: int | None = None) -> str:
+def unique_slug(slug: str, model: type[Any] = Article, exclude_id: int | None = None) -> str:
     """确保 slug 唯一：冲突时自动追加 -2、-3 等后缀。
 
+    model 指定查询目标（Article/Category/Tag 等含 slug 字段的模型）；
     exclude_id 用于更新场景，排除自身避免误判冲突。
     """
-    qs = Article.objects.filter(slug=slug)
+    qs = model.objects.filter(slug=slug)
     if exclude_id is not None:
         qs = qs.exclude(pk=exclude_id)
     if not qs.exists():
@@ -25,6 +28,6 @@ def unique_slug(slug: str, exclude_id: int | None = None) -> str:
 
     base = slug
     index = 2
-    while Article.objects.filter(slug=f'{base}-{index}').exists():
+    while model.objects.filter(slug=f'{base}-{index}').exists():
         index += 1
     return f'{base}-{index}'

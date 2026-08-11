@@ -13,12 +13,17 @@ from common.responses import success_response
 from users.authentication import JWTAuth
 from users.models import User
 
-from .models import Article, Category, Tag
+from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
+from .models import Article, Category, Tag, cover_upload_path, file_upload_path
 from .schemas import (
     ArticleCreateIn,
     ArticleUpdateIn,
+    CategoryIn,
     CategoryOut,
+    CategoryUpdateIn,
+    TagIn,
     TagOut,
+    TagUpdateIn,
     article_to_detail,
     article_to_out,
 )
@@ -57,6 +62,28 @@ def _validate_attachment(attachment: UploadedFile) -> None:
         raise HttpError(400, '附件仅支持 PDF/Word 格式')
     if (attachment.size or 0) > ATTACHMENT_MAX_SIZE:
         raise HttpError(400, '附件大小不能超过 50MB')
+
+
+def _resolve_category_and_tags(
+    category_id: int | None, tag_ids: list[int]
+) -> tuple[Category, list[int]]:
+    """解析分类与标签：未填时使用默认值；传入但不存在时报 400。"""
+    category: Category | None = None
+    if category_id is None:
+        category, _ = ensure_defaults()
+    else:
+        category = Category.objects.filter(pk=category_id).first()
+        if category is None:
+            raise HttpError(400, '分类不存在')
+
+    if not tag_ids:
+        _, default_tag = ensure_defaults()
+        tag_ids = [default_tag.id]
+    else:
+        valid_ids = set(Tag.objects.filter(pk__in=tag_ids).values_list('id', flat=True))
+        if len(valid_ids) != len(set(tag_ids)):
+            raise HttpError(400, '标签不存在')
+    return category, tag_ids  # type: ignore[return-value]
 
 
 def _published_articles() -> QuerySet[Article]:
@@ -158,26 +185,44 @@ def create_article(
     _validate_cover(cover)
     _validate_attachment(attachment)
     author = cast(User, request.auth)  # type: ignore[attr-defined]
-    try:
-        article = Article.objects.create(
-            title=payload.title,
-            slug=unique_slug(payload.slug or generate_slug(payload.title)),
-            content=payload.content,
-            summary=payload.summary,
-            publish_time=payload.publish_time,
-            location=payload.location,
-            author=author,
-            category_id=payload.category_id,
-            cover_image=cover,
-            cover_image_name=cover.name or '',
-            file=attachment,
-            file_name=attachment.name or '',
-            is_published=payload.is_published,
-        )
-    except IntegrityError:
-        raise HttpError(400, 'slug 已存在') from None
-    if payload.tag_ids:
-        article.tags.set(payload.tag_ids)
+    category, tag_ids = _resolve_category_and_tags(payload.category_id, payload.tag_ids)
+
+    article = Article(
+        title=payload.title,
+        content=payload.content,
+        summary=payload.summary,
+        publish_time=payload.publish_time,
+        location=payload.location,
+        author=author,
+        category=category,
+        cover_image_name=cover.name or '',
+        file_name=attachment.name or '',
+        is_published=payload.is_published,
+    )
+    article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
+    article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
+
+    base_slug = payload.slug or generate_slug(payload.title)
+    slug_candidate = unique_slug(base_slug)
+    attempts = 0
+    while True:
+        article.slug = slug_candidate
+        try:
+            article.save()
+            break
+        except IntegrityError:
+            if not Article.objects.filter(slug=slug_candidate).exists():
+                article.cover_image.delete(save=False)
+                article.file.delete(save=False)
+                raise HttpError(400, '创建失败：请检查分类/标签等参数是否正确') from None
+            attempts += 1
+            if attempts > 10:
+                article.cover_image.delete(save=False)
+                article.file.delete(save=False)
+                raise HttpError(400, 'slug 冲突过多') from None
+            slug_candidate = unique_slug(base_slug)
+    if tag_ids:
+        article.tags.set(tag_ids)
     return Status(201, success_response(article_to_out(request, article).model_dump(), code=201))
 
 
@@ -204,7 +249,10 @@ def update_article(
     if payload.publish_time is not None:
         update_fields['publish_time'] = payload.publish_time
     if payload.category_id is not None:
-        update_fields['category_id'] = payload.category_id
+        category = Category.objects.filter(pk=payload.category_id).first()
+        if category is None:
+            raise HttpError(400, '分类不存在')
+        update_fields['category_id'] = category.pk
     if cover is not None:
         _validate_cover(cover)
         update_fields['cover_image'] = cover
@@ -213,11 +261,17 @@ def update_article(
         _validate_attachment(attachment)
         update_fields['file'] = attachment
         update_fields['file_name'] = attachment.name or ''
+    if payload.tag_ids is not None:
+        valid_ids = set(Tag.objects.filter(pk__in=payload.tag_ids).values_list('id', flat=True))
+        if len(valid_ids) != len(set(payload.tag_ids)):
+            raise HttpError(400, '标签不存在')
 
     try:
         Article.objects.filter(pk=article.pk).update(**update_fields)
     except IntegrityError:
-        raise HttpError(400, 'slug 已存在') from None
+        if Article.objects.filter(slug=update_fields.get('slug', article.slug)).exists():
+            raise HttpError(400, 'slug 已存在') from None
+        raise HttpError(400, '更新失败：请检查分类/标签等参数是否正确') from None
     if payload.tag_ids is not None:
         article.tags.set(payload.tag_ids)
 
@@ -242,4 +296,127 @@ def delete_article_by_slug(request: HttpRequest, slug: str) -> dict:
     if article is None:
         raise HttpError(404, '文章不存在')
     article.delete()
+    return success_response(message='删除成功')
+
+
+@admin_router.post('/categories/', response={201: dict}, auth=jwt_auth)
+def create_category(request: HttpRequest, payload: CategoryIn) -> Status:
+    """创建分类，slug 省略时由名称自动生成。"""
+    category = Category.objects.create(
+        name=payload.name,
+        slug=unique_slug(payload.slug or generate_slug(payload.name), model=Category),
+        description=payload.description,
+    )
+    data = CategoryOut(
+        id=category.id, name=category.name, slug=category.slug, description=category.description
+    ).model_dump()
+    return Status(201, success_response(data, code=201))
+
+
+@admin_router.get('/categories/{category_id}/', response=dict, auth=jwt_auth)
+def get_category(request: HttpRequest, category_id: int) -> dict:
+    """获取分类详情。"""
+    category = Category.objects.filter(pk=category_id).first()
+    if category is None:
+        raise HttpError(404, '分类不存在')
+    return success_response(
+        CategoryOut(
+            id=category.id, name=category.name, slug=category.slug, description=category.description
+        ).model_dump()
+    )
+
+
+@admin_router.put('/categories/{category_id}/', response=dict, auth=jwt_auth)
+def update_category(request: HttpRequest, category_id: int, payload: CategoryUpdateIn) -> dict:
+    """更新分类，slug 省略时保留原值。"""
+    category = Category.objects.filter(pk=category_id).first()
+    if category is None:
+        raise HttpError(404, '分类不存在')
+
+    update_fields: dict[str, Any] = {}
+    if payload.name is not None:
+        update_fields['name'] = payload.name
+    if payload.slug:
+        update_fields['slug'] = unique_slug(payload.slug, model=Category, exclude_id=category.pk)
+    if payload.description is not None:
+        update_fields['description'] = payload.description
+
+    try:
+        Category.objects.filter(pk=category.pk).update(**update_fields)
+    except IntegrityError:
+        raise HttpError(400, 'slug 已存在') from None
+
+    category.refresh_from_db()
+    return success_response(
+        CategoryOut(
+            id=category.id, name=category.name, slug=category.slug, description=category.description
+        ).model_dump()
+    )
+
+
+@admin_router.delete('/categories/{category_id}/', response=dict, auth=jwt_auth)
+def delete_category(request: HttpRequest, category_id: int) -> dict:
+    """删除分类：其下文章的 category 置空（SET_NULL），文章保留。"""
+    category = Category.objects.filter(pk=category_id).first()
+    if category is None:
+        raise HttpError(404, '分类不存在')
+    if category.slug == DEFAULT_CATEGORY_SLUG:
+        raise HttpError(400, '默认分类不可删除')
+    category.delete()
+    return success_response(message='删除成功')
+
+
+@admin_router.post('/tags/', response={201: dict}, auth=jwt_auth)
+def create_tag(request: HttpRequest, payload: TagIn) -> Status:
+    """创建标签，slug 省略时由名称自动生成。"""
+    tag = Tag.objects.create(
+        name=payload.name,
+        slug=unique_slug(payload.slug or generate_slug(payload.name), model=Tag),
+    )
+    return Status(
+        201,
+        success_response(TagOut(id=tag.id, name=tag.name, slug=tag.slug).model_dump(), code=201),
+    )
+
+
+@admin_router.get('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+def get_tag(request: HttpRequest, tag_id: int) -> dict:
+    """获取标签详情。"""
+    tag = Tag.objects.filter(pk=tag_id).first()
+    if tag is None:
+        raise HttpError(404, '标签不存在')
+    return success_response(TagOut(id=tag.id, name=tag.name, slug=tag.slug).model_dump())
+
+
+@admin_router.put('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+def update_tag(request: HttpRequest, tag_id: int, payload: TagUpdateIn) -> dict:
+    """更新标签，slug 省略时保留原值。"""
+    tag = Tag.objects.filter(pk=tag_id).first()
+    if tag is None:
+        raise HttpError(404, '标签不存在')
+
+    update_fields: dict[str, Any] = {}
+    if payload.name is not None:
+        update_fields['name'] = payload.name
+    if payload.slug:
+        update_fields['slug'] = unique_slug(payload.slug, model=Tag, exclude_id=tag.pk)
+
+    try:
+        Tag.objects.filter(pk=tag.pk).update(**update_fields)
+    except IntegrityError:
+        raise HttpError(400, 'slug 已存在') from None
+
+    tag.refresh_from_db()
+    return success_response(TagOut(id=tag.id, name=tag.name, slug=tag.slug).model_dump())
+
+
+@admin_router.delete('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+def delete_tag(request: HttpRequest, tag_id: int) -> dict:
+    """删除标签：仅解除与文章的关联（M2M），文章保留。"""
+    tag = Tag.objects.filter(pk=tag_id).first()
+    if tag is None:
+        raise HttpError(404, '标签不存在')
+    if tag.slug == DEFAULT_TAG_SLUG:
+        raise HttpError(400, '默认标签不可删除')
+    tag.delete()
     return success_response(message='删除成功')

@@ -11,29 +11,45 @@ from .models import Article
 
 
 def _normalize_category_id(value: Any) -> Any:
-    """multipart 空字符串视为未填。"""
-    if isinstance(value, str) and value.strip() == '':
+    """multipart 占位值（空串/'0'/'null'/非正数）视为未填分类。"""
+    if value is None:
         return None
-    return value
+    if isinstance(value, str):
+        text = value.strip()
+        if text in ('', '0', 'null', 'None', 'undefined'):
+            return None
+        try:
+            number = int(text)
+        except ValueError:
+            return text
+    elif isinstance(value, bool):
+        return None
+    else:
+        number = value
+    if isinstance(number, int) and number <= 0:
+        return None
+    return number
 
 
 def _normalize_tag_ids(value: Any) -> Any:
-    """兼容 multipart 下多种 tag_ids 编码：空串、JSON 数组串、逗号分隔、重复字段。"""
+    """兼容 multipart 下多种 tag_ids 编码：空串、JSON 数组串、逗号分隔、重复字段；
+    过滤 0/负数等占位值。"""
     if value is None:
         return value
+    items: list[Any]
     if isinstance(value, str):
         text = value.strip()
         if text == '':
             return []
         if text.startswith('['):
             try:
-                value = json.loads(text)
+                items = json.loads(text)
             except json.JSONDecodeError:
                 raise ValueError('tag_ids 格式错误') from None
         else:
-            return [int(part) for part in text.split(',') if part.strip() != '']
-    if isinstance(value, list):
-        result: list[int] = []
+            items = [int(part) for part in text.split(',') if part.strip() != '']
+    elif isinstance(value, list):
+        items = []
         for item in value:
             if isinstance(item, str):
                 text = item.strip()
@@ -41,15 +57,29 @@ def _normalize_tag_ids(value: Any) -> Any:
                     continue
                 if text.startswith('['):
                     try:
-                        result.extend(json.loads(text))
+                        items.extend(json.loads(text))
                     except json.JSONDecodeError:
                         raise ValueError('tag_ids 格式错误') from None
                 else:
-                    result.append(int(text))
+                    items.append(int(text))
             else:
-                result.append(int(item))
-        return result
-    return value
+                items.append(int(item))
+    elif isinstance(value, int):
+        items = [value]
+    else:
+        return value
+
+    result: list[int] = []
+    for item in items:
+        if isinstance(item, bool):
+            continue
+        try:
+            number = int(item)
+        except (TypeError, ValueError):
+            raise ValueError('tag_ids 格式错误') from None
+        if number > 0:
+            result.append(number)
+    return result
 
 
 class CategoryOut(Schema):
@@ -67,6 +97,76 @@ class TagOut(Schema):
     id: int
     name: str
     slug: str
+
+
+class CategoryIn(Schema):
+    """创建分类的请求数据。"""
+
+    name: str
+    slug: str | None = None
+    description: str = ''
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        """分类名称不能为空。"""
+        name = value.strip()
+        if not name:
+            raise ValueError('分类名称不能为空')
+        return name
+
+
+class CategoryUpdateIn(Schema):
+    """更新分类的请求数据，所有字段可选。"""
+
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        """分类名称不能为空。"""
+        if value is None:
+            return None
+        name = value.strip()
+        if not name:
+            raise ValueError('分类名称不能为空')
+        return name
+
+
+class TagIn(Schema):
+    """创建标签的请求数据。"""
+
+    name: str
+    slug: str | None = None
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        """标签名称不能为空。"""
+        name = value.strip()
+        if not name:
+            raise ValueError('标签名称不能为空')
+        return name
+
+
+class TagUpdateIn(Schema):
+    """更新标签的请求数据，所有字段可选。"""
+
+    name: str | None = None
+    slug: str | None = None
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        """标签名称不能为空。"""
+        if value is None:
+            return None
+        name = value.strip()
+        if not name:
+            raise ValueError('标签名称不能为空')
+        return name
 
 
 class ArticleOut(Schema):

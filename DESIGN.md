@@ -2,8 +2,8 @@
 
 > **项目名称**：My Blog Backend  
 > **架构模式**：前后端分离 (API 驱动)  
-> **文档版本**：v1.3  
-> **最后更新**：2026-08-09  
+> **文档版本**：v1.4  
+> **最后更新**：2026-08-11  
 
 ---
 
@@ -255,6 +255,16 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章 |
 | DELETE | `/api/v1/admin/articles/{id}/` | ✅ | 按 id 删除文章 (含草稿) |
 | DELETE | `/api/v1/admin/articles/slug/{slug}/` | ✅ | 按 slug 删除文章 (含草稿) |
+| GET | `/api/v1/admin/categories/` | ✅ | 获取所有分类 (公开 `GET /api/v1/categories/` 同构) |
+| POST | `/api/v1/admin/categories/` | ✅ | 创建分类 (slug 可省略，自动生成+冲突后缀) |
+| GET | `/api/v1/admin/categories/{id}/` | ✅ | 分类详情 |
+| PUT | `/api/v1/admin/categories/{id}/` | ✅ | 更新分类 (slug 省略保留原值) |
+| DELETE | `/api/v1/admin/categories/{id}/` | ✅ | 删除分类 (其文章 category 置空；默认分类不可删除) |
+| GET | `/api/v1/admin/tags/` | ✅ | 获取所有标签 (公开 `GET /api/v1/tags/` 同构) |
+| POST | `/api/v1/admin/tags/` | ✅ | 创建标签 (slug 可省略，自动生成+冲突后缀) |
+| GET | `/api/v1/admin/tags/{id}/` | ✅ | 标签详情 |
+| PUT | `/api/v1/admin/tags/{id}/` | ✅ | 更新标签 (slug 省略保留原值) |
+| DELETE | `/api/v1/admin/tags/{id}/` | ✅ | 删除标签 (仅解除 M2M 关联；默认标签不可删除) |
 
 ### 5.3 核心接口详细定义
 
@@ -270,11 +280,13 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | summary      | string            | ❌   | 摘要                            |
 | publish_time | string (ISO 8601) | ✅   | 发布时间，如 `2026-08-09T14:00:00Z` |
 | location     | string            | ❌   | 地点                            |
-| category_id  | int               | ❌   | 分类 ID                         |
-| tag_ids      | array[int]        | ❌   | 标签 ID 列表                      |
+| category_id  | int               | ❌   | 分类 ID；不传/`0` 视为未填，自动使用默认分类 (`default-category`) |
+| tag_ids      | array[int]        | ❌   | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`) |
 | is_published | bool              | ❌   | 是否发布 (默认 false)               |
 | cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤20MB)     |
 | attachment   | File              | ✅   | 附件文件 (PDF/DOCX, ≤50MB)        |
+
+> **默认分类/标签机制**：创建文章时若未填 `category_id`/`tag_ids`（含 `''`/`'0'`/`'null'` 等占位值），自动挂载默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"），确保每个新建文章都有分类与标签。默认数据由服务启动时 `AppConfig.ready()` 幂等创建；引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）；`DELETE` 默认分类/标签返回 400。
 
 **响应** (201)：
 ```json

@@ -4,7 +4,8 @@
 
 ## 项目结构
 
-参见 [Agent.md](./Agent.md)。
+- 系统设计与接口文档：参见 [DESIGN.md](./DESIGN.md)
+- 开发规范与常用命令：参见 [AGENTS.md](./AGENTS.md)
 
 ## 本地开发（uv）
 
@@ -13,6 +14,8 @@ uv sync
 uv run python manage.py migrate
 uv run python manage.py runserver
 ```
+
+首次启动会自动创建默认分类（`默认分类`）与默认标签（`默认标签`），创建文章时若未填分类/标签将自动挂载。
 
 ## 代码检查（Ruff + MyPy）
 

@@ -170,7 +170,7 @@ class TestCreateArticleAPI:
     def test_adm_010_empty_category_and_tags(
         self, api_client, auth_header, test_image, test_pdf, create_payload
     ):
-        """ADM-010 category_id/tag_ids 传空字符串视为未填。"""
+        """ADM-010 category_id/tag_ids 传空字符串视为未填，自动挂默认分类/标签。"""
         payload = dict(create_payload)
         payload['slug'] = 'empty-cat-tags'
         response = api_client.post(
@@ -187,8 +187,9 @@ class TestCreateArticleAPI:
 
         assert response.status_code == 201
         article = Article.objects.get(slug='empty-cat-tags')
-        assert article.category is None
-        assert article.tags.count() == 0
+        assert article.category is not None
+        assert article.category.slug == 'default-category'
+        assert list(article.tags.values_list('slug', flat=True)) == ['default-tag']
 
     def test_adm_011_tag_ids_json_string(
         self, api_client, auth_header, test_image, test_pdf, setup_data, create_payload
@@ -235,3 +236,143 @@ class TestCreateArticleAPI:
         article = Article.objects.get(slug='repeated-tags')
         assert article.category_id == category.id
         assert list(article.tags.values_list('id', flat=True)) == [tag.id]
+
+
+@pytest.mark.django_db
+class TestCreateArticleDefaultsAPI:
+    @pytest.fixture
+    def create_payload(self):
+        return {
+            'title': '默认挂载测试',
+            'slug': 'default-mount',
+            'content': '# 内容',
+            'publish_time': '2026-08-09T14:00:00Z',
+            'is_published': True,
+        }
+
+    def test_adm_013_default_category_and_tag_created(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-013 无分类/标签时创建文章，自动创建并使用默认分类/标签。"""
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**create_payload, 'cover': test_image, 'attachment': test_pdf},
+            **auth_header,
+        )
+
+        assert response.status_code == 201
+        assert Category.objects.filter(slug='default-category').exists()
+        assert Tag.objects.filter(slug='default-tag').exists()
+        article = Article.objects.get(slug='default-mount')
+        assert article.category.slug == 'default-category'
+        assert list(article.tags.values_list('slug', flat=True)) == ['default-tag']
+
+    def test_adm_014_defaults_reused(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-014 重复创建不产生重复默认数据。"""
+        for index in range(2):
+            payload = {**create_payload, 'slug': f'default-mount-{index}'}
+            response = api_client.post(
+                '/api/v1/admin/articles/',
+                {**payload, 'cover': test_image, 'attachment': test_pdf},
+                **auth_header,
+            )
+            assert response.status_code == 201
+
+        assert Category.objects.filter(slug='default-category').count() == 1
+        assert Tag.objects.filter(slug='default-tag').count() == 1
+
+    def test_adm_015_explicit_category_tag_wins(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-015 显式传入分类/标签时不被默认覆盖。"""
+        category = Category.objects.create(name='技术', slug='tech')
+        tag = Tag.objects.create(name='Python', slug='python')
+        payload = {**create_payload, 'category_id': category.id, 'tag_ids': [tag.id]}
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**payload, 'cover': test_image, 'attachment': test_pdf},
+            **auth_header,
+        )
+
+        assert response.status_code == 201
+        article = Article.objects.get(slug='default-mount')
+        assert article.category_id == category.id
+        assert list(article.tags.values_list('id', flat=True)) == [tag.id]
+        assert not Category.objects.filter(slug='default-category').exists()
+        assert not Tag.objects.filter(slug='default-tag').exists()
+
+    def test_adm_016_zero_sentinel_uses_default(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-016 category_id/tag_ids 传 '0' 占位值，视为未填并使用默认。"""
+        payload = dict(create_payload)
+        payload['slug'] = 'zero-sentinel'
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {
+                **payload,
+                'category_id': '0',
+                'tag_ids': '0',
+                'cover': test_image,
+                'attachment': test_pdf,
+            },
+            **auth_header,
+        )
+
+        assert response.status_code == 201
+        article = Article.objects.get(slug='zero-sentinel')
+        assert article.category.slug == 'default-category'
+        assert list(article.tags.values_list('slug', flat=True)) == ['default-tag']
+
+    def test_adm_017_category_not_found(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-017 传不存在的 category_id 返回 400。"""
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**create_payload, 'category_id': '999', 'cover': test_image, 'attachment': test_pdf},
+            **auth_header,
+        )
+
+        assert response.status_code == 400
+        assert '分类不存在' in response.json()['message']
+        assert not Article.objects.exists()
+
+    def test_adm_018_tag_not_found(
+        self, api_client, auth_header, test_image, test_pdf, create_payload
+    ):
+        """ADM-018 传不存在的 tag_ids 返回 400。"""
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**create_payload, 'tag_ids': '[999]', 'cover': test_image, 'attachment': test_pdf},
+            **auth_header,
+        )
+
+        assert response.status_code == 400
+        assert '标签不存在' in response.json()['message']
+        assert not Article.objects.exists()
+
+    def test_adm_019_failure_leaves_no_files(
+        self, api_client, auth_header, test_image, test_pdf, create_payload, settings
+    ):
+        """ADM-019 校验失败不产生残留上传文件。"""
+        media_root = settings.MEDIA_ROOT
+        covers_dir = media_root / 'covers'
+        files_dir = media_root / 'files'
+
+        def snapshot() -> tuple[list[str], list[str]]:
+            covers = sorted(p.name for p in covers_dir.iterdir()) if covers_dir.exists() else []
+            files = sorted(p.name for p in files_dir.iterdir()) if files_dir.exists() else []
+            return covers, files
+
+        before = snapshot()
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**create_payload, 'category_id': '999', 'cover': test_image, 'attachment': test_pdf},
+            **auth_header,
+        )
+
+        assert response.status_code == 400
+        assert snapshot() == before
