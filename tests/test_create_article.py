@@ -21,7 +21,6 @@ class TestCreateArticleAPI:
         return {
             'title': '测试文章',
             'slug': 'test-article',
-            'content': '# 内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'is_published': True,
         }
@@ -85,7 +84,6 @@ class TestCreateArticleAPI:
         Article.objects.create(
             title='已存在',
             slug='test',
-            content='内容',
             publish_time='2026-08-09T14:00:00Z',
             author=user,
         )
@@ -95,7 +93,6 @@ class TestCreateArticleAPI:
             {
                 'title': '新文章',
                 'slug': 'test',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -266,7 +263,6 @@ class TestCreateArticleDefaultsAPI:
         return {
             'title': '默认挂载测试',
             'slug': 'default-mount',
-            'content': '# 内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'is_published': True,
         }

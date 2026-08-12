@@ -29,6 +29,6 @@ class ArticleAdmin(ModelAdmin):
 
     list_display = ['title', 'slug', 'author', 'category', 'is_published', 'publish_time', 'views']
     list_filter = ['is_published', 'category', 'tags']
-    search_fields = ['title', 'content']
+    search_fields = ['title']
     prepopulated_fields = {'slug': ('title',)}
     filter_horizontal = ['tags']

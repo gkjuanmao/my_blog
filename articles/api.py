@@ -189,7 +189,6 @@ def create_article(
 
     article = Article(
         title=payload.title,
-        content=payload.content,
         summary=payload.summary,
         publish_time=payload.publish_time,
         location=payload.location,
@@ -240,7 +239,7 @@ def update_article(
         raise HttpError(404, '文章不存在')
 
     update_fields: dict[str, Any] = {}
-    for field in ['title', 'content', 'summary', 'location', 'is_published']:
+    for field in ['title', 'summary', 'location', 'is_published']:
         value = getattr(payload, field)
         if value is not None:
             update_fields[field] = value

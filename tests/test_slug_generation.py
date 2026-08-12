@@ -16,7 +16,6 @@ class TestSlugGenerationAPI:
             '/api/v1/admin/articles/',
             {
                 'title': 'Hello World',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -35,7 +34,6 @@ class TestSlugGenerationAPI:
             '/api/v1/admin/articles/',
             {
                 'title': '第一篇测试文章',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -55,7 +53,6 @@ class TestSlugGenerationAPI:
             {
                 'title': 'Hello World',
                 'slug': 'my-custom-slug',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -71,14 +68,13 @@ class TestSlugGenerationAPI:
     ):
         """ADM-053 自动生成的 slug 冲突时自动加后缀。"""
         Article.objects.create(
-            title='已有', slug='hello-world', content='x',
+            title='已有', slug='hello-world',
             publish_time=timezone.now(), author=user,
         )
         response = api_client.post(
             '/api/v1/admin/articles/',
             {
                 'title': 'Hello World',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -94,7 +90,7 @@ class TestSlugGenerationAPI:
     ):
         """ADM-054 手动传入的 slug 冲突时也自动加后缀。"""
         Article.objects.create(
-            title='已有', slug='my-custom', content='x',
+            title='已有', slug='my-custom',
             publish_time=timezone.now(), author=user,
         )
         response = api_client.post(
@@ -102,7 +98,6 @@ class TestSlugGenerationAPI:
             {
                 'title': 'New',
                 'slug': 'my-custom',
-                'content': '内容',
                 'publish_time': '2026-08-09T14:00:00Z',
                 'cover': test_image,
                 'attachment': test_pdf,
@@ -119,10 +114,10 @@ class TestUpdateSlugUniquenessAPI:
     def test_adm_055_update_slug_conflict(self, api_client, auth_header, user):
         """ADM-055 更新 slug 冲突时加后缀，且排除自身。"""
         a1 = Article.objects.create(
-            title='A', slug='a', content='x', publish_time=timezone.now(), author=user,
+            title='A', slug='a', publish_time=timezone.now(), author=user,
         )
         Article.objects.create(
-            title='B', slug='b', content='x', publish_time=timezone.now(), author=user,
+            title='B', slug='b', publish_time=timezone.now(), author=user,
         )
 
         # 更新为已存在的 slug -> 自动加后缀

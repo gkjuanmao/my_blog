@@ -142,7 +142,7 @@ class TestAdminTagReadUpdateDeleteAPI:
     def test_tag_062_delete_tag_removes_from_article(self, api_client, auth_header, tag, user):
         """TAG-062 删除被文章使用的标签：仅解除 M2M 关联，文章保留。"""
         article = Article.objects.create(
-            title='文章', slug='post-1', content='内容',
+            title='文章', slug='post-1',
             publish_time=timezone.now(), author=user,
         )
         article.tags.add(tag)

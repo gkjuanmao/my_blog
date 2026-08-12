@@ -12,7 +12,6 @@ class TestDeleteArticleAPI:
         return Article.objects.create(
             title='测试文章',
             slug='test',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True,

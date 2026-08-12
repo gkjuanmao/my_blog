@@ -12,7 +12,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='我的第一篇博客',
             slug='blog-1',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True,
@@ -20,7 +19,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='Python 教程',
             slug='python',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True,
@@ -28,7 +26,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='草稿博客',
             slug='draft-blog',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=False,

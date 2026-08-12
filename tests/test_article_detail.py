@@ -12,7 +12,6 @@ class TestArticleDetailAPI:
         return Article.objects.create(
             title='测试文章',
             slug='my-post',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True,
@@ -40,7 +39,6 @@ class TestArticleDetailAPI:
         Article.objects.create(
             title='草稿',
             slug='draft',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=False,

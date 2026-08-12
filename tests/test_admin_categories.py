@@ -161,7 +161,7 @@ class TestAdminCategoryReadUpdateDeleteAPI:
     def test_cat_063_delete_category_articles_kept(self, api_client, auth_header, category, user):
         """CAT-063 删除被文章使用的分类：文章保留，category 置空。"""
         article = Article.objects.create(
-            title='文章', slug='post-1', content='内容',
+            title='文章', slug='post-1',
             publish_time=timezone.now(), author=user, category=category,
         )
 

@@ -11,11 +11,11 @@ class TestAdminArticleListAPI:
     def setup_articles(self, user):
         category = Category.objects.create(name='技术', slug='tech')
         Article.objects.create(
-            title='已发布文章', slug='published', content='内容',
+            title='已发布文章', slug='published',
             publish_time=timezone.now(), author=user, category=category, is_published=True,
         )
         Article.objects.create(
-            title='草稿文章', slug='draft-post', content='草稿',
+            title='草稿文章', slug='draft-post',
             publish_time=timezone.now(), author=user, category=category, is_published=False,
         )
 
@@ -76,7 +76,7 @@ class TestAdminDeleteBySlugAPI:
     @pytest.fixture
     def draft(self, user):
         return Article.objects.create(
-            title='草稿文章', slug='draft-post', content='草稿',
+            title='草稿文章', slug='draft-post',
             publish_time=timezone.now(), author=user, is_published=False,
         )
 

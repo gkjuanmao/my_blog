@@ -25,7 +25,7 @@
 
 ### 1.3 核心功能清单
 
-- [x] 博客文章 CRUD（含 Markdown 正文、封面图、附件文件）
+- [x] 博客文章 CRUD（含封面图、附件文件）
 - [x] 分类 / 标签管理
 - [x] 按标题搜索文章
 - [x] JWT 身份认证
@@ -152,7 +152,6 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | id | BigAutoField | PK | 主键 |
 | title | CharField(200) | db_index=True | 文章标题 |
 | slug | SlugField(200) | unique, db_index=True | URL 别名 |
-| content | TextField | not null | Markdown 正文 |
 | summary | CharField(500) | blank=True | 摘要 (用于列表展示) |
 | publish_time | DateTimeField | db_index=True | 发布时间 |
 | location | CharField(255) | blank=True | 写作/事件地点 |
@@ -297,7 +296,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 }
 ```
 
-**详情 `ArticleDetailOut`** = 上述结构 + 正文与作者：`"content": "## 正文\n\nMarkdown 内容...", "author": "admin"`。
+**详情 `ArticleDetailOut`** = 上述结构 + 作者：`"author": "admin"`。
 
 ---
 
@@ -434,7 +433,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 **认证**：❌　仅返回已发布文章，访问后 `views` +1。
 
-**响应** (200)：`data` 为 `ArticleDetailOut`（见上文结构，含 `content`、`author`）。
+**响应** (200)：`data` 为 `ArticleDetailOut`（见上文结构，含 `author`）。
 
 **错误**：404：「文章不存在」（信封格式）
 
@@ -483,27 +482,26 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 **请求**：`Content-Type: multipart/form-data`
 
-| 参数 | 类型 | 必填 | 说明 |
-| :--- | :--- | :- | :--- |
-| title | string | ✅ | 标题 |
-| slug | string | ❌ | URL 别名；不传则从 title 自动生成 (中文转拼音)，冲突自动加后缀 (如 `xxx-2`) |
-| content | string | ✅ | Markdown 正文 |
-| summary | string | ❌ | 摘要 |
-| publish_time | string (ISO 8601) | ✅ | 发布时间，如 `2026-08-09T14:00:00Z` |
-| location | string | ❌ | 地点 |
-| category_id | int | ❌ | 分类 ID；不传/`0` 视为未填，自动使用默认分类 (`default-category`) |
-| tag_ids | array[int] | ❌ | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`) |
-| is_published | bool | ❌ | 是否发布 (默认 false) |
-| cover | File (image) | ✅ | 封面图片 (JPG/PNG/Webp, ≤20MB) |
-| attachment | File | ✅ | 附件文件 (PDF/DOCX, ≤50MB) |
+| 参数           | 类型                | 必填  | 说明                                                 |
+| :----------- | :---------------- | :-- | :------------------------------------------------- |
+| title        | string            | ✅   | 标题                                                 |
+| slug         | string            | ❌   | URL 别名；不传则从 title 自动生成 (中文转拼音)，冲突自动加后缀 (如 `xxx-2`) |
+| summary      | string            | ❌   | 摘要                                                 |
+| publish_time | string (ISO 8601) | ✅   | 发布时间，如 `2026-08-09T14:00:00Z`                      |
+| location     | string            | ❌   | 地点                                                 |
+| category_id  | int               | ❌   | 分类 ID；不传/`0` 视为未填，自动使用默认分类 (`default-category`)    |
+| tag_ids      | array[int]        | ❌   | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`)      |
+| is_published | bool              | ❌   | 是否发布 (默认 false)                                    |
+| cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤20MB)                         |
+| attachment   | File              | ✅   | 附件文件 (PDF/DOCX/HTML, ≤50MB)                        |
 
 > **默认分类/标签机制**：创建文章时若未填 `category_id`/`tag_ids`（含 `''`/`'0'`/`'null'` 等占位值），自动挂载默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"），确保每个新建文章都有分类与标签。默认数据由服务启动时 `AppConfig.ready()` 幂等创建；引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）。
 
 **响应** (201)：`data` 为完整 `ArticleOut`（`code` 为 201）。
 
 **错误**：
-- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
-- 422：缺少必填字段（如 `title`/`content`/`publish_time`/`cover`/`attachment`）或 `tag_ids` 格式错误（`detail` 格式）
+- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word/HTML 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
+- 422：缺少必填字段（如 `title`/`publish_time`/`cover`/`attachment`）或 `tag_ids` 格式错误（`detail` 格式）
 
 #### PUT `/api/v1/admin/articles/{id}/` (更新文章)
 
@@ -511,7 +509,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 | 参数 | 类型 | 说明 |
 | :--- | :--- | :--- |
-| title / content / summary / location / publish_time / is_published | 同创建 | 传入才更新，`publish_time` 为 ISO 8601 |
+| title / summary / location / publish_time / is_published | 同创建 | 传入才更新，`publish_time` 为 ISO 8601 |
 | slug | string | 不传保留原值；传入则自动去重（冲突加后缀，`exclude_id` 排除自身） |
 | category_id | int | 传入才更新；引用不存在的分类返回 400「分类不存在」 |
 | tag_ids | array[int] | 传入才更新（覆盖标签）；引用不存在返回 400「标签不存在」 |

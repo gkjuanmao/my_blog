@@ -191,9 +191,8 @@ class ArticleOut(Schema):
 
 
 class ArticleDetailOut(ArticleOut):
-    """文章详情响应：在列表基础上增加正文与作者信息。"""
+    """文章详情响应：在列表基础上增加作者信息。"""
 
-    content: str
     author: str
 
 
@@ -202,7 +201,6 @@ class ArticleCreateIn(Schema):
 
     title: str
     slug: str | None = None
-    content: str
     summary: str = ''
     publish_time: datetime
     location: str = ''
@@ -236,7 +234,6 @@ class ArticleUpdateIn(Schema):
 
     title: str | None = None
     slug: str | None = None
-    content: str | None = None
     summary: str | None = None
     publish_time: datetime | None = None
     location: str | None = None
@@ -306,6 +303,6 @@ def article_to_out(request, article: Article) -> ArticleOut:
 
 
 def article_to_detail(request, article: Article) -> ArticleDetailOut:
-    """将模型实例转换为 ArticleDetailOut（含正文与作者）。"""
+    """将模型实例转换为 ArticleDetailOut（含作者）。"""
     out = article_to_out(request, article).model_dump()
-    return ArticleDetailOut(**out, content=article.content, author=article.author.username)
+    return ArticleDetailOut(**out, author=article.author.username)

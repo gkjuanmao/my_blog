@@ -58,11 +58,10 @@ class Tag(models.Model):
 
 
 class Article(models.Model):
-    """博客文章，含 Markdown 正文、封面图与附件文件。"""
+    """博客文章，含封面图与附件文件。"""
 
     title = models.CharField(max_length=200, db_index=True, verbose_name='标题')
     slug = models.SlugField(max_length=200, unique=True, db_index=True, verbose_name='URL 别名')
-    content = models.TextField(verbose_name='Markdown 正文')
     summary = models.CharField(max_length=500, blank=True, verbose_name='摘要')
     publish_time = models.DateTimeField(db_index=True, verbose_name='发布时间')
     location = models.CharField(max_length=255, blank=True, verbose_name='地点')
