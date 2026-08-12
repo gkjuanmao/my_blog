@@ -686,7 +686,7 @@ SIMPLE_JWT = {
 | 文件类型 | 存储路径模板 | 大小限制 | 允许格式 |
 | :--- | :--- | :--- | :--- |
 | 文章封面 | `media/covers/%Y/%m/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
-| 文章附件 | `media/files/%Y/%m/UUID.ext` | ≤ 50MB | PDF, DOCX |
+| 文章附件 | `media/files/%Y/%m/UUID.ext` | ≤ 50MB | PDF, DOCX, HTML |
 | 用户头像 | `media/avatars/%Y/%m/UUID.ext` | ≤ 2MB | JPG, PNG |
 
 ### 7.2 文件命名规则

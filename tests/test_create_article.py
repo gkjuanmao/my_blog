@@ -147,6 +147,27 @@ class TestCreateArticleAPI:
 
         assert response.status_code == 400
 
+    def test_adm_008b_html_attachment(
+        self, api_client, auth_header, test_image, create_payload
+    ):
+        """ADM-008b HTML 附件允许上传。"""
+        html_file = SimpleUploadedFile(
+            'page.html', b'<html><body>test</body></html>', content_type='text/html'
+        )
+        response = api_client.post(
+            '/api/v1/admin/articles/',
+            {**create_payload, 'cover': test_image, 'attachment': html_file},
+            **auth_header,
+        )
+
+        assert response.status_code == 201
+        data = response.json()['data']
+        assert data['file_name'] == 'page.html'
+
+        article = Article.objects.get(slug='test-article')
+        assert article.file_name == 'page.html'
+        assert article.file.name.endswith('.html')
+
     def test_adm_009_chinese_filename(self, api_client, auth_header, test_pdf, create_payload):
         """ADM-009 中文文件名：物理文件 UUID 化，保留原始文件名。"""
         img = Image.new('RGB', (20, 20), color='blue')

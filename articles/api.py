@@ -34,7 +34,7 @@ admin_router = Router(tags=['文章管理'])
 
 # 文件类型与大小限制
 COVER_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
-ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx'}
+ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'html'}
 COVER_MAX_SIZE = 20 * 1024 * 1024  # 20MB
 ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024  # 50MB
 
@@ -59,7 +59,7 @@ def _validate_attachment(attachment: UploadedFile) -> None:
     """校验附件格式与大小。"""
     name = attachment.name or ''
     if _extension(name) not in ATTACHMENT_EXTENSIONS:
-        raise HttpError(400, '附件仅支持 PDF/Word 格式')
+        raise HttpError(400, '附件仅支持 PDF/Word/HTML 格式')
     if (attachment.size or 0) > ATTACHMENT_MAX_SIZE:
         raise HttpError(400, '附件大小不能超过 50MB')
 
