@@ -37,7 +37,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# 跨域配置：允许前端开发服务器访问（Vite 默认端口）
+# 跨域配置：默认仅允许前端开发服务器访问（Vite 默认端口）。
+# dev 环境由 dev.py 的 CORS_ALLOW_ALL_ORIGINS=True 全面放开，此处为兜底默认值；
+# 生产环境如需收紧，可在此按需配置明确的允许来源。
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
 ]
