@@ -15,6 +15,14 @@ uv run python manage.py migrate
 uv run python manage.py runserver
 ```
 
+局域网内其他设备访问时，需监听 `0.0.0.0`（dev 环境 `ALLOWED_HOSTS` 已放开为 `*`，CORS 也已全面放开）：
+
+```bash
+uv run python manage.py runserver 0.0.0.0:8000
+```
+
+然后通过本机局域网 IP 访问，如 `http://192.168.x.x:8000/api/v1/docs`。
+
 首次启动会自动创建默认分类（`默认分类`）与默认标签（`默认标签`），创建文章时若未填分类/标签将自动挂载。
 
 ## 代码检查（Ruff + MyPy）
