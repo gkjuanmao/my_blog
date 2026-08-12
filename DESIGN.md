@@ -2,8 +2,8 @@
 
 > **项目名称**：My Blog Backend  
 > **架构模式**：前后端分离 (API 驱动)  
-> **文档版本**：v1.4  
-> **最后更新**：2026-08-11  
+> **文档版本**：v1.5  
+> **最后更新**：2026-08-12  
 
 ---
 
@@ -255,12 +255,10 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章 |
 | DELETE | `/api/v1/admin/articles/{id}/` | ✅ | 按 id 删除文章 (含草稿) |
 | DELETE | `/api/v1/admin/articles/slug/{slug}/` | ✅ | 按 slug 删除文章 (含草稿) |
-| GET | `/api/v1/admin/categories/` | ✅ | 获取所有分类 (公开 `GET /api/v1/categories/` 同构) |
 | POST | `/api/v1/admin/categories/` | ✅ | 创建分类 (slug 可省略，自动生成+冲突后缀) |
 | GET | `/api/v1/admin/categories/{id}/` | ✅ | 分类详情 |
 | PUT | `/api/v1/admin/categories/{id}/` | ✅ | 更新分类 (slug 省略保留原值) |
 | DELETE | `/api/v1/admin/categories/{id}/` | ✅ | 删除分类 (其文章 category 置空；默认分类不可删除) |
-| GET | `/api/v1/admin/tags/` | ✅ | 获取所有标签 (公开 `GET /api/v1/tags/` 同构) |
 | POST | `/api/v1/admin/tags/` | ✅ | 创建标签 (slug 可省略，自动生成+冲突后缀) |
 | GET | `/api/v1/admin/tags/{id}/` | ✅ | 标签详情 |
 | PUT | `/api/v1/admin/tags/{id}/` | ✅ | 更新标签 (slug 省略保留原值) |
@@ -268,49 +266,185 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 ### 5.3 核心接口详细定义
 
-#### POST `/api/v1/admin/articles/` (创建文章)
+> **总则**
+> - 成功响应统一为信封 `{"code": <HTTP状态码>, "message": "success", "data": {...}}`；创建类接口返回 201。
+> - 业务错误（`HttpError`，如 400/401/404）同样返回信封，`code` 与 HTTP 状态码一致、`data` 恒为 `null`、`message` 为中文错误描述。
+> - **参数校验失败**（必填缺失、格式错误、空白名称、非法分页值等，由 Pydantic 拦截）返回 **422**，响应体为 `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}`，不走统一信封。
+> - 未认证访问管理接口（未携带或无效的 `Authorization: Bearer <token>`）返回 401。
+> - 分页列表接口的 `data` 结构固定为 `{"items": [...], "total": int, "page": int, "page_size": int}`；`page` 默认 1（≥1），`page_size` 默认 10（1~100），非法取值返回 422。
 
-**请求**：`Content-Type: multipart/form-data`
+#### 文章响应数据结构
 
-| 参数           | 类型                | 必填  | 说明                            |
-| :----------- | :---------------- | :-- | :---------------------------- |
-| title        | string            | ✅   | 标题                            |
-| slug         | string            | ❌   | URL 别名；不传则从 title 自动生成 (中文转拼音)，冲突自动加后缀 (如 `xxx-2`) |
-| content      | string            | ✅   | Markdown 正文                   |
-| summary      | string            | ❌   | 摘要                            |
-| publish_time | string (ISO 8601) | ✅   | 发布时间，如 `2026-08-09T14:00:00Z` |
-| location     | string            | ❌   | 地点                            |
-| category_id  | int               | ❌   | 分类 ID；不传/`0` 视为未填，自动使用默认分类 (`default-category`) |
-| tag_ids      | array[int]        | ❌   | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`) |
-| is_published | bool              | ❌   | 是否发布 (默认 false)               |
-| cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤20MB)     |
-| attachment   | File              | ✅   | 附件文件 (PDF/DOCX, ≤50MB)        |
-
-> **默认分类/标签机制**：创建文章时若未填 `category_id`/`tag_ids`（含 `''`/`'0'`/`'null'` 等占位值），自动挂载默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"），确保每个新建文章都有分类与标签。默认数据由服务启动时 `AppConfig.ready()` 幂等创建；引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）；`DELETE` 默认分类/标签返回 400。
-
-**响应** (201)：
+**列表项 `ArticleOut`**（列表/搜索/创建/更新共用）：
 ```json
 {
-  "code": 201,
+  "id": 1,
+  "title": "我的第一篇博客",
+  "slug": "my-first-post",
+  "summary": "这是摘要...",
+  "publish_time": "2026-08-09T14:00:00Z",
+  "location": "北京",
+  "category": { "id": 1, "name": "默认分类", "slug": "default-category", "description": "" },
+  "tags": [ { "id": 1, "name": "默认标签", "slug": "default-tag" } ],
+  "cover_image_name": "封面.jpg",
+  "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg",
+  "file_name": "附件.pdf",
+  "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf",
+  "is_published": true,
+  "views": 0,
+  "created_at": "2026-08-09T10:30:00Z",
+  "updated_at": "2026-08-09T10:30:00Z"
+}
+```
+
+**详情 `ArticleDetailOut`** = 上述结构 + 正文与作者：`"content": "## 正文\n\nMarkdown 内容...", "author": "admin"`。
+
+---
+
+### 5.3.1 认证模块 (users)
+
+#### POST `/api/v1/login/` (登录)
+
+**请求**：`Content-Type: application/json`
+
+| 参数      | 类型   | 必填 | 说明     |
+| :------ | :--- | :- | :----- |
+| username | string | ✅  | 用户名   |
+| password | string | ✅  | 密码     |
+
+**响应** (200)：
+```json
+{
+  "code": 200,
   "message": "success",
   "data": {
-    "id": 1,
-    "title": "我的第一篇博客",
-    "slug": "my-first-post",
-    "publish_time": "2026-08-09T14:00:00Z",
-    "location": "北京",
-    "cover_image_name": "封面.jpg",
-    "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg",
-    "file_name": "附件.pdf",
-    "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf",
-    "is_published": true,
-    "views": 0,
-    "created_at": "2026-08-09T10:30:00Z"
+    "access": "eyJhbGciOiJIUzI1NiIs...",
+    "refresh": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
 
-#### GET `/api/v1/articles/search/?keyword=博客`
+**错误**：
+- 401：「用户名或密码错误」（信封格式）
+- 422：缺少 `username`/`password` 或为空（`detail` 格式）
+
+#### POST `/api/v1/token/refresh/` (刷新访问令牌)
+
+**请求**：`Content-Type: application/json`
+
+| 参数      | 类型   | 必填 | 说明       |
+| :------ | :--- | :- | :------- |
+| refresh | string | ✅  | refresh token |
+
+**响应** (200)：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { "access": "eyJhbGciOiJIUzI1NiIs..." }
+}
+```
+
+**错误**：
+- 401：「refresh 令牌无效或已过期」（信封格式）
+- 422：缺少 `refresh`（`detail` 格式）
+
+#### GET `/api/v1/me/` (当前用户信息)
+
+**认证**：✅ `Authorization: Bearer <access_token>`
+
+**响应** (200)：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": "avatars/2026/08/12/a1b2c3d4.jpg",
+    "avatar_name": "头像.jpg",
+    "date_joined": "2026-08-09T10:30:00Z"
+  }
+}
+```
+
+> `avatar` 为媒体相对路径，未上传头像时为 `null`；`avatar_name` 为头像原始文件名，未上传时为空串。
+
+**错误**：
+- 401：未携带 / Token 格式错误（「无效」）/ Token 过期（「过期」），均为信封格式
+
+---
+
+### 5.3.2 文章模块 · 公开接口 (articles)
+
+#### GET `/api/v1/categories/` (分类列表)
+
+**认证**：❌　**响应** (200)：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    { "id": 1, "name": "默认分类", "slug": "default-category", "description": "" }
+  ]
+}
+```
+
+#### GET `/api/v1/tags/` (标签列表)
+
+**认证**：❌　**响应** (200)：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    { "id": 1, "name": "默认标签", "slug": "default-tag" }
+  ]
+}
+```
+
+#### GET `/api/v1/articles/` (文章列表)
+
+**认证**：❌　仅返回已发布文章。
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| page | int | ❌ | 页码，默认 1，≥1 |
+| page_size | int | ❌ | 每页数量，默认 10，1~100 |
+| category_slug | string | ❌ | 按分类别名过滤 |
+
+**响应** (200)：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" } ],
+    "total": 1,
+    "page": 1,
+    "page_size": 10
+  }
+}
+```
+
+**错误**：422：`page`/`page_size` 非法取值（如 `page=0`，`detail` 格式）
+
+#### GET `/api/v1/articles/{slug}/` (文章详情)
+
+**认证**：❌　仅返回已发布文章，访问后 `views` +1。
+
+**响应** (200)：`data` 为 `ArticleDetailOut`（见上文结构，含 `content`、`author`）。
+
+**错误**：404：「文章不存在」（信封格式）
+
+#### GET `/api/v1/articles/search/` (搜索文章)
+
+**认证**：❌　按标题模糊搜索已发布文章，返回数组（非分页）。
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| keyword | string | ✅ | 关键词，标题模糊匹配 |
 
 **响应** (200)：
 ```json
@@ -318,21 +452,184 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   "code": 200,
   "message": "success",
   "data": [
-    {
-      "id": 1,
-      "title": "我的第一篇博客",
-      "slug": "my-first-post",
-      "summary": "这是摘要...",
-      "publish_time": "2026-08-09T14:00:00Z",
-      "location": "北京",
-      "cover_image_name": "封面.jpg",
-      "cover_image_url": "http://...",
-      "file_name": "附件.pdf",
-      "file_url": "http://..."
-    }
+    { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" }
   ]
 }
 ```
+
+**错误**：422：缺少 `keyword`（`detail` 格式）
+
+---
+
+### 5.3.3 文章模块 · 管理接口 (admin)
+
+> 本小节所有接口均需认证 ✅：`Authorization: Bearer <access_token>`；未认证返回 401。
+
+#### GET `/api/v1/admin/articles/` (管理文章列表)
+
+返回全部文章（含未发布草稿）。
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| page | int | ❌ | 页码，默认 1，≥1 |
+| page_size | int | ❌ | 每页数量，默认 10，1~100 |
+| is_published | bool | ❌ | 按发布状态过滤 |
+| keyword | string | ❌ | 标题关键词模糊搜索 |
+| category_slug | string | ❌ | 按分类别名过滤 |
+
+**响应** (200)：`data` 结构与公开 `GET /articles/` 一致（`items` 为 `ArticleOut` 数组 + `total`/`page`/`page_size`）。
+
+#### POST `/api/v1/admin/articles/` (创建文章)
+
+**请求**：`Content-Type: multipart/form-data`
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| title | string | ✅ | 标题 |
+| slug | string | ❌ | URL 别名；不传则从 title 自动生成 (中文转拼音)，冲突自动加后缀 (如 `xxx-2`) |
+| content | string | ✅ | Markdown 正文 |
+| summary | string | ❌ | 摘要 |
+| publish_time | string (ISO 8601) | ✅ | 发布时间，如 `2026-08-09T14:00:00Z` |
+| location | string | ❌ | 地点 |
+| category_id | int | ❌ | 分类 ID；不传/`0` 视为未填，自动使用默认分类 (`default-category`) |
+| tag_ids | array[int] | ❌ | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`) |
+| is_published | bool | ❌ | 是否发布 (默认 false) |
+| cover | File (image) | ✅ | 封面图片 (JPG/PNG/Webp, ≤20MB) |
+| attachment | File | ✅ | 附件文件 (PDF/DOCX, ≤50MB) |
+
+> **默认分类/标签机制**：创建文章时若未填 `category_id`/`tag_ids`（含 `''`/`'0'`/`'null'` 等占位值），自动挂载默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"），确保每个新建文章都有分类与标签。默认数据由服务启动时 `AppConfig.ready()` 幂等创建；引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）。
+
+**响应** (201)：`data` 为完整 `ArticleOut`（`code` 为 201）。
+
+**错误**：
+- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
+- 422：缺少必填字段（如 `title`/`content`/`publish_time`/`cover`/`attachment`）或 `tag_ids` 格式错误（`detail` 格式）
+
+#### PUT `/api/v1/admin/articles/{id}/` (更新文章)
+
+**请求**：`Content-Type: multipart/form-data`，所有字段可选；`cover`/`attachment` 不传则保留原文件。
+
+| 参数 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| title / content / summary / location / publish_time / is_published | 同创建 | 传入才更新，`publish_time` 为 ISO 8601 |
+| slug | string | 不传保留原值；传入则自动去重（冲突加后缀，`exclude_id` 排除自身） |
+| category_id | int | 传入才更新；引用不存在的分类返回 400「分类不存在」 |
+| tag_ids | array[int] | 传入才更新（覆盖标签）；引用不存在返回 400「标签不存在」 |
+| cover / attachment | File | 传入才替换，校验同创建 |
+
+**响应** (200)：`data` 为完整 `ArticleOut`。
+
+**错误**：
+- 404：「文章不存在」
+- 400：「分类不存在」「标签不存在」「slug 已存在」「更新失败：请检查分类/标签等参数是否正确」（信封格式）
+- 422：字段格式非法（`detail` 格式）
+
+#### DELETE `/api/v1/admin/articles/{id}/` (按 id 删除)
+
+删除指定文章（含草稿），同时清理其封面与附件文件。
+
+**响应** (200)：
+```json
+{ "code": 200, "message": "删除成功", "data": null }
+```
+
+**错误**：404：「文章不存在」
+
+#### DELETE `/api/v1/admin/articles/slug/{slug}/` (按 slug 删除)
+
+**响应** (200)：同按 id 删除（`message` 为「删除成功」，`data` 为 `null`）。
+
+**错误**：404：「文章不存在」
+
+#### POST `/api/v1/admin/categories/` (创建分类)
+
+**请求**：`Content-Type: application/json`
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| name | string | ✅ | 分类名称，不能为空 |
+| slug | string | ❌ | 别名；不传则从 name 自动生成 (中文转拼音)，冲突自动加后缀 |
+| description | string | ❌ | 描述，默认空串 |
+
+**响应** (201)：
+```json
+{ "code": 201, "message": "success", "data": { "id": 1, "name": "技术", "slug": "tech", "description": "" } }
+```
+
+**错误**：422：缺少 `name` 或名称为空白（`detail` 格式）
+
+#### GET `/api/v1/admin/categories/{id}/` (分类详情)
+
+**响应** (200)：`data` 为 `CategoryOut`（`id`/`name`/`slug`/`description`）。
+
+**错误**：404：「分类不存在」
+
+#### PUT `/api/v1/admin/categories/{id}/` (更新分类)
+
+**请求**：`Content-Type: application/json`，所有字段可选；`slug` 省略时保留原值。
+
+| 参数 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| name | string | 传入才更新，不能为空 |
+| slug | string | 传入才更新，自动去重（排除自身） |
+| description | string | 传入才更新 |
+
+**响应** (200)：`data` 为 `CategoryOut`。
+
+**错误**：
+- 404：「分类不存在」
+- 400：「slug 已存在」（信封格式）
+- 422：名称为空白（`detail` 格式）
+
+#### DELETE `/api/v1/admin/categories/{id}/` (删除分类)
+
+删除分类，其下文章的 `category` 置空（SET_NULL），文章保留。
+
+**响应** (200)：`{"code": 200, "message": "删除成功", "data": null}`
+
+**错误**：
+- 404：「分类不存在」
+- 400：「默认分类不可删除」（默认分类 `default-category` 受删除保护，信封格式）
+
+#### POST `/api/v1/admin/tags/` (创建标签)
+
+**请求**：`Content-Type: application/json`
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| name | string | ✅ | 标签名称，不能为空 |
+| slug | string | ❌ | 别名；不传则从 name 自动生成 (中文转拼音)，冲突自动加后缀 |
+
+**响应** (201)：`{"code": 201, "message": "success", "data": {"id": 1, "name": "Python", "slug": "python"}}`
+
+**错误**：422：缺少 `name` 或名称为空白（`detail` 格式）
+
+#### GET `/api/v1/admin/tags/{id}/` (标签详情)
+
+**响应** (200)：`data` 为 `TagOut`（`id`/`name`/`slug`）。
+
+**错误**：404：「标签不存在」
+
+#### PUT `/api/v1/admin/tags/{id}/` (更新标签)
+
+**请求**：`Content-Type: application/json`，所有字段可选；`slug` 省略时保留原值。
+
+**响应** (200)：`data` 为 `TagOut`。
+
+**错误**：
+- 404：「标签不存在」
+- 400：「slug 已存在」（信封格式）
+- 422：名称为空白（`detail` 格式）
+
+#### DELETE `/api/v1/admin/tags/{id}/` (删除标签)
+
+删除标签，仅解除其与文章的多对多关联，文章保留。
+
+**响应** (200)：`{"code": 200, "message": "删除成功", "data": null}`
+
+**错误**：
+- 404：「标签不存在」
+- 400：「默认标签不可删除」（默认标签 `default-tag` 受删除保护，信封格式）
 
 ---
 
