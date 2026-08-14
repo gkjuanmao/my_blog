@@ -8,6 +8,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 - `uv sync` — 安装依赖（runtime + dev 组：ruff/mypy/django-stubs）
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`；局域网访问需用 `runserver 0.0.0.0:8000`（dev 的 `ALLOWED_HOSTS=['*']` 且 `CORS_ALLOW_ALL_ORIGINS=True`）
+- docker compose 部署（prod）后仅经 nginx（`:80`）访问：入口 `http://<IP>/`，如 `http://<IP>/api/v1/docs`、`http://<IP>/admin/`；应用 8000 端口不对宿主机暴露
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
 - `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 98 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
