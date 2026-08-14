@@ -16,6 +16,7 @@ services:
     volumes:
       - staticfiles:/app/staticfiles
       - media:/app/media
+      - ./db_data:/app/db_data
     depends_on:
       - db
       - redis

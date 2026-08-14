@@ -22,3 +22,6 @@ tests/reports/htmlcov/
 # 本地编辑器 / 笔记
 .obsidian/
 .omo/
+
+# SQLite 数据目录（bind mount 持久化）
+db_data/
