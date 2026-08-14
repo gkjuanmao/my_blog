@@ -105,3 +105,10 @@ docker compose 部署后，入口统一为 `http://<IP>/`（nginx:80，映射宿
 - Django admin：`http://192.168.31.71/admin/`
 
 应用容器自身的 8000 端口不再对外暴露，无法直接访问 `:8000`。
+
+### 数据持久化
+
+- 数据库：`db.sqlite3` 经 bind mount 存宿主机 `db_data/` 目录（容器销毁重建不丢，下次启动自动续用）；本地开发首次 migrate 前需先 `mkdir -p db_data`
+- 上传文件：`media/` 经 named volume `media` 持久化（app 与 nginx 共享）
+- 静态文件：`staticfiles/` 经 named volume `staticfiles` 持久化（collectstatic 产物，可重建）
+- `docker compose down` 不删数据；只有 `rm -rf db_data` 才删除数据库

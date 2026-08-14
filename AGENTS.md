@@ -18,7 +18,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 ## 配置 / 环境变量
 
 - 环境由 `config/settings/__init__.py` 中的 `DJANGO_ENV` 选择（默认 `dev`）；`DJANGO_SETTINGS_MODULE` 恒为 `config.settings`。
-- `dev`：SQLite `db.sqlite3`（已 gitignore）+ 内存缓存，`DEBUG=True`，硬编码 SECRET_KEY。
+- `dev`：SQLite `db_data/db.sqlite3`（bind mount 持久化，已 gitignore）+ 内存缓存，`DEBUG=True`，硬编码 SECRET_KEY。
 - `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。`prod.py` 中的 PostgreSQL/Redis 配置仍是注释 TODO —— prod 目前实际仍用 SQLite。
 - `.env` 仅被 docker-compose 的 `env_file` 消费；Django 不会自动加载。本地跑 prod 需手动 export，例如 `DJANGO_ENV=prod DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=127.0.0.1 uv run python manage.py runserver`。
 
@@ -48,5 +48,6 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `docker-compose.yml` 启动了 postgres+redis 容器，但 `prod.py` 尚未使用它们。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - 宿主机缺 docker compose 插件 / docker.sock 无权限时无法 `docker compose` 或 `docker build` 验证，只能在本机做 YAML 语法校验（`python3 -c "import yaml..."`）。
+- **容器数据持久化**：prod 容器中 SQLite 数据库经 bind mount 存宿主机 `db_data/`（容器销毁重建不丢，首次 migrate 前需先 `mkdir -p db_data`）；`media/`、`staticfiles/` 走 named volume（app 与 nginx 共享 media）；`docker compose down` 不删数据，只有 `rm -rf db_data` 才删除数据库。
 - `TEST.md` 是面向 AI 的测试用例规范文档（用于生成 pytest 用例），但已落后于实际测试（未覆盖分类/标签/slug 相关用例）——以 `tests/` 实际代码为准。
 - Git 仓库已有提交（identity 已配置为 `gkjuanmao`）；提交信息遵循 `DESIGN.md` 9.2 的规范（`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀）。
