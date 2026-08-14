@@ -21,3 +21,4 @@ tests/reports/htmlcov/
 
 # 本地编辑器 / 笔记
 .obsidian/
+.omo/
