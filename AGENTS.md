@@ -45,5 +45,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - PUT/PATCH multipart 需要 `ninja.compatibility.files.fix_request_files_middleware`（已在 `base.py` 的 MIDDLEWARE 中）。
 - `templates/` 和 `static/` 存在但为空 —— 新增模板/静态文件时创建文件即可。
 - `docker-compose.yml` 启动了 postgres+redis 容器，但 `prod.py` 尚未使用它们。
+- **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
+- 宿主机缺 docker compose 插件 / docker.sock 无权限时无法 `docker compose` 或 `docker build` 验证，只能在本机做 YAML 语法校验（`python3 -c "import yaml..."`）。
 - `TEST.md` 是面向 AI 的测试用例规范文档（用于生成 pytest 用例），但已落后于实际测试（未覆盖分类/标签/slug 相关用例）——以 `tests/` 实际代码为准。
 - Git 仓库已有提交（identity 已配置为 `gkjuanmao`）；提交信息遵循 `DESIGN.md` 9.2 的规范（`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀）。
