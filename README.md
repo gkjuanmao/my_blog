@@ -97,6 +97,60 @@ curl -X POST http://127.0.0.1:8000/api/v1/token/refresh/ \
 DJANGO_ENV=prod docker compose up --build
 ```
 
+### 启动与停止
+
+**前置检查**（确认本机 docker 可用）：
+
+```bash
+docker version && docker compose version
+```
+
+**构建并后台启动全部服务**（db + redis + app + nginx）：
+
+```bash
+docker compose up --build -d
+```
+
+**查看启动状态**（等 app 变 running，migrate+collectstatic 需几秒）：
+
+```bash
+docker compose ps
+```
+
+**只测 app 服务**（会自动连带拉起依赖的 db/redis）：
+
+```bash
+docker compose up --build -d app
+docker compose ps
+```
+
+**看日志**（确认 migrate/collectstatic/gunicorn 正常）：
+
+```bash
+docker compose logs -f app
+```
+
+**创建管理员**（首次部署时执行；数据库已持久化到宿主机 `db_data/`，之后容器销毁重建无需再创建）：
+
+```bash
+docker compose exec app python manage.py createsuperuser
+```
+
+登录拿 token 后即可测试 `GET /api/v1/me/`（`Authorization: Bearer <access>`）、`GET /api/v1/articles/` 等接口（经 nginx 入口 `http://<IP>/api/v1/...`）。
+
+**停止与清理**：
+
+```bash
+# 停止并删除容器（保留数据：db_data/ 与 named volumes media/staticfiles/postgres_data）
+docker compose down
+
+# 彻底清理（慎用）：删除 named volumes（media/staticfiles/postgres_data）；注意 bind mount 的 db_data/ 不会被 -v 删除，需 rm -rf db_data
+docker compose down -v
+
+# 重新构建（Dockerfile/依赖变更后）
+docker compose build
+```
+
 ### 通过 Docker + Nginx 访问
 
 docker compose 部署后，入口统一为 `http://<IP>/`（nginx:80，映射宿主机 80 端口），静态文件与所有接口均经 nginx 提供：
