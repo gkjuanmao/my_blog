@@ -114,11 +114,14 @@ def list_articles(
     page: int = Query(1, ge=1, description='页码'),
     page_size: int = Query(10, ge=1, le=100, description='每页数量'),
     category_slug: str = Query('', description='按分类别名过滤'),
+    tag_slug: str = Query('', description='按标签别名过滤'),
 ) -> dict:
-    """文章列表（分页），可按 category_slug 过滤，仅返回已发布文章。"""
+    """文章列表（分页），可按 category_slug / tag_slug 过滤，仅返回已发布文章。"""
     qs = _published_articles()
     if category_slug:
         qs = qs.filter(category__slug=category_slug)
+    if tag_slug:
+        qs = qs.filter(tags__slug=tag_slug)
     total = qs.count()
     start = (page - 1) * page_size
     items = [article_to_out(request, article) for article in qs[start:start + page_size]]

@@ -2,17 +2,19 @@
 import pytest
 from django.utils import timezone
 
-from articles.models import Article, Category
+from articles.models import Article, Category, Tag
 
 
 @pytest.mark.django_db
 class TestArticleListAPI:
     @pytest.fixture
     def setup_articles(self, user):
-        """创建 15 篇已发布文章与 1 篇草稿。"""
+        """创建 15 篇已发布文章与 1 篇草稿，部分文章挂标签。"""
         category = Category.objects.create(name='技术', slug='tech')
+        travel = Tag.objects.create(name='旅行', slug='travel')
+        food = Tag.objects.create(name='美食', slug='food')
         for i in range(15):
-            Article.objects.create(
+            article = Article.objects.create(
                 title=f'文章{i}',
                 slug=f'article-{i}',
                 publish_time=timezone.now(),
@@ -20,6 +22,10 @@ class TestArticleListAPI:
                 category=category,
                 is_published=True,
             )
+            if i < 5:
+                article.tags.add(travel)
+            elif i < 8:
+                article.tags.add(food)
         Article.objects.create(
             title='草稿',
             slug='draft',
@@ -82,3 +88,31 @@ class TestArticleListAPI:
         data = response.json()['data']
         assert data['items'] == []
         assert data['total'] == 0
+
+    def test_art_008_filter_by_tag(self, api_client, setup_articles):
+        """ART-008 按 tag_slug 过滤。"""
+        response = api_client.get('/api/v1/articles/?tag_slug=travel')
+
+        assert response.status_code == 200
+        data = response.json()['data']
+        assert data['total'] == 5
+        assert all(
+            any(t['slug'] == 'travel' for t in item['tags'])
+            for item in data['items']
+        )
+
+    def test_art_009_filter_by_tag_no_hit(self, api_client, setup_articles):
+        """ART-009 tag_slug 无命中。"""
+        response = api_client.get('/api/v1/articles/?tag_slug=no-such')
+
+        assert response.status_code == 200
+        data = response.json()['data']
+        assert data['items'] == []
+        assert data['total'] == 0
+
+    def test_art_010_filter_by_category_and_tag(self, api_client, setup_articles):
+        """ART-010 category_slug + tag_slug 组合过滤。"""
+        response = api_client.get('/api/v1/articles/?category_slug=tech&tag_slug=travel')
+
+        assert response.status_code == 200
+        assert response.json()['data']['total'] == 5
