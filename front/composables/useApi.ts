@@ -16,9 +16,9 @@ export function useApi() {
   }
 
   async function request<T>(url: string, options: ApiOptions = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
+    const headers: Record<string, string> = {}
+    const isFormData = options.body instanceof FormData
+    if (!isFormData) headers['Content-Type'] = 'application/json'
     if (import.meta.client) {
       const token = localStorage.getItem('access_token')
       if (token) headers.Authorization = `Bearer ${token}`
