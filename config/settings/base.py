@@ -42,6 +42,7 @@ MIDDLEWARE = [
 # 生产环境如需收紧，可在此按需配置明确的允许来源。
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
+    'http://192.168.31.71:5173',
 ]
 
 ROOT_URLCONF = 'config.urls'
