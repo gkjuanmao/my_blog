@@ -177,6 +177,20 @@ def list_admin_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
+@admin_router.get('/articles/{article_id}/', response=dict, auth=jwt_auth)
+def get_admin_article(request: HttpRequest, article_id: int) -> dict:
+    """获取单篇文章详情（含草稿），供后台编辑回填。"""
+    article = (
+        Article.objects.select_related('author', 'category')
+        .prefetch_related('tags')
+        .filter(pk=article_id)
+        .first()
+    )
+    if article is None:
+        raise HttpError(404, '文章不存在')
+    return success_response(article_to_detail(request, article).model_dump())
+
+
 @admin_router.post('/articles/', response={201: dict}, auth=jwt_auth)
 def create_article(
     request: HttpRequest,
