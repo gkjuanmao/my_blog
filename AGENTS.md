@@ -19,7 +19,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 - 环境由 `config/settings/__init__.py` 中的 `DJANGO_ENV` 选择（默认 `dev`）；`DJANGO_SETTINGS_MODULE` 恒为 `config.settings`。
 - `dev`：SQLite `db_data/db.sqlite3`（bind mount 持久化，已 gitignore）+ 内存缓存，`DEBUG=True`，硬编码 SECRET_KEY。
-- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。`prod.py` 中的 PostgreSQL/Redis 配置仍是注释 TODO —— prod 目前实际仍用 SQLite。
+- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。`prod.py` 中的 PostgreSQL/Redis 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db/redis 服务）。
 - `.env` 仅被 docker-compose 的 `env_file` 消费；Django 不会自动加载。本地跑 prod 需手动 export，例如 `DJANGO_ENV=prod DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=127.0.0.1 uv run python manage.py runserver`。
 
 ## 应用结构
@@ -45,7 +45,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - Django 6 的测试 `Client.put` 默认以 `application/octet-stream` 发送且把 dict `str()` 化 —— PUT 测试须显式传 `content_type='application/x-www-form-urlencoded'` + `urlencode(data)`。
 - PUT/PATCH multipart 需要 `ninja.compatibility.files.fix_request_files_middleware`（已在 `base.py` 的 MIDDLEWARE 中）。
 - `templates/` 和 `static/` 存在但为空 —— 新增模板/静态文件时创建文件即可。
-- `docker-compose.yml` 启动了 postgres+redis 容器，但 `prod.py` 尚未使用它们。
+- `docker-compose.yml` 仅含 app+nginx 服务（postgres/redis 已移除）；`prod.py` 中仍有 PostgreSQL/Redis 注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - 宿主机缺 docker compose 插件 / docker.sock 无权限时无法 `docker compose` 或 `docker build` 验证，只能在本机做 YAML 语法校验（`python3 -c "import yaml..."`）。
 - **容器数据持久化**：prod 容器中 SQLite 数据库经 bind mount 存宿主机 `db_data/`（容器销毁重建不丢，首次 migrate 前需先 `mkdir -p db_data`）；`media/`、`staticfiles/` 走 named volume（app 与 nginx 共享 media）；`docker compose down` 不删数据，只有 `rm -rf db_data` 才删除数据库。

@@ -105,7 +105,7 @@ DJANGO_ENV=prod docker compose up --build
 docker version && docker compose version
 ```
 
-**构建并后台启动全部服务**（db + redis + app + nginx）：
+**构建并后台启动全部服务**（app + nginx）：
 
 ```bash
 docker compose up --build -d
@@ -117,7 +117,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-**只测 app 服务**（会自动连带拉起依赖的 db/redis）：
+**只测 app 服务**（nginx 仍会连带拉起，app 无其他依赖）：
 
 ```bash
 docker compose up --build -d app
@@ -141,15 +141,17 @@ docker compose exec app python manage.py createsuperuser
 **停止与清理**：
 
 ```bash
-# 停止并删除容器（保留数据：db_data/ 与 named volumes media/staticfiles/postgres_data）
+# 停止并删除容器（保留数据：db_data/ 与 named volumes media/staticfiles）
 docker compose down
 
-# 彻底清理（慎用）：删除 named volumes（media/staticfiles/postgres_data）；注意 bind mount 的 db_data/ 不会被 -v 删除，需 rm -rf db_data
+# 彻底清理（慎用）：删除 named volumes（media/staticfiles）；注意 bind mount 的 db_data/ 不会被 -v 删除，需 rm -rf db_data。
 docker compose down -v
 
 # 重新构建（Dockerfile/依赖变更后）
 docker compose build
 ```
+
+已部署宿主机上遗留的 postgres_data 卷不会被自动删除，可手动 `docker volume rm <compose项目名>_postgres_data` 清理（卷名前缀取决于 compose 项目名，可用 `docker volume ls | grep postgres` 确认）。
 
 ### 通过 Docker + Nginx 访问
 
