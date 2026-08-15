@@ -24,6 +24,7 @@ export default defineNuxtConfig({
   },
   css: ['~/assets/css/tailwind.css'],
   devServer: {
+    host: '0.0.0.0',
     port: 5173,
   },
 })
