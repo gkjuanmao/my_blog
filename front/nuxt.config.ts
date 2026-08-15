@@ -1,0 +1,29 @@
+export default defineNuxtConfig({
+  compatibilityDate: '2026-01-01',
+  devtools: { enabled: true },
+  modules: [
+    '@nuxtjs/tailwindcss',
+    '@nuxtjs/color-mode',
+    '@element-plus/nuxt',
+    '@nuxt/icon',
+    '@pinia/nuxt',
+  ],
+  runtimeConfig: {
+    public: {
+      apiBase: 'http://localhost:80/api/v1/',
+    },
+  },
+  elementPlus: {
+    themes: ['dark'],
+    defaultLocale: 'zh-cn',
+  },
+  colorMode: {
+    classSuffix: '',
+    preference: 'system',
+    fallback: 'light',
+  },
+  css: ['~/assets/css/tailwind.css'],
+  devServer: {
+    port: 5173,
+  },
+})
