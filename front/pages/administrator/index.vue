@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'admin' })
 
 onMounted(() => {
-  navigateTo('/admin/dashboard', { redirectCode: 301 })
+  navigateTo('/administrator/dashboard', { redirectCode: 301 })
 })
 </script>
 

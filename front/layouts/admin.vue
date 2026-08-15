@@ -1,14 +1,14 @@
 <script setup lang="ts">
 const navItems = [
-  { label: '仪表盘', to: '/admin' },
-  { label: '文章管理', to: '/admin/articles' },
-  { label: '分类管理', to: '/admin/categories' },
-  { label: '标签管理', to: '/admin/tags' },
+  { label: '仪表盘', to: '/administrator' },
+  { label: '文章管理', to: '/administrator/articles' },
+  { label: '分类管理', to: '/administrator/categories' },
+  { label: '标签管理', to: '/administrator/tags' },
 ]
 
 function handleLogout() {
   if (import.meta.client) localStorage.removeItem('access_token')
-  navigateTo('/admin/login')
+  navigateTo('/administrator/login')
 }
 </script>
 

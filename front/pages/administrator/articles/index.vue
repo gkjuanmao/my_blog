@@ -33,10 +33,10 @@ function doSearch() {
 }
 
 function goCreate() {
-  navigateTo('/admin/articles/create')
+  navigateTo('/administrator/articles/create')
 }
 function goEdit(id: number) {
-  navigateTo(`/admin/articles/edit/${id}`)
+  navigateTo(`/administrator/articles/edit/${id}`)
 }
 async function handleDelete(row: Article) {
   try {

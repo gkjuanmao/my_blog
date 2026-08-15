@@ -34,7 +34,7 @@ export function useApi() {
     } catch (error: any) {
       if (error?.response?.status === 401) {
         if (import.meta.client) localStorage.removeItem('access_token')
-        await navigateTo('/admin/login')
+        await navigateTo('/administrator/login')
       }
       throw error
     }

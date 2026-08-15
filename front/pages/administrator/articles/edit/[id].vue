@@ -35,7 +35,7 @@ async function handleSubmit(fd: FormData) {
   try {
     await useApi().put(`/admin/articles/${id}/`, fd)
     ElMessage.success('保存成功')
-    navigateTo('/admin/articles')
+    navigateTo('/administrator/articles')
   } catch (e: any) {
     ElMessage.error(e?.data?.message ?? '保存失败')
   } finally {
@@ -50,7 +50,7 @@ async function handleSubmit(fd: FormData) {
     <div v-if="loading" class="py-12 text-center text-sm text-stone-400">加载中…</div>
     <div v-else-if="errorMsg" class="py-12 text-center">
       <p class="mb-4 text-sm text-red-500">{{ errorMsg }}</p>
-      <NuxtLink to="/admin/articles" class="text-sm text-brand-600 hover:underline">返回列表</NuxtLink>
+      <NuxtLink to="/administrator/articles" class="text-sm text-brand-600 hover:underline">返回列表</NuxtLink>
     </div>
     <ArticleForm v-else :initial="article" submit-label="保存" :categories="categories" :tags="tags" :loading="submitting" @submit="handleSubmit" />
   </div>

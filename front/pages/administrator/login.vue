@@ -16,7 +16,7 @@ async function handleLogin() {
       localStorage.setItem('access_token', data.access)
       localStorage.setItem('refresh_token', data.refresh)
     }
-    await navigateTo('/admin/dashboard')
+    await navigateTo('/administrator/dashboard')
   } catch (e: any) {
     ElMessage.error(e?.data?.message ?? '用户名或密码错误')
   } finally {

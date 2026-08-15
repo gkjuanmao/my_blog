@@ -21,7 +21,7 @@ async function handleSubmit(fd: FormData) {
   try {
     await useApi().post('/admin/articles/', fd)
     ElMessage.success('创建成功')
-    navigateTo('/admin/articles')
+    navigateTo('/administrator/articles')
   } catch (e: any) {
     ElMessage.error(e?.data?.message ?? '创建失败')
   } finally {
