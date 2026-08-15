@@ -33,3 +33,9 @@ tests/
 .vscode/
 .python-version
 *.log
+
+# 前端构建产物（front/ 下另有独立 .dockerignore）
+front/node_modules/
+front/.nuxt/
+front/.output/
+front/.data/
