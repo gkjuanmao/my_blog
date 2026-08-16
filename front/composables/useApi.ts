@@ -24,7 +24,11 @@ export function useApi() {
       if (token) headers.Authorization = `Bearer ${token}`
     }
     try {
-      const data = await $fetch<T>(resolveUrl(url), {
+      const resolved = resolveUrl(url)
+      // SSR: resolve relative /api/v1/... against the visitor's request origin so the
+      // request hits nginx (which forwards to Django); client keeps same-origin relative.
+      const target = import.meta.server ? new URL(resolved, useRequestURL()).toString() : resolved
+      const data = await $fetch<T>(target, {
         method: options.method ?? 'GET',
         body: options.body,
         query: options.params,

@@ -37,8 +37,8 @@ if not SECRET_KEY:
 # }
 
 # 生产环境安全配置
-SECURE_SSL_REDIRECT = False  # 当前 nginx :80 纯 HTTP 反代；启用 TLS 后再打开
-SESSION_COOKIE_SECURE = False  # 当前 nginx :80 纯 HTTP；启用 TLS 后再打开
+SECURE_SSL_REDIRECT = False  # 当前 nginx :18080 纯 HTTP 反代；启用 TLS 后再打开
+SESSION_COOKIE_SECURE = False  # 当前 nginx :18080 纯 HTTP；启用 TLS 后再打开
 CSRF_COOKIE_SECURE = False     # 同上
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True

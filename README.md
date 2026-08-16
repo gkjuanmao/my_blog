@@ -155,12 +155,18 @@ docker compose build
 
 ### 通过 Docker + Nginx 访问
 
-docker compose 部署后，入口统一为 `http://<IP>/`（nginx:80，映射宿主机 80 端口），静态文件与所有接口均经 nginx 提供：
+docker compose 部署后，入口统一为 `http://<IP>:18080/`（nginx:18080，映射宿主机 18080 端口），静态文件与所有接口均经 nginx 提供：
 
-- Swagger 文档：`http://192.168.31.71/api/v1/docs`
-- Django admin：`http://192.168.31.71/admin/`
+- Swagger 文档：`http://192.168.31.96:18080/api/v1/docs`
+- Django admin：`http://192.168.31.96:18080/admin/`
 
 应用容器自身的 8000 端口不再对外暴露，无法直接访问 `:8000`。
+
+部署注意事项：
+
+- 内网穿透客户端指向 `127.0.0.1:18080`
+- `.env` 的 `DJANGO_ALLOWED_HOSTS` 需包含真实内网 IP `192.168.31.96` 并追加穿透域名，修改后必须 `docker compose up -d app` 重建容器才生效
+- 宿主机防火墙放行 18080/tcp（含 docker bridge → 宿主机回环路径，供 SSR 访问）
 
 ### 数据持久化
 
