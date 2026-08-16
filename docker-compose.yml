@@ -15,7 +15,7 @@ services:
       - staticfiles:/staticfiles
       - media:/media
     ports:
-      - "18080:18080"
+      - "18888:18888"
     depends_on:
       - app
       - front
