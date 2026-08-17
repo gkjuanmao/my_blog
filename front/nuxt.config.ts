@@ -10,7 +10,7 @@ export default defineNuxtConfig({
   ],
   runtimeConfig: {
     public: {
-      apiBase: 'http://localhost:18888/api/v1/',
+      apiBase: '/api/v1/',
     },
   },
   elementPlus: {
@@ -23,6 +23,12 @@ export default defineNuxtConfig({
     fallback: 'light',
   },
   css: ['~/assets/css/tailwind.css'],
+  nitro: {
+    devProxy: {
+      '/api/': { target: 'http://127.0.0.1:8000/api', changeOrigin: false },
+      '/media/': { target: 'http://127.0.0.1:8000/media', changeOrigin: false },
+    },
+  },
   devServer: {
     host: '0.0.0.0',
     port: 5173,
