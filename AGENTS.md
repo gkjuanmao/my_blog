@@ -14,6 +14,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 98 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
 - pytest 的 `DJANGO_SETTINGS_MODULE` 由 `pyproject.toml` 直接指定为 `config.settings.dev`（绕过 `config/settings/__init__.py` 的 `DJANGO_ENV` 判断），恒走 dev 配置；`testpaths = ["tests"]` 限定只在 `tests/` 收集测试，各 app 内残留的 `tests.py`（如 `articles/tests.py`，为空）不会被运行
 - **测试完成后必须清理测试产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
+- **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。凭据已配置（`~/.git-credentials`，Gitea `192.168.31.96:3000`）。
 
 ## 配置 / 环境变量
 
