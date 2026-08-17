@@ -286,9 +286,9 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   "category": { "id": 1, "name": "默认分类", "slug": "default-category", "description": "" },
   "tags": [ { "id": 1, "name": "默认标签", "slug": "default-tag" } ],
   "cover_image_name": "封面.jpg",
-  "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg",
+  "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg",
   "file_name": "附件.pdf",
-  "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf",
+  "file_url": "/media/files/2026/08/d4e5f6.pdf",
   "is_published": true,
   "views": 0,
   "created_at": "2026-08-09T10:30:00Z",
@@ -419,7 +419,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   "code": 200,
   "message": "success",
   "data": {
-    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" } ],
+    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" } ],
     "total": 1,
     "page": 1,
     "page_size": 10
@@ -451,7 +451,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   "code": 200,
   "message": "success",
   "data": [
-    { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "http://localhost:8000/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "http://localhost:8000/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" }
+    { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" }
   ]
 }
 ```

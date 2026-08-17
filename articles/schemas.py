@@ -266,11 +266,11 @@ def article_to_out(request, article: Article) -> ArticleOut:
     """将模型实例转换为 ArticleOut，拼接文件的完整访问 URL。"""
     cover_url = None
     if article.cover_image:
-        cover_url = request.build_absolute_uri(article.cover_image.url)
+        cover_url = article.cover_image.url
 
     file_url = None
     if article.file:
-        file_url = request.build_absolute_uri(article.file.url)
+        file_url = article.file.url
 
     category_obj = article.category
     category = None
