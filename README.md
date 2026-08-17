@@ -25,6 +25,32 @@ uv run python manage.py runserver 0.0.0.0:8000
 
 首次启动会自动创建默认分类（`默认分类`）与默认标签（`默认标签`），创建文章时若未填分类/标签将自动挂载。
 
+## 前端本地开发（Nuxt）
+
+前端位于 [`front/`](./front/) 目录（Nuxt 3 + Vue 3 + Element Plus）。
+
+**安装依赖**：
+
+```bash
+cd front
+npm install
+```
+
+**启动开发服务器**：
+
+```bash
+npm run dev
+```
+
+默认监听 `0.0.0.0:5173`，浏览器访问 `http://localhost:5173`（局域网内其他设备可通过本机局域网 IP 访问）。
+
+**与后端对接**：
+
+前端 API 基址为相对路径 `/api/v1/`（`front/nuxt.config.ts` 的 `runtimeConfig.public.apiBase`），生产/开发零差异：
+
+- **开发环境**：Nuxt dev server 通过 `nitro.devProxy` 自动代理 `/api/`、`/media/`、`/admin/` 到本地 Django（`http://127.0.0.1:8000`），无需 nginx。需先启动 Django 开发服务器（见上文「本地开发（uv）」），浏览器访问 `http://localhost:5173` 即可联调。
+- **生产环境**：nginx（`:18888`）代理 `/api/`、`/media/`、`/admin/` 到 Django，前端经同源相对路径访问。
+
 ## 代码检查（Ruff + MyPy）
 
 ```bash
