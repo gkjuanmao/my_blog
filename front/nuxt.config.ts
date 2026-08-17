@@ -8,6 +8,7 @@ export default defineNuxtConfig({
     '@nuxt/icon',
     '@pinia/nuxt',
   ],
+  components: [{ path: '~/components', pathPrefix: false }],
   runtimeConfig: {
     public: {
       apiBase: '/api/v1/',

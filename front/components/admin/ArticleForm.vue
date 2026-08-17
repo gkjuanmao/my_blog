@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ submit: [formData: FormData] }>()
 
+const isCreateMode = computed(() => !props.initial)
+
 function toPickerValue(iso?: string): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -86,6 +88,14 @@ function buildFormData(): FormData {
 }
 
 function handleSubmit() {
+  if (isCreateMode.value && coverList.value.length === 0) {
+    ElMessage.error('请上传封面')
+    return
+  }
+  if (isCreateMode.value && attachmentList.value.length === 0) {
+    ElMessage.error('请上传附件')
+    return
+  }
   const fd = buildFormData()
   if ((coverFile.value?.size ?? 0) + (attachmentFile.value?.size ?? 0) > 60 * 1024 * 1024) {
     ElMessage.error('封面与附件合计不能超过 60MB')
@@ -125,7 +135,7 @@ function handleSubmit() {
     <el-form-item label="是否发布">
       <el-switch v-model="form.is_published" active-text="发布" inactive-text="草稿" />
     </el-form-item>
-    <el-form-item label="封面（JPG/PNG/WebP ≤20MB）">
+    <el-form-item label="封面（JPG/PNG/WebP ≤20MB）" :required="isCreateMode">
       <el-upload
         v-model:file-list="coverList"
         :auto-upload="false"
@@ -137,7 +147,7 @@ function handleSubmit() {
         <el-button>选择封面</el-button>
       </el-upload>
     </el-form-item>
-    <el-form-item label="附件（PDF/Word/HTML ≤50MB）">
+    <el-form-item label="附件（PDF/Word/HTML ≤50MB）" :required="isCreateMode">
       <el-upload
         v-model:file-list="attachmentList"
         :auto-upload="false"
