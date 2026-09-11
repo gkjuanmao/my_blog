@@ -73,19 +73,40 @@ onMounted(fetchList)
     <h1 class="text-xl font-semibold">标签管理</h1>
     <div class="space-y-4">
       <el-button type="warning" @click="openCreate">新建标签</el-button>
-      <el-table :data="list" v-loading="loading" border stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="slug" label="Slug" />
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }: { row: any }">
+
+      <div v-loading="loading" class="hidden overflow-x-auto md:block">
+        <el-table :data="list" border stripe>
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="slug" label="Slug" />
+          <el-table-column label="操作" width="140">
+            <template #default="{ row }: { row: any }">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <div v-loading="loading" class="space-y-3 md:hidden">
+        <div
+          v-for="row in list"
+          :key="row.id"
+          class="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-700 dark:bg-stone-900"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <span class="font-medium text-stone-900 dark:text-stone-100"># {{ row.name }}</span>
+            <span class="shrink-0 text-xs text-stone-400">{{ row.slug }}</span>
+          </div>
+          <div class="mt-3 flex justify-end gap-2">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </div>
+        <div v-if="!loading && list.length === 0" class="py-8 text-center text-sm text-stone-400">暂无标签</div>
+      </div>
 
-      <el-dialog v-model="dialogVisible" :title="editing ? '编辑标签' : '新建标签'" width="480">
+      <el-dialog v-model="dialogVisible" :title="editing ? '编辑标签' : '新建标签'" width="min(90vw, 480px)">
         <el-form :model="form" :rules="rules" label-position="top">
           <el-form-item label="名称" prop="name">
             <el-input v-model="form.name" placeholder="请输入名称" />

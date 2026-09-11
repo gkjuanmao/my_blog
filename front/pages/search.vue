@@ -26,7 +26,7 @@ async function doSearch() {
 
 <template>
   <div class="space-y-8">
-    <div class="flex items-center gap-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
       <el-input
         v-model="keyword"
         placeholder="输入关键词，回车搜索文章标题…"

@@ -16,6 +16,24 @@ const props = withDefaults(
 const page = defineModel<number>('page', { default: 1 })
 const pageSize = defineModel<number>('pageSize', { default: 10 })
 
+const isMobile = ref(false)
+let mql: MediaQueryList | null = null
+const onBreakpointChange = (e: MediaQueryListEvent) => {
+  isMobile.value = e.matches
+}
+
+onMounted(() => {
+  mql = window.matchMedia('(max-width: 639px)')
+  isMobile.value = mql.matches
+  mql.addEventListener('change', onBreakpointChange)
+})
+
+onBeforeUnmount(() => {
+  mql?.removeEventListener('change', onBreakpointChange)
+})
+
+const effectiveLayout = computed(() => (isMobile.value ? 'prev, pager, next' : props.layout))
+
 watch(pageSize, () => {
   page.value = 1
 })
@@ -26,8 +44,10 @@ watch(pageSize, () => {
     v-model:current-page="page"
     v-model:page-size="pageSize"
     :total="total"
-    :layout="layout"
+    :layout="effectiveLayout"
     :background="background"
     :page-sizes="pageSizes"
+    :small="isMobile"
+    :pager-count="isMobile ? 5 : 7"
   />
 </template>

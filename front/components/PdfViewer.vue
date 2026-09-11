@@ -12,7 +12,28 @@ const errorMsg = ref('')
 const zoom = ref(100)
 const zoomOptions = [50, 75, 100, 125, 150]
 
-const pdfWidth = computed(() => Math.round(800 * (zoom.value / 100)))
+const containerRef = ref<HTMLElement | null>(null)
+const containerWidth = ref(800)
+const MAX_WIDTH = 800
+const HORIZONTAL_PADDING = 32
+
+const baseWidth = computed(() => Math.min(containerWidth.value, MAX_WIDTH))
+const pdfWidth = computed(() => Math.round(baseWidth.value * (zoom.value / 100)))
+
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  const el = containerRef.value
+  if (!el) return
+  const update = () => {
+    containerWidth.value = Math.max(0, el.clientWidth - HORIZONTAL_PADDING)
+  }
+  update()
+  resizeObserver = new ResizeObserver(update)
+  resizeObserver.observe(el)
+})
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+})
 
 function onLoaded(doc: { numPages: number }) {
   pageCount.value = doc.numPages
@@ -53,8 +74,30 @@ watch(
 </script>
 
 <template>
-  <div class="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-700 dark:bg-stone-900">
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+  <div ref="containerRef" class="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-700 dark:bg-stone-900">
+    <div v-if="loading && !errorMsg" class="py-12 text-center text-sm text-stone-400">PDF 加载中…</div>
+    <div v-if="errorMsg" class="rounded-lg bg-red-50 py-12 text-center text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
+      {{ errorMsg }}
+    </div>
+    <div v-if="pdfUrl && !errorMsg" class="overflow-x-auto">
+      <ClientOnly>
+        <VuePdfEmbed
+          :source="pdfUrl"
+          :page="page"
+          :width="pdfWidth"
+          text-layer
+          @loaded="onLoaded"
+          @loading-failed="onLoadingFailed"
+          @rendering-failed="onRenderingFailed"
+          @password-requested="onPasswordRequested"
+        />
+        <template #fallback>
+          <div class="py-12 text-center text-sm text-stone-400">PDF 组件加载中…</div>
+        </template>
+      </ClientOnly>
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2 text-sm">
         <button
           class="rounded-md border border-stone-300 px-2.5 py-1 disabled:opacity-40 dark:border-stone-600"
@@ -81,25 +124,5 @@ watch(
         </select>
       </div>
     </div>
-
-    <div v-if="loading && !errorMsg" class="py-12 text-center text-sm text-stone-400">PDF 加载中…</div>
-    <div v-if="errorMsg" class="rounded-lg bg-red-50 py-12 text-center text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
-      {{ errorMsg }}
-    </div>
-    <ClientOnly v-if="pdfUrl && !errorMsg">
-      <VuePdfEmbed
-        :source="pdfUrl"
-        :page="page"
-        :width="pdfWidth"
-        text-layer
-        @loaded="onLoaded"
-        @loading-failed="onLoadingFailed"
-        @rendering-failed="onRenderingFailed"
-        @password-requested="onPasswordRequested"
-      />
-      <template #fallback>
-        <div class="py-12 text-center text-sm text-stone-400">PDF 组件加载中…</div>
-      </template>
-    </ClientOnly>
   </div>
 </template>
