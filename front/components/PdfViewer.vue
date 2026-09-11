@@ -17,6 +17,11 @@ const containerWidth = ref(800)
 const MAX_WIDTH = 800
 const HORIZONTAL_PADDING = 32
 
+// 记录已渲染 PDF 的实际高度，翻页/重渲染期间用 min-height 撑住，
+// 避免文档高度瞬时塌缩导致浏览器钳制滚动位置（表现为“刷新并回到顶部”）
+const pdfAreaRef = ref<HTMLElement | null>(null)
+const pdfMinHeight = ref(0)
+
 const baseWidth = computed(() => Math.min(containerWidth.value, MAX_WIDTH))
 const pdfWidth = computed(() => Math.round(baseWidth.value * (zoom.value / 100)))
 
@@ -61,6 +66,10 @@ function goToPage() {
   const n = Math.min(Math.max(1, page.value), pageCount.value || 1)
   page.value = n
 }
+function onRendered() {
+  const el = pdfAreaRef.value?.querySelector<HTMLElement>('.vue-pdf-embed')
+  if (el) pdfMinHeight.value = el.getBoundingClientRect().height
+}
 
 watch(
   () => props.pdfUrl,
@@ -69,6 +78,7 @@ watch(
     pageCount.value = 0
     loading.value = true
     errorMsg.value = ''
+    pdfMinHeight.value = 0
   },
 )
 </script>
@@ -79,7 +89,12 @@ watch(
     <div v-if="errorMsg" class="rounded-lg bg-red-50 py-12 text-center text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
       {{ errorMsg }}
     </div>
-    <div v-if="pdfUrl && !errorMsg" class="overflow-x-auto">
+    <div
+      v-if="pdfUrl && !errorMsg"
+      ref="pdfAreaRef"
+      class="overflow-x-auto"
+      :style="pdfMinHeight ? { minHeight: `${pdfMinHeight}px` } : undefined"
+    >
       <ClientOnly>
         <VuePdfEmbed
           :source="pdfUrl"
@@ -87,6 +102,7 @@ watch(
           :width="pdfWidth"
           text-layer
           @loaded="onLoaded"
+          @rendered="onRendered"
           @loading-failed="onLoadingFailed"
           @rendering-failed="onRenderingFailed"
           @password-requested="onPasswordRequested"
@@ -100,6 +116,7 @@ watch(
     <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2 text-sm">
         <button
+          type="button"
           class="rounded-md border border-stone-300 px-2.5 py-1 disabled:opacity-40 dark:border-stone-600"
           :disabled="page <= 1 || loading"
           @click="prevPage"
@@ -108,6 +125,7 @@ watch(
         </button>
         <span class="text-stone-600 dark:text-stone-300">{{ page }} / {{ pageCount || '—' }}</span>
         <button
+          type="button"
           class="rounded-md border border-stone-300 px-2.5 py-1 disabled:opacity-40 dark:border-stone-600"
           :disabled="page >= pageCount || loading"
           @click="nextPage"
