@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from ninja.responses import Status
 
 from common.responses import success_response
+from common.schemas import ApiResponse, PageData
 from users.authentication import JWTAuth
 from users.models import User
 
@@ -17,6 +18,8 @@ from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
 from .models import Article, Category, Tag, cover_upload_path, file_upload_path
 from .schemas import (
     ArticleCreateIn,
+    ArticleDetailOut,
+    ArticleOut,
     ArticleUpdateIn,
     CategoryIn,
     CategoryOut,
@@ -91,7 +94,7 @@ def _published_articles() -> QuerySet[Article]:
     return Article.objects.filter(is_published=True).prefetch_related('tags', 'category')
 
 
-@router.get('/categories/', response=dict)
+@router.get('/categories/', response=ApiResponse[list[CategoryOut]])
 def list_categories(request: HttpRequest) -> dict:
     """获取所有分类。"""
     categories = [
@@ -101,14 +104,14 @@ def list_categories(request: HttpRequest) -> dict:
     return success_response(categories)
 
 
-@router.get('/tags/', response=dict)
+@router.get('/tags/', response=ApiResponse[list[TagOut]])
 def list_tags(request: HttpRequest) -> dict:
     """获取所有标签。"""
     tags = [TagOut(id=t.id, name=t.name, slug=t.slug) for t in Tag.objects.all()]
     return success_response(tags)
 
 
-@router.get('/articles/', response=dict)
+@router.get('/articles/', response=ApiResponse[PageData[ArticleOut]])
 def list_articles(
     request: HttpRequest,
     page: int = Query(1, ge=1, description='页码'),
@@ -128,7 +131,7 @@ def list_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
-@router.get('/articles/search/', response=dict)
+@router.get('/articles/search/', response=ApiResponse[list[ArticleOut]])
 def search_articles(
     request: HttpRequest,
     keyword: str = Query(..., description='关键词，标题模糊搜索'),
@@ -138,7 +141,7 @@ def search_articles(
     return success_response([article_to_out(request, article) for article in qs])
 
 
-@router.get('/articles/{slug}/', response=dict)
+@router.get('/articles/{slug}/', response=ApiResponse[ArticleDetailOut])
 def article_detail(request: HttpRequest, slug: str) -> dict:
     """文章详情：阅读量 +1，仅返回已发布文章。"""
     try:
@@ -154,7 +157,7 @@ def article_detail(request: HttpRequest, slug: str) -> dict:
     return success_response(article_to_detail(request, article).model_dump())
 
 
-@admin_router.get('/articles/', response=dict, auth=jwt_auth)
+@admin_router.get('/articles/', response=ApiResponse[PageData[ArticleOut]], auth=jwt_auth)
 def list_admin_articles(
     request: HttpRequest,
     page: int = Query(1, ge=1, description='页码'),
@@ -177,7 +180,7 @@ def list_admin_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
-@admin_router.get('/articles/{article_id}/', response=dict, auth=jwt_auth)
+@admin_router.get('/articles/{article_id}/', response=ApiResponse[ArticleDetailOut], auth=jwt_auth)
 def get_admin_article(request: HttpRequest, article_id: int) -> dict:
     """获取单篇文章详情（含草稿），供后台编辑回填。"""
     article = (
@@ -191,7 +194,7 @@ def get_admin_article(request: HttpRequest, article_id: int) -> dict:
     return success_response(article_to_detail(request, article).model_dump())
 
 
-@admin_router.post('/articles/', response={201: dict}, auth=jwt_auth)
+@admin_router.post('/articles/', response={201: ApiResponse[ArticleOut]}, auth=jwt_auth)
 def create_article(
     request: HttpRequest,
     payload: ArticleCreateIn = Form(...),
@@ -242,7 +245,7 @@ def create_article(
     return Status(201, success_response(article_to_out(request, article).model_dump(), code=201))
 
 
-@admin_router.put('/articles/{article_id}/', response=dict, auth=jwt_auth)
+@admin_router.put('/articles/{article_id}/', response=ApiResponse[ArticleOut], auth=jwt_auth)
 def update_article(
     request: HttpRequest,
     article_id: int,
@@ -295,7 +298,7 @@ def update_article(
     return success_response(article_to_out(request, article).model_dump())
 
 
-@admin_router.delete('/articles/{article_id}/', response=dict, auth=jwt_auth)
+@admin_router.delete('/articles/{article_id}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_article(request: HttpRequest, article_id: int) -> dict:
     """按 id 删除文章（含草稿）。"""
     article = Article.objects.filter(pk=article_id).first()
@@ -305,7 +308,7 @@ def delete_article(request: HttpRequest, article_id: int) -> dict:
     return success_response(message='删除成功')
 
 
-@admin_router.delete('/articles/slug/{slug}/', response=dict, auth=jwt_auth)
+@admin_router.delete('/articles/slug/{slug}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_article_by_slug(request: HttpRequest, slug: str) -> dict:
     """按 slug 删除文章（含草稿）。"""
     article = Article.objects.filter(slug=slug).first()
@@ -315,7 +318,7 @@ def delete_article_by_slug(request: HttpRequest, slug: str) -> dict:
     return success_response(message='删除成功')
 
 
-@admin_router.post('/categories/', response={201: dict}, auth=jwt_auth)
+@admin_router.post('/categories/', response={201: ApiResponse[CategoryOut]}, auth=jwt_auth)
 def create_category(request: HttpRequest, payload: CategoryIn) -> Status:
     """创建分类，slug 省略时由名称自动生成。"""
     category = Category.objects.create(
@@ -329,7 +332,7 @@ def create_category(request: HttpRequest, payload: CategoryIn) -> Status:
     return Status(201, success_response(data, code=201))
 
 
-@admin_router.get('/categories/{category_id}/', response=dict, auth=jwt_auth)
+@admin_router.get('/categories/{category_id}/', response=ApiResponse[CategoryOut], auth=jwt_auth)
 def get_category(request: HttpRequest, category_id: int) -> dict:
     """获取分类详情。"""
     category = Category.objects.filter(pk=category_id).first()
@@ -342,7 +345,7 @@ def get_category(request: HttpRequest, category_id: int) -> dict:
     )
 
 
-@admin_router.put('/categories/{category_id}/', response=dict, auth=jwt_auth)
+@admin_router.put('/categories/{category_id}/', response=ApiResponse[CategoryOut], auth=jwt_auth)
 def update_category(request: HttpRequest, category_id: int, payload: CategoryUpdateIn) -> dict:
     """更新分类，slug 省略时保留原值。"""
     category = Category.objects.filter(pk=category_id).first()
@@ -370,7 +373,7 @@ def update_category(request: HttpRequest, category_id: int, payload: CategoryUpd
     )
 
 
-@admin_router.delete('/categories/{category_id}/', response=dict, auth=jwt_auth)
+@admin_router.delete('/categories/{category_id}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_category(request: HttpRequest, category_id: int) -> dict:
     """删除分类：其下文章的 category 置空（SET_NULL），文章保留。"""
     category = Category.objects.filter(pk=category_id).first()
@@ -382,7 +385,7 @@ def delete_category(request: HttpRequest, category_id: int) -> dict:
     return success_response(message='删除成功')
 
 
-@admin_router.post('/tags/', response={201: dict}, auth=jwt_auth)
+@admin_router.post('/tags/', response={201: ApiResponse[TagOut]}, auth=jwt_auth)
 def create_tag(request: HttpRequest, payload: TagIn) -> Status:
     """创建标签，slug 省略时由名称自动生成。"""
     tag = Tag.objects.create(
@@ -395,7 +398,7 @@ def create_tag(request: HttpRequest, payload: TagIn) -> Status:
     )
 
 
-@admin_router.get('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+@admin_router.get('/tags/{tag_id}/', response=ApiResponse[TagOut], auth=jwt_auth)
 def get_tag(request: HttpRequest, tag_id: int) -> dict:
     """获取标签详情。"""
     tag = Tag.objects.filter(pk=tag_id).first()
@@ -404,7 +407,7 @@ def get_tag(request: HttpRequest, tag_id: int) -> dict:
     return success_response(TagOut(id=tag.id, name=tag.name, slug=tag.slug).model_dump())
 
 
-@admin_router.put('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+@admin_router.put('/tags/{tag_id}/', response=ApiResponse[TagOut], auth=jwt_auth)
 def update_tag(request: HttpRequest, tag_id: int, payload: TagUpdateIn) -> dict:
     """更新标签，slug 省略时保留原值。"""
     tag = Tag.objects.filter(pk=tag_id).first()
@@ -426,7 +429,7 @@ def update_tag(request: HttpRequest, tag_id: int, payload: TagUpdateIn) -> dict:
     return success_response(TagOut(id=tag.id, name=tag.name, slug=tag.slug).model_dump())
 
 
-@admin_router.delete('/tags/{tag_id}/', response=dict, auth=jwt_auth)
+@admin_router.delete('/tags/{tag_id}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_tag(request: HttpRequest, tag_id: int) -> dict:
     """删除标签：仅解除与文章的关联（M2M），文章保留。"""
     tag = Tag.objects.filter(pk=tag_id).first()

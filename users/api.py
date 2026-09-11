@@ -6,16 +6,17 @@ from ninja.errors import HttpError
 from ninja_jwt.tokens import RefreshToken, TokenError
 
 from common.responses import success_response
+from common.schemas import ApiResponse
 
 from .authentication import JWTAuth
-from .schemas import LoginIn, RefreshIn, UserOut
+from .schemas import LoginIn, RefreshIn, TokenObtainPairOut, TokenRefreshOut, UserOut
 
 router = Router(tags=['认证'])
 
 jwt_auth = JWTAuth()
 
 
-@router.post('/login/', response=dict)
+@router.post('/login/', response=ApiResponse[TokenObtainPairOut])
 def obtain_token(request: HttpRequest, payload: LoginIn) -> dict:
     """登录：校验用户名密码，签发 access 与 refresh 令牌。"""
     user = authenticate(username=payload.username, password=payload.password)
@@ -29,7 +30,7 @@ def obtain_token(request: HttpRequest, payload: LoginIn) -> dict:
     })
 
 
-@router.post('/token/refresh/', response=dict)
+@router.post('/token/refresh/', response=ApiResponse[TokenRefreshOut])
 def refresh_token(request: HttpRequest, payload: RefreshIn) -> dict:
     """刷新令牌：校验 refresh token 并返回新的 access token。"""
     try:
@@ -40,7 +41,7 @@ def refresh_token(request: HttpRequest, payload: RefreshIn) -> dict:
     return success_response({'access': str(refresh.access_token)})
 
 
-@router.get('/me/', response=dict, auth=jwt_auth)
+@router.get('/me/', response=ApiResponse[UserOut], auth=jwt_auth)
 def get_me(request: HttpRequest) -> dict:
     """获取当前登录用户信息（需携带 Bearer Token）。"""
     user_out = UserOut.model_validate(request.auth)  # type: ignore[attr-defined]
