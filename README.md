@@ -9,9 +9,47 @@
 
 ## 本地开发（uv）
 
+### 第一步：安装依赖
+
 ```bash
 uv sync
+```
+
+### 第二步：准备数据库目录
+
+SQLite 数据库文件存放在 `db_data/` 目录下（被 `.gitignore` 忽略，首次克隆需手动创建）：
+
+**Windows（PowerShell / CMD）：**
+
+```powershell
+mkdir db_data
+```
+
+**Linux / macOS：**
+
+```bash
+mkdir -p db_data
+```
+
+### 第三步：执行数据库迁移
+
+创建数据库表结构（首次部署或有新迁移时执行）：
+
+```bash
 uv run python manage.py migrate
+```
+
+### 第四步：创建超级管理员
+
+用于登录 Django Admin 后台和调用管理接口，按交互提示输入用户名、邮箱、密码即可（推荐与后文 curl 示例一致：用户名 `admin`，密码 `admin12345`）：
+
+```bash
+uv run python manage.py createsuperuser
+```
+
+### 第五步：启动开发服务器
+
+```bash
 uv run python manage.py runserver
 ```
 
