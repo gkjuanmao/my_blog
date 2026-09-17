@@ -16,7 +16,10 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `tests/conftest.py` 有 autouse 的 `media_root` fixture，把 `MEDIA_ROOT` 隔离到 `tmp_path`，所以 pytest 上传的文件不会落进真实 `media/`（早期版本会污染）；仍需清理的是手工/接口联调产生的文件
 - **手工测试后必须清理上传产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
 - 测试 PUT multipart 时不能用 `api_client.put(url, dict, ...)`：Django 6 测试客户端的 `put()`/`patch()` 只做 `_encode_json`，不做 multipart 编码，dict 会被 `str()` 化成非法 body（表现为 200 但字段全未更新）。须手工 `encode_multipart(BOUNDARY, data)` 并传 `MULTIPART_CONTENT`（见 `tests/test_update_article.py`）
-- **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。凭据已配置（`~/.git-credentials`，Gitea `192.168.31.96:3000`）。
+- **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。
+  - 远端走 SSH：`origin` = `ssh://git@192.168.31.96:222/gkjuanmao/my_blog.git`（Gitea 的 SSH 端口是 **222**，不是 22；scp 风格地址 `git@192.168.31.96:gkjuanmao/my_blog.git` 也能用，靠 `~/.ssh/config` 的 Host 块补端口）。
+  - 认证用公钥：`~/.ssh/id_ed25519`，公钥已在 Gitea 注册为 `zcode@PC-GKjuanmao`。Gitea 的 SSH **只开 publickey**，账号密码对 SSH 无效（密码仅用于 Gitea Web/API）。
+  - 本仓库未配置 `user.name`/`user.email`，提交需显式带上身份：`git -c user.name=gkjuanmao -c user.email=gkjuanmao@example.com commit ...`。
 
 ## 配置 / 环境变量
 
