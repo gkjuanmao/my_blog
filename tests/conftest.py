@@ -10,6 +10,13 @@ from PIL import Image
 from users.models import User
 
 
+@pytest.fixture(autouse=True)
+def media_root(tmp_path, settings):
+    """将 MEDIA_ROOT 隔离到临时目录，避免测试上传的文件写进真实 media/。"""
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
 @pytest.fixture
 def api_client() -> Client:
     """Django 测试客户端。"""

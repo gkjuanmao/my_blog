@@ -1,6 +1,7 @@
 """博客文章 API：公开文章浏览与管理接口。"""
 from typing import Any, cast
 
+from django.core.files.storage import default_storage
 from django.db import IntegrityError
 from django.db.models import F
 from django.db.models.query import QuerySet
@@ -245,6 +246,13 @@ def create_article(
     return Status(201, success_response(article_to_out(request, article).model_dump(), code=201))
 
 
+def _delete_stored_files(names: list[str | None]) -> None:
+    """删除 storage 中的文件，忽略空值与已不存在的文件。"""
+    for name in names:
+        if name:
+            default_storage.delete(name)
+
+
 @admin_router.put('/articles/{article_id}/', response=ApiResponse[ArticleOut], auth=jwt_auth)
 def update_article(
     request: HttpRequest,
@@ -253,46 +261,85 @@ def update_article(
     cover: UploadedFile = File(None),
     attachment: UploadedFile = File(None),
 ) -> dict:
-    """更新文章（multipart，文件字段可选，不传则保留原文件）。"""
+    """更新文章（multipart，文件字段可选，不传则保留原文件）。
+
+    走 Model.save(update_fields=...) 而非 QuerySet.update()：后者绕过
+    FileField.pre_save()，上传的文件不会写入 storage，字段还会被存成客户端原始
+    文件名（cover_image='photo.jpg'），导致 cover_image_url 指向不存在的文件；
+    auto_now 的 updated_at 也不会刷新。update_fields 同时避免覆盖 views 等
+    未提交字段。被替换掉的旧文件在保存成功后清理。
+    """
     article = Article.objects.filter(pk=article_id).first()
     if article is None:
         raise HttpError(404, '文章不存在')
 
-    update_fields: dict[str, Any] = {}
+    # 先校验后落盘：校验失败不得改动数据，也不留下新写入的文件
+    if cover is not None:
+        _validate_cover(cover)
+    if attachment is not None:
+        _validate_attachment(attachment)
+
+    update_fields: set[str] = set()
     for field in ['title', 'summary', 'location', 'is_published']:
         value = getattr(payload, field)
         if value is not None:
-            update_fields[field] = value
+            setattr(article, field, value)
+            update_fields.add(field)
     if payload.slug is not None:
-        update_fields['slug'] = unique_slug(payload.slug, exclude_id=article.pk)
+        article.slug = unique_slug(payload.slug, exclude_id=article.pk)
+        update_fields.add('slug')
     if payload.publish_time is not None:
-        update_fields['publish_time'] = payload.publish_time
+        article.publish_time = payload.publish_time
+        update_fields.add('publish_time')
     if payload.category_id is not None:
         category = Category.objects.filter(pk=payload.category_id).first()
         if category is None:
             raise HttpError(400, '分类不存在')
-        update_fields['category_id'] = category.pk
-    if cover is not None:
-        _validate_cover(cover)
-        update_fields['cover_image'] = cover
-        update_fields['cover_image_name'] = cover.name or ''
-    if attachment is not None:
-        _validate_attachment(attachment)
-        update_fields['file'] = attachment
-        update_fields['file_name'] = attachment.name or ''
+        article.category = category
+        update_fields.add('category')
+
+    tag_ids: list[int] | None = None
     if payload.tag_ids is not None:
         valid_ids = set(Tag.objects.filter(pk__in=payload.tag_ids).values_list('id', flat=True))
         if len(valid_ids) != len(set(payload.tag_ids)):
             raise HttpError(400, '标签不存在')
+        tag_ids = payload.tag_ids
 
+    stale_names: list[str | None] = []
+    new_names: list[str | None] = []
+    if cover is not None:
+        stale_names.append(article.cover_image.name)
+        article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
+        article.cover_image_name = cover.name or ''
+        new_names.append(article.cover_image.name)
+        update_fields.update({'cover_image', 'cover_image_name'})
+    if attachment is not None:
+        stale_names.append(article.file.name)
+        article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
+        article.file_name = attachment.name or ''
+        new_names.append(article.file.name)
+        update_fields.update({'file', 'file_name'})
+
+    if not update_fields and tag_ids is None:
+        return success_response(article_to_out(request, article).model_dump())
+
+    update_fields.add('updated_at')
     try:
-        Article.objects.filter(pk=article.pk).update(**update_fields)
+        article.save(update_fields=update_fields)
     except IntegrityError:
-        if Article.objects.filter(slug=update_fields.get('slug', article.slug)).exists():
+        # 数据库未写入，回收刚落盘的新文件，旧文件保持不动
+        _delete_stored_files(new_names)
+        conflict = (
+            'slug' in update_fields
+            and Article.objects.filter(slug=article.slug).exclude(pk=article.pk).exists()
+        )
+        if conflict:
             raise HttpError(400, 'slug 已存在') from None
         raise HttpError(400, '更新失败：请检查分类/标签等参数是否正确') from None
-    if payload.tag_ids is not None:
-        article.tags.set(payload.tag_ids)
+
+    if tag_ids is not None:
+        article.tags.set(tag_ids)
+    _delete_stored_files(stale_names)
 
     article.refresh_from_db()
     return success_response(article_to_out(request, article).model_dump())

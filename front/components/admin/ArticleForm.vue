@@ -45,30 +45,37 @@ const attachmentList = ref<{ name: string; url?: string }[]>(
   props.initial?.file_url ? [{ name: props.initial.file_name, url: props.initial.file_url }] : [],
 )
 
-function onCoverChange(file: any) {
+const COVER_MAX_BYTES = 20 * 1024 * 1024
+const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
+
+// 单文件"替换"语义：不用 el-upload 的 limit/on-exceed 拦截——当列表里已有文件
+// （编辑模式预填的封面）时再选新文件会走 on-exceed 且不触发 on-change，新文件会被
+// 静默丢弃。这里改为不设 limit，在 on-change 里只保留最新选中的那个。
+function onCoverChange(file: any, files: any[]) {
   if (!file.raw) return
-  coverFile.value = file.raw
-  if (file.raw.size > 20 * 1024 * 1024) {
+  if (file.raw.size > COVER_MAX_BYTES) {
     ElMessage.error('封面不能超过 20MB')
-    coverFile.value = null
-    coverList.value = []
+    coverList.value = files.filter((item) => item.uid !== file.uid)
+    return
   }
+  coverFile.value = file.raw
+  coverList.value = [file]
 }
-function onCoverExceed() {
-  coverList.value = []
+function onAttachmentChange(file: any, files: any[]) {
+  if (!file.raw) return
+  if (file.raw.size > ATTACHMENT_MAX_BYTES) {
+    ElMessage.error('附件不能超过 50MB')
+    attachmentList.value = files.filter((item) => item.uid !== file.uid)
+    return
+  }
+  attachmentFile.value = file.raw
+  attachmentList.value = [file]
+}
+// 从列表里移除后不得再提交该文件（否则"删掉"仍会被上传）
+function onCoverRemove() {
   coverFile.value = null
 }
-function onAttachmentChange(file: any) {
-  if (!file.raw) return
-  attachmentFile.value = file.raw
-  if (file.raw.size > 50 * 1024 * 1024) {
-    ElMessage.error('附件不能超过 50MB')
-    attachmentFile.value = null
-    attachmentList.value = []
-  }
-}
-function onAttachmentExceed() {
-  attachmentList.value = []
+function onAttachmentRemove() {
   attachmentFile.value = null
 }
 
@@ -139,10 +146,9 @@ function handleSubmit() {
       <el-upload
         v-model:file-list="coverList"
         :auto-upload="false"
-        :limit="1"
         :accept="'.jpg,.jpeg,.png,.webp'"
         :on-change="onCoverChange"
-        :on-exceed="onCoverExceed"
+        :on-remove="onCoverRemove"
       >
         <el-button>选择封面</el-button>
       </el-upload>
@@ -151,10 +157,9 @@ function handleSubmit() {
       <el-upload
         v-model:file-list="attachmentList"
         :auto-upload="false"
-        :limit="1"
         :accept="'.pdf,.doc,.docx,.html'"
         :on-change="onAttachmentChange"
-        :on-exceed="onAttachmentExceed"
+        :on-remove="onAttachmentRemove"
       >
         <el-button>选择附件</el-button>
       </el-upload>
