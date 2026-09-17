@@ -11,9 +11,11 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`，如 `http://<IP>:18888/api/v1/docs`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
-- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 98 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
+- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 123 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
 - pytest 的 `DJANGO_SETTINGS_MODULE` 由 `pyproject.toml` 直接指定为 `config.settings.dev`（绕过 `config/settings/__init__.py` 的 `DJANGO_ENV` 判断），恒走 dev 配置；`testpaths = ["tests"]` 限定只在 `tests/` 收集测试，各 app 内残留的 `tests.py`（如 `articles/tests.py`，为空）不会被运行
-- **测试完成后必须清理测试产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
+- `tests/conftest.py` 有 autouse 的 `media_root` fixture，把 `MEDIA_ROOT` 隔离到 `tmp_path`，所以 pytest 上传的文件不会落进真实 `media/`（早期版本会污染）；仍需清理的是手工/接口联调产生的文件
+- **手工测试后必须清理上传产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
+- 测试 PUT multipart 时不能用 `api_client.put(url, dict, ...)`：Django 6 测试客户端的 `put()`/`patch()` 只做 `_encode_json`，不做 multipart 编码，dict 会被 `str()` 化成非法 body（表现为 200 但字段全未更新）。须手工 `encode_multipart(BOUNDARY, data)` 并传 `MULTIPART_CONTENT`（见 `tests/test_update_article.py`）
 - **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。凭据已配置（`~/.git-credentials`，Gitea `192.168.31.96:3000`）。
 
 ## 配置 / 环境变量
@@ -41,6 +43,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **默认分类/标签机制**（`articles/defaults.py`）：创建文章时未填分类/标签（含 `0`/空串占位值）自动挂默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"）；`AppConfig.ready()` 启动时 `ensure_defaults()` 幂等创建，pytest/mypy 进程内跳过（`sys.modules` 判断）、迁移期捕获 `DatabaseError`。默认分类/标签按 slug 受删除保护（DELETE 返回 400）。
 - multipart 下"无分类/标签"的占位值（`''`/`'0'`/`'null'`/非正数）必须归一化为 `None`/`[]`（`articles/schemas.py` `_normalize_category_id`/`_normalize_tag_ids`），否则 `category_id=0` 会触发外键 `IntegrityError`；创建时引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）。
 - `create_article` 的 `IntegrityError` 不能一律当成 slug 冲突：只有同 slug 记录存在时才报"slug 已存在"（此时会加 `-2` 后缀重试），否则报通用创建失败；插入失败会清理已落盘的 cover/attachment，避免孤儿文件。
+- **文件字段（`cover_image`/`file`）不能用 `QuerySet.update()` 写**：它绕过 `Model.save()` → 不触发 `FileField.pre_save()`，上传内容既不会写入 storage，字段还会被 `get_prep_value()` 存成 `str(UploadedFile)`（客户端原始文件名），于是 `cover_image_url` 变成 `/media/<原始文件名>` 指向不存在的文件（前端图片 404）。同理 `auto_now` 的 `updated_at` 也不会刷新。`update_article` 因此走 `Model.save(update_fields=...)`，且 `update_fields` 里显式加 `updated_at`（`save(update_fields=...)` 只对列出的字段调用 `pre_save`），同时避免覆盖 `views` 等未提交字段。
 - django-ninja 1.6 已移除 `ninja.pagination.Pagination`，且列表接口已改用手动分页（`common/pagination.py` 的 `CustomPagination` 当前未被引用）。
 - django-ninja 的 `Schema` 内部有 `model_validator(mode='wrap')`，会把输入包装成只读 `DjangoGetter` —— 在 schema 里写 `mode='before'` 的 `model_validator` 会静默失效（无法修改值），需在 API 层处理（如 slug 自动生成）。
 - Django 6 的测试 `Client.put` 默认以 `application/octet-stream` 发送且把 dict `str()` 化 —— PUT 测试须显式传 `content_type='application/x-www-form-urlencoded'` + `urlencode(data)`。
