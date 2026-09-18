@@ -19,7 +19,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。
   - 远端走 SSH：`origin` = `ssh://git@192.168.31.96:222/gkjuanmao/my_blog.git`（Gitea 的 SSH 端口是 **222**，不是 22；scp 风格地址 `git@192.168.31.96:gkjuanmao/my_blog.git` 也能用，靠 `~/.ssh/config` 的 Host 块补端口）。
   - 认证用公钥：`~/.ssh/id_ed25519`，公钥已在 Gitea 注册为 `zcode@PC-GKjuanmao`。Gitea 的 SSH **只开 publickey**，账号密码对 SSH 无效（密码仅用于 Gitea Web/API）。
-  - 本仓库未配置 `user.name`/`user.email`，提交需显式带上身份：`git -c user.name=gkjuanmao -c user.email=gkjuanmao@example.com commit ...`。
+  - 本仓库已配置仓库级提交身份（`user.name=gkjuanmao`、`user.email=gkjuanmao@example.com`），`git commit` 直接提交即可，无需再带 `-c user.name=... -c user.email=...`。
 
 ## 配置 / 环境变量
 
