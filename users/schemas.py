@@ -27,9 +27,10 @@ class TokenObtainPairOut(Schema):
 
 
 class TokenRefreshOut(Schema):
-    """刷新成功后仅返回新的 access 令牌。"""
+    """刷新成功返回新的 access 与轮换后的 refresh 令牌。"""
 
     access: str
+    refresh: str
 
 
 class RefreshIn(Schema):

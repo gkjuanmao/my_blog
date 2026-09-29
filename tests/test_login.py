@@ -69,3 +69,52 @@ class TestLoginAPI:
         )
 
         assert response.status_code == 422
+
+    def test_auth_007_login_throttled(self, api_client, user):
+        """AUTH-007 连续失败达上限后返回 429（对正确密码也生效）。"""
+        for _ in range(5):
+            response = api_client.post(
+                '/api/v1/login/',
+                {'username': 'testuser', 'password': 'wrong'},
+                content_type='application/json',
+            )
+            assert response.status_code == 401
+
+        blocked = api_client.post(
+            '/api/v1/login/',
+            {'username': 'testuser', 'password': 'wrong'},
+            content_type='application/json',
+        )
+        assert blocked.status_code == 429
+        assert '次数过多' in blocked.json()['message']
+
+        # 达到上限后，即使密码正确也被拦截
+        still_blocked = api_client.post(
+            '/api/v1/login/',
+            {'username': 'testuser', 'password': 'testpass123'},
+            content_type='application/json',
+        )
+        assert still_blocked.status_code == 429
+
+    def test_auth_008_success_resets_counter(self, api_client, user):
+        """AUTH-008 登录成功清除失败计数。"""
+        for _ in range(4):
+            api_client.post(
+                '/api/v1/login/',
+                {'username': 'testuser', 'password': 'wrong'},
+                content_type='application/json',
+            )
+
+        success = api_client.post(
+            '/api/v1/login/',
+            {'username': 'testuser', 'password': 'testpass123'},
+            content_type='application/json',
+        )
+        assert success.status_code == 200
+
+        after = api_client.post(
+            '/api/v1/login/',
+            {'username': 'testuser', 'password': 'wrong'},
+            content_type='application/json',
+        )
+        assert after.status_code == 401

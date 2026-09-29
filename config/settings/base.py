@@ -17,6 +17,8 @@ INSTALLED_APPS = [
     # 第三方应用
     'corsheaders',
     'ninja',
+    # JWT refresh 轮换后的旧令牌黑名单（需迁移生成表）
+    'ninja_jwt.token_blacklist',
     # 自定义应用
     'articles.apps.ArticlesConfig',
     'users.apps.UsersConfig',
@@ -80,6 +82,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=2),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
+    # 轮换后把旧 refresh token 加入黑名单，防止其继续可用（依赖上方 token_blacklist app）
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 

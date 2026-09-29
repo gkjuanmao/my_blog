@@ -24,6 +24,7 @@ export interface LoginResponse {
 
 export interface RefreshResponse {
   access: string
+  refresh: string
 }
 
 export interface UserInfo {

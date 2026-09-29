@@ -17,6 +17,16 @@ def media_root(tmp_path, settings):
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def clear_cache():
+    """清空缓存，避免登录限流计数等缓存状态跨用例污染。"""
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
 @pytest.fixture
 def api_client() -> Client:
     """Django 测试客户端。"""
