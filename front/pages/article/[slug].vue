@@ -9,6 +9,14 @@ const loading = ref(true)
 const errorMsg = ref('')
 const coverError = ref(false)
 
+// 仅 PDF 支持在线预览；Word/HTML 等附件只提供下载（避免把不可预览内容交给 PDF 渲染器）
+const fileExt = computed(() => {
+  const name = article.value?.file_name ?? ''
+  const dot = name.lastIndexOf('.')
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
+})
+const isPdf = computed(() => fileExt.value === 'pdf')
+
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
@@ -60,7 +68,13 @@ await fetchArticle()
     <p v-if="article.summary" class="text-stone-600 dark:text-stone-300">{{ article.summary }}</p>
 
     <div v-if="article.file_url" class="space-y-4">
-      <PdfViewer :pdf-url="article.file_url" />
+      <PdfViewer v-if="isPdf" :pdf-url="article.file_url" />
+      <div
+        v-else
+        class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400"
+      >
+        该附件为 {{ fileExt.toUpperCase() || '未知' }} 格式，暂不支持在线预览，请下载后查看。
+      </div>
       <div class="flex justify-center">
         <a
           :href="article.file_url"
