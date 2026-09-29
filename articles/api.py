@@ -42,6 +42,9 @@ ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'html'}
 COVER_MAX_SIZE = 20 * 1024 * 1024  # 20MB
 ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024  # 50MB
 
+# 管理列表允许的排序字段（前缀 - 表示降序），用白名单避免用户传入任意字段
+ADMIN_ARTICLE_ORDERING_FIELDS = {'publish_time', 'created_at', 'updated_at', 'views', 'title'}
+
 jwt_auth = JWTAuth()
 
 
@@ -132,14 +135,19 @@ def list_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
-@router.get('/articles/search/', response=ApiResponse[list[ArticleOut]])
+@router.get('/articles/search/', response=ApiResponse[PageData[ArticleOut]])
 def search_articles(
     request: HttpRequest,
     keyword: str = Query(..., description='关键词，标题模糊搜索'),
+    page: int = Query(1, ge=1, description='页码'),
+    page_size: int = Query(10, ge=1, le=100, description='每页数量'),
 ) -> dict:
-    """按标题关键词搜索已发布文章，返回文章数组。"""
+    """按标题关键词搜索已发布文章，分页返回（信封内 items/total/page/page_size）。"""
     qs = _published_articles().filter(title__icontains=keyword)
-    return success_response([article_to_out(request, article) for article in qs])
+    total = qs.count()
+    start = (page - 1) * page_size
+    items = [article_to_out(request, article) for article in qs[start:start + page_size]]
+    return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
 @router.get('/articles/{slug}/', response=ApiResponse[ArticleDetailOut])
@@ -166,6 +174,10 @@ def list_admin_articles(
     is_published: bool | None = Query(None, description='按发布状态过滤'),
     keyword: str = Query('', description='标题关键词搜索'),
     category_slug: str = Query('', description='按分类别名过滤'),
+    ordering: str = Query(
+        '',
+        description='排序字段：publish_time 升序 / -publish_time 降序；不传用默认排序',
+    ),
 ) -> dict:
     """管理文章列表：返回全部文章（含未发布草稿），供后台管理与定位。"""
     qs = Article.objects.prefetch_related('tags', 'category')
@@ -175,6 +187,12 @@ def list_admin_articles(
         qs = qs.filter(title__icontains=keyword)
     if category_slug:
         qs = qs.filter(category__slug=category_slug)
+    if ordering:
+        field = ordering.lstrip('-')
+        if field not in ADMIN_ARTICLE_ORDERING_FIELDS:
+            raise HttpError(400, '不支持的排序字段')
+        # 追加 -id 作次要排序键，避免排序值相同时翻页出现重复/遗漏
+        qs = qs.order_by(ordering, '-id')
     total = qs.count()
     start = (page - 1) * page_size
     items = [article_to_out(request, article) for article in qs[start:start + page_size]]

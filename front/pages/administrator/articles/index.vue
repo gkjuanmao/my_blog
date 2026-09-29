@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import type { Article, PaginatedResponse } from '~/types/api'
+import type { Article, Category, PaginatedResponse } from '~/types/api'
 
 definePageMeta({ layout: 'admin' })
 
 const keyword = ref('')
+const categorySlug = ref('')
+const status = ref('') // '' | 'true' | 'false'
+const sortOrder = ref<'asc' | 'desc'>('desc')
+
+const categories = ref<Category[]>([])
 const page = ref(1)
 const pageSize = ref(10)
 const articles = ref<Article[]>([])
@@ -15,8 +20,14 @@ async function fetchArticles() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const params: Record<string, unknown> = { page: page.value, page_size: pageSize.value }
+    const params: Record<string, unknown> = {
+      page: page.value,
+      page_size: pageSize.value,
+      ordering: sortOrder.value === 'asc' ? 'publish_time' : '-publish_time',
+    }
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
+    if (categorySlug.value) params.category_slug = categorySlug.value
+    if (status.value) params.is_published = status.value
     const { data } = await useApi().get<PaginatedResponse<Article>>('/admin/articles/', params)
     articles.value = data.items
     total.value = data.total
@@ -27,9 +38,38 @@ async function fetchArticles() {
   }
 }
 
+async function fetchCategories() {
+  try {
+    const { data } = await useApi().get<Category[]>('/categories/')
+    categories.value = data
+  } catch {
+    categories.value = []
+  }
+}
+
+/** 筛选/排序变化：回到第 1 页（已在第 1 页时直接刷新，避免 watch 不触发） */
+function applyFilters() {
+  if (page.value === 1) fetchArticles()
+  else page.value = 1
+}
+
 function doSearch() {
-  page.value = 1
-  fetchArticles()
+  applyFilters()
+}
+
+function resetFilters() {
+  keyword.value = ''
+  categorySlug.value = ''
+  status.value = ''
+  sortOrder.value = 'desc'
+  applyFilters()
+}
+
+/** el-table 自定义排序 → 服务端排序（仅发布时间列可排） */
+function handleSortChange({ prop, order }: { prop: string | null; order: string | null }) {
+  if (prop !== 'publish_time') return
+  sortOrder.value = order === 'ascending' ? 'asc' : 'desc'
+  applyFilters()
 }
 
 function goCreate() {
@@ -54,25 +94,61 @@ async function handleDelete(row: Article) {
 }
 
 watch([page, pageSize], fetchArticles)
-onMounted(fetchArticles)
+onMounted(() => {
+  fetchCategories()
+  fetchArticles()
+})
 </script>
 
 <template>
   <div>
     <h1 class="text-xl font-semibold">文章管理</h1>
     <div class="space-y-4">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <el-input v-model="keyword" placeholder="按标题搜索…" clearable @keyup.enter="doSearch" />
-        <div class="flex gap-3">
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <el-input v-model="keyword" placeholder="按标题搜索…" clearable @keyup.enter="doSearch" />
+          <el-select
+            v-model="categorySlug"
+            class="w-full"
+            placeholder="按分类搜索"
+            clearable
+            @change="applyFilters"
+          >
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.slug" />
+          </el-select>
+          <el-select
+            v-model="status"
+            class="w-full"
+            placeholder="按状态搜索"
+            clearable
+            @change="applyFilters"
+          >
+            <el-option label="已发布" value="true" />
+            <el-option label="草稿" value="false" />
+          </el-select>
+          <!-- 移动端无表头，排序在此控制；桌面端用「发布时间」列表头排序 -->
+          <el-select v-model="sortOrder" class="w-full md:hidden" @change="applyFilters">
+            <el-option label="发布时间：最新在前" value="desc" />
+            <el-option label="发布时间：最早在前" value="asc" />
+          </el-select>
+        </div>
+        <div class="flex flex-wrap gap-3">
           <el-button type="warning" @click="doSearch">搜索</el-button>
-          <el-button type="primary" @click="goCreate">新建文章</el-button>
+          <el-button @click="resetFilters">重置</el-button>
+          <el-button type="primary" class="ml-auto" @click="goCreate">新建文章</el-button>
         </div>
       </div>
 
       <div v-if="errorMsg" class="py-8 text-center text-sm text-red-500">{{ errorMsg }}</div>
       <template v-else>
         <div v-loading="loading" class="hidden overflow-x-auto md:block">
-          <el-table :data="articles" border stripe>
+          <el-table
+            :data="articles"
+            border
+            stripe
+            :default-sort="{ prop: 'publish_time', order: 'descending' }"
+            @sort-change="handleSortChange"
+          >
             <el-table-column prop="id" label="ID" width="70" />
             <el-table-column prop="title" label="标题" min-width="180" />
             <el-table-column label="分类" width="120">
@@ -87,7 +163,7 @@ onMounted(fetchArticles)
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="发布时间" width="170">
+            <el-table-column prop="publish_time" label="发布时间" width="180" sortable="custom">
               <template #default="{ row }: { row: any }">
                 {{ new Date(row.publish_time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}
               </template>

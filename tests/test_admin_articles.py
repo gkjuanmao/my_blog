@@ -70,6 +70,61 @@ class TestAdminArticleListAPI:
         assert data['total'] == 2
         assert data['page_size'] == 1
 
+    @pytest.fixture
+    def ordered_articles(self, user):
+        """三篇发布时间递增的文章，用于排序断言。"""
+        category = Category.objects.create(name='排序分类', slug='order-cat')
+        base = timezone.now()
+        for index, title in enumerate(['最早发布', '居中发布', '最新发布']):
+            Article.objects.create(
+                title=title,
+                slug=f'order-{index}',
+                publish_time=base + timezone.timedelta(days=index),
+                author=user,
+                category=category,
+                is_published=True,
+                views=index * 10,
+            )
+
+    def test_adm_056_ordering_asc(self, api_client, auth_header, ordered_articles):
+        """ADM-056 ordering=publish_time 按发布时间升序。"""
+        response = api_client.get(
+            '/api/v1/admin/articles/?ordering=publish_time', **auth_header
+        )
+
+        assert response.status_code == 200
+        titles = [item['title'] for item in response.json()['data']['items']]
+        assert titles == ['最早发布', '居中发布', '最新发布']
+
+    def test_adm_057_ordering_desc(self, api_client, auth_header, ordered_articles):
+        """ADM-057 ordering=-publish_time 按发布时间降序。"""
+        response = api_client.get(
+            '/api/v1/admin/articles/?ordering=-publish_time', **auth_header
+        )
+
+        assert response.status_code == 200
+        titles = [item['title'] for item in response.json()['data']['items']]
+        assert titles == ['最新发布', '居中发布', '最早发布']
+
+    def test_adm_058_ordering_allowlist(self, api_client, auth_header, ordered_articles):
+        """ADM-058 非白名单排序字段返回 400（防任意字段注入）。"""
+        response = api_client.get('/api/v1/admin/articles/?ordering=password', **auth_header)
+
+        assert response.status_code == 400
+        assert '排序' in response.json()['message']
+
+    def test_adm_059_ordering_with_filter(self, api_client, auth_header, ordered_articles):
+        """ADM-059 排序与状态过滤可组合。"""
+        Article.objects.filter(slug='order-1').update(is_published=False)
+
+        response = api_client.get(
+            '/api/v1/admin/articles/?is_published=true&ordering=-publish_time', **auth_header
+        )
+
+        assert response.status_code == 200
+        titles = [item['title'] for item in response.json()['data']['items']]
+        assert titles == ['最新发布', '最早发布']
+
 
 @pytest.mark.django_db
 class TestAdminDeleteBySlugAPI:
