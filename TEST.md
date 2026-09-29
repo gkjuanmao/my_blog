@@ -2,7 +2,13 @@
 
 > **用途**：本文档供 AI 编程工具（OpenCode）读取，自动生成 pytest 测试用例  
 > **测试框架**：pytest + pytest-django  
-> **最后更新**：2026-08-09
+> **最后更新**：2026-09-29
+
+> ⚠️ **与实现的对应关系**：测试代码实际位于 `tests/` 独立模块（`testpaths=["tests"]`），
+> 而非本文档历史模板中的 `app/tests/`；`Article.content` 字段已在 migration
+> `articles/0002_remove_article_content` 中删除，本文档模板已同步移除。
+> 本文为**规范草案**，若与 `tests/` 实际代码冲突，一律以 `tests/` 为准。
+> 2026-09 迭代新增/变更的用例见文末「六、存量用例增补」。
 
 ---
 
@@ -92,7 +98,7 @@ def test_pdf():
 #### pytest 代码模板
 
 ```python
-# users/tests/test_login.py
+# tests/test_login.py
 import pytest
 
 @pytest.mark.django_db
@@ -161,7 +167,7 @@ class TestLoginAPI:
 #### pytest 代码模板
 
 ```python
-# users/tests/test_token_refresh.py
+# tests/test_token_refresh.py
 import pytest
 from rest_framework_simplejwt.tokens import RefreshToken
 from datetime import timedelta
@@ -210,7 +216,7 @@ class TestTokenRefreshAPI:
 #### pytest 代码模板
 
 ```python
-# users/tests/test_me.py
+# tests/test_me.py
 import pytest
 
 @pytest.mark.django_db
@@ -256,7 +262,7 @@ class TestMeAPI:
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_categories.py
+# tests/test_categories.py
 import pytest
 from articles.models import Category
 
@@ -299,7 +305,7 @@ class TestCategoriesAPI:
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_article_list.py
+# tests/test_article_list.py
 import pytest
 from articles.models import Article, Category
 from django.utils import timezone
@@ -315,7 +321,6 @@ class TestArticleListAPI:
             Article.objects.create(
                 title=f'文章{i}',
                 slug=f'article-{i}',
-                content='内容',
                 publish_time=timezone.now(),
                 author=user,
                 category=category,
@@ -325,7 +330,6 @@ class TestArticleListAPI:
         Article.objects.create(
             title='草稿',
             slug='draft',
-            content='草稿内容',
             publish_time=timezone.now(),
             author=user,
             is_published=False
@@ -401,7 +405,7 @@ class TestArticleListAPI:
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_article_detail.py
+# tests/test_article_detail.py
 import pytest
 from articles.models import Article
 from django.utils import timezone
@@ -414,7 +418,6 @@ class TestArticleDetailAPI:
         return Article.objects.create(
             title='测试文章',
             slug='my-post',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True,
@@ -441,7 +444,6 @@ class TestArticleDetailAPI:
         Article.objects.create(
             title='草稿',
             slug='draft',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=False
@@ -466,16 +468,22 @@ class TestArticleDetailAPI:
 
 | 用例ID | 场景 | keyword | 前置条件 | 预期状态码 | 预期响应 |
 |:---|:---|:---|:---|:---|:---|
-| SRC-001 | 正常搜索 | `博客` | 标题含"博客" | 200 | 返回匹配文章 |
-| SRC-002 | 无匹配 | `不存在` | - | 200 | 返回空数组 |
+| SRC-001 | 正常搜索 | `博客` | 标题含"博客" | 200 | 分页信封，`total`=1 |
+| SRC-002 | 无匹配 | `不存在` | - | 200 | `items=[]`、`total=0` |
 | SRC-003 | 缺少 keyword | 无参数 | - | 422 | 参数必填 |
 | SRC-004 | 大小写不敏感 | `python` | 标题 "Python" | 200 | 能匹配 |
 | SRC-005 | 仅搜索已发布 | `草稿` | 草稿含关键词 | 200 | 草稿不出现 |
+| SRC-006 | 分页 | `博客` | 3 篇已发布命中 | 200 | `total=3`，`page_size=2` 时 `items` 长度 2 |
+| SRC-007 | 非法 page_size | `博客` | `page_size=101` | 422 | 超出上限 |
+
+> **重要变更（2026-09）**：`/api/v1/articles/search/` 已由「返回数组」改为**分页信封**，
+> 响应为 `{items, total, page, page_size}`，并新增 `page`/`page_size` 参数（1~100）。
+> 下方历史模板中的数组断言已过期，请以 `tests/test_article_search.py` 为准。
 
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_article_search.py
+# tests/test_article_search.py
 import pytest
 from articles.models import Article
 from django.utils import timezone
@@ -488,7 +496,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='我的第一篇博客',
             slug='blog-1',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True
@@ -496,7 +503,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='Python 教程',
             slug='python',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True
@@ -504,7 +510,6 @@ class TestArticleSearchAPI:
         Article.objects.create(
             title='草稿博客',
             slug='draft-blog',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=False
@@ -575,7 +580,7 @@ class TestArticleSearchAPI:
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_create_article.py
+# tests/test_create_article.py
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from articles.models import Article, Category, Tag
@@ -596,7 +601,6 @@ class TestCreateArticleAPI:
         response = api_client.post('/api/v1/admin/articles/', {
             'title': '测试文章',
             'slug': 'test-article',
-            'content': '# 内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'category_id': category.id,
             'tag_ids': [tag.id],
@@ -620,7 +624,6 @@ class TestCreateArticleAPI:
         response = api_client.post('/api/v1/admin/articles/', {
             'title': '测试',
             'slug': 'test',
-            'content': '内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'cover': test_image,
             'attachment': test_pdf,
@@ -632,7 +635,6 @@ class TestCreateArticleAPI:
         """缺少 title"""
         response = api_client.post('/api/v1/admin/articles/', {
             'slug': 'test',
-            'content': '内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'cover': test_image,
             'attachment': test_pdf,
@@ -645,7 +647,6 @@ class TestCreateArticleAPI:
         Article.objects.create(
             title='已存在',
             slug='test',
-            content='内容',
             publish_time='2026-08-09T14:00:00Z',
             author=user
         )
@@ -653,7 +654,6 @@ class TestCreateArticleAPI:
         response = api_client.post('/api/v1/admin/articles/', {
             'title': '新文章',
             'slug': 'test',
-            'content': '内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'cover': test_image,
             'attachment': test_pdf,
@@ -669,7 +669,6 @@ class TestCreateArticleAPI:
         response = api_client.post('/api/v1/admin/articles/', {
             'title': '测试',
             'slug': 'test',
-            'content': '内容',
             'publish_time': '2026-08-09T14:00:00Z',
             'cover': bad_file,
             'attachment': test_pdf,
@@ -691,7 +690,7 @@ class TestCreateArticleAPI:
 #### pytest 代码模板
 
 ```python
-# articles/tests/test_delete_article.py
+# tests/test_delete_article.py
 import pytest
 from articles.models import Article
 from django.utils import timezone
@@ -704,7 +703,6 @@ class TestDeleteArticleAPI:
         return Article.objects.create(
             title='测试文章',
             slug='test',
-            content='内容',
             publish_time=timezone.now(),
             author=user,
             is_published=True
@@ -774,11 +772,11 @@ class TestAdminArticleListAPI:
     def setup_articles(self, user):
         category = Category.objects.create(name='技术', slug='tech')
         Article.objects.create(
-            title='已发布文章', slug='published', content='内容',
+            title='已发布文章', slug='published',
             publish_time=timezone.now(), author=user, category=category, is_published=True,
         )
         Article.objects.create(
-            title='草稿文章', slug='draft-post', content='草稿',
+            title='草稿文章', slug='draft-post',
             publish_time=timezone.now(), author=user, category=category, is_published=False,
         )
 
@@ -810,7 +808,7 @@ class TestAdminDeleteBySlugAPI:
     @pytest.fixture
     def draft(self, user):
         return Article.objects.create(
-            title='草稿文章', slug='draft-post', content='草稿',
+            title='草稿文章', slug='draft-post',
             publish_time=timezone.now(), author=user, is_published=False,
         )
 
@@ -853,8 +851,8 @@ from articles.models import Article
 class TestUpdateSlugUniquenessAPI:
     def test_adm_055_update_slug_conflict(self, api_client, auth_header, user):
         """更新 slug 冲突时加后缀，且排除自身"""
-        a1 = Article.objects.create(title='A', slug='a', content='x', publish_time=timezone.now(), author=user)
-        Article.objects.create(title='B', slug='b', content='x', publish_time=timezone.now(), author=user)
+        a1 = Article.objects.create(title='A', slug='a', publish_time=timezone.now(), author=user)
+        Article.objects.create(title='B', slug='b', publish_time=timezone.now(), author=user)
 
         response = api_client.put(
             f'/api/v1/admin/articles/{a1.id}/', urlencode({'slug': 'b'}),
@@ -888,23 +886,30 @@ class TestUpdateSlugUniquenessAPI:
 4. **补全断言**：根据"预期响应"列，补充完整的 `assert` 语句
 5. **运行测试**：执行 `uv run pytest` 验证
 
-### 5.2 测试文件命名规范
+### 5.2 测试文件结构与命名规范
 
 ```
-users/tests/
-├── test_login.py
-├── test_token_refresh.py
-└── test_me.py
-
-articles/tests/
+tests/                          # 独立测试模块（pyproject.toml: testpaths = ["tests"]）
+├── conftest.py                 # api_client / user / auth_header / test_image / test_pdf
+│                               #   + media_root、clear_cache（autouse）
+├── test_login.py               # 登录（含失败限流）
+├── test_token_refresh.py       # 刷新（含轮换黑名单）
+├── test_me.py
 ├── test_categories.py
+├── test_tags.py
 ├── test_article_list.py
 ├── test_article_detail.py
-├── test_article_search.py
+├── test_article_search.py      # 搜索（含分页）
 ├── test_create_article.py
-├── test_delete_article.py
-└── test_admin_articles.py   # 管理列表 + 按 slug 删除
-└── test_slug_generation.py  # slug 自动生成 + 冲突唯一化
+├── test_update_article.py
+├── test_delete_article.py      # 删除（含文件清理）
+├── test_admin_articles.py      # 管理列表 + 按 slug 删除
+├── test_admin_article_detail.py
+├── test_admin_categories.py
+├── test_admin_tags.py
+├── test_slug_generation.py     # slug 自动生成 + 冲突唯一化
+├── test_media_url_relative.py  # 媒体 URL 相对路径
+└── test_user_avatar.py         # 头像路径与校验
 ```
 
 ### 5.3 运行测试命令
@@ -914,10 +919,10 @@ articles/tests/
 uv run pytest
 
 # 运行特定 app 的测试
-uv run pytest users/tests/
+uv run pytest tests/
 
 # 运行特定测试类
-uv run pytest users/tests/test_login.py::TestLoginAPI
+uv run pytest tests/test_login.py::TestLoginAPI
 
 # 生成覆盖率报告
 uv run pytest --cov=. --cov-report=html
@@ -932,5 +937,87 @@ uv run pytest --cov=. --cov-report=html
 
 ---
 
+## 六、存量用例增补（2026-09 迭代）
+
+本节补充此前缺失或随本次修复新增的用例，均已实现于 `tests/`。
+
+### 6.1 登录失败限流（`tests/test_login.py`）
+
+`POST /api/v1/login/` 对同一「客户端 IP + 用户名」限制连续失败次数：
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| AUTH-007 | 连续 5 次密码错误后再请求 | 第 6 次返回 **429**（正确密码也被拦截） |
+| AUTH-008 | 失败 4 次后登录成功 | 200，且失败计数被清除（再错一次仍为 401） |
+
+> 实现：`users/api.py` 使用 `django.core.cache`（`LOGIN_MAX_ATTEMPTS=5`、`LOGIN_LOCKOUT_SECONDS=300`）；
+> 客户端 IP 取 `X-Forwarded-For` **最后一段**，避免被伪造。测试用 `clear_cache` autouse fixture 隔离。
+
+### 6.2 刷新令牌轮换与黑名单（`tests/test_token_refresh.py`）
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| AUTH-010 | 正常刷新 | 返回新 `access` 与**轮换后的 `refresh`**（与旧值不同） |
+| AUTH-014 | 旧 refresh 重放 | 401（已进入黑名单）；新 refresh 仍可用 |
+
+> 实现：`SIMPLE_JWT` 开启 `BLACKLIST_AFTER_ROTATION=True`，并安装 `ninja_jwt.token_blacklist`（含迁移表）。
+
+### 6.3 删除文章清理磁盘文件（`tests/test_delete_article.py`）
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| ADM-041 | 按 id 删除带封面/附件的文章 | 200，`media/` 下两个文件均被删除 |
+| ADM-042 | 按 slug 删除 | 同上 |
+| ADM-043 | `QuerySet.delete()`（admin 批量删除路径） | 同样触发文件清理 |
+
+> 实现：`articles/signals.py` 的 `post_delete` 接收器（而非覆盖 `Model.delete()`），
+> 因此 `QuerySet.delete()` 与 admin 批量删除同样生效。
+
+### 6.4 搜索分页（`tests/test_article_search.py`）
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| SRC-006 | `keyword=博客&page=1&page_size=2` | 信封内 `total=3`、`items` 长度 2；第 2 页 1 条 |
+| SRC-007 | `page_size=101` | 422 |
+
+### 6.5 用户头像路径与校验（`tests/test_user_avatar.py`）
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| AVT-001 | 保存头像 | 落盘路径匹配 `avatars/YYYY/MM/<32位uuid>.jpg` |
+| AVT-002 | `validate_avatar` 传 JPG | 通过 |
+| AVT-003 | 传 GIF | `ValidationError` |
+| AVT-004 | 传 >2MB 图片 | `ValidationError` |
+
+> 实现：`users/models.py` 的 `avatar_upload_path` 与 `validate_avatar`（对齐 DESIGN 4.1 / 7.2）。
+
+### 6.6 公开分类 / 标签列表（`tests/test_categories.py`、`tests/test_tags.py`）
+
+| 用例ID | 接口 | 场景 |
+|:---|:---|:---|
+| CAT-001 / CAT-002 | `GET /api/v1/categories/` | 正常返回 / 空数据 |
+| TAG-001 / TAG-002 | `GET /api/v1/tags/` | 正常返回 / 空数据 |
+
+### 6.7 媒体 URL 相对路径（`tests/test_media_url_relative.py`）
+
+`cover_image_url` / `file_url` 为 `/media/...` 相对路径（不拼接 scheme/host），以保证 HTTPS 反向代理下前端仍能正确加载。
+
+### 6.8 管理文章列表排序（`tests/test_admin_articles.py`）
+
+`GET /api/v1/admin/articles/` 新增 `ordering` 参数（白名单：`publish_time`/`created_at`/`updated_at`/`views`/`title`，前缀 `-` 降序；不传按默认发布时间降序）。
+
+| 用例ID | 场景 | 预期 |
+|:---|:---|:---|
+| ADM-056 | `ordering=publish_time` | 发布时间升序（最早在前） |
+| ADM-057 | `ordering=-publish_time` | 发布时间降序（最新在前） |
+| ADM-058 | `ordering=password` | 400「不支持的排序字段」（白名单防任意字段注入） |
+| ADM-059 | `is_published=true&ordering=-publish_time` | 过滤与排序可组合 |
+
+> 服务端排序会在主排序键后追加 `-id` 作次要键，避免排序值相同时翻页出现重复/遗漏。
+> 前端：`/administrator/articles` 桌面端用「发布时间」列表头点击排序（`sortable="custom"`），移动端用筛选栏的排序下拉，二者共用同一状态。
+
+---
+
 > **文档结束**  
 > AI 工具应根据本文档自动生成完整的 pytest 测试代码，并确保所有测试用例通过。
+> 再次提醒：本文档为规范草案，与 `tests/` 冲突时以 `tests/` 为准。

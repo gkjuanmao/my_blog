@@ -1,123 +1,101 @@
 # API 测试报告
 
-> **测试框架**：pytest + pytest-django  
-> **执行时间**：2026-08-09  
-> **测试模块**：`tests/`（独立模块）  
-> **报告文件**：`tests/reports/junit.xml`、`tests/reports/htmlcov/`
+> **测试框架**：pytest + pytest-django
+> **执行时间**：2026-09-30
+> **测试模块**：`tests/`（独立模块，`testpaths = ["tests"]`）
+> **测试配置**：`DJANGO_SETTINGS_MODULE = config.settings.dev`
+> **报告文件**：`tests/reports/junit.xml`、`tests/reports/htmlcov/`（htmlcov 已 gitignore）
 
 ## 一、测试概况
 
 | 指标 | 结果 |
 | :--- | :--- |
-| 用例总数 | 62 |
-| 通过 | 62 ✅ |
+| 用例总数 | 141 |
+| 通过 | 141 ✅ |
 | 失败 | 0 |
 | 跳过 | 0 |
 | 通过率 | 100% |
-| 代码覆盖率 | 86% |
+| 代码覆盖率 | 88% |
 
-## 二、用例执行明细
+### 按测试文件分布
 
-### 认证模块（users）
+| 测试文件 | 用例数 | 覆盖接口/主题 |
+| :--- | :--- | :--- |
+| tests/test_login.py | 8 | `POST /login/`（含失败限流） |
+| tests/test_token_refresh.py | 5 | `POST /token/refresh/`（含轮换黑名单） |
+| tests/test_me.py | 4 | `GET /me/` |
+| tests/test_categories.py | 2 | `GET /categories/` |
+| tests/test_tags.py | 2 | `GET /tags/` |
+| tests/test_article_list.py | 10 | `GET /articles/`（分页/过滤） |
+| tests/test_article_detail.py | 4 | `GET /articles/{slug}/`（views+1） |
+| tests/test_article_search.py | 7 | `GET /articles/search/`（分页信封） |
+| tests/test_create_article.py | 20 | `POST /admin/articles/` |
+| tests/test_update_article.py | 14 | `PUT /admin/articles/{id}/` |
+| tests/test_delete_article.py | 6 | 删除（含磁盘文件清理） |
+| tests/test_admin_articles.py | 13 | `GET /admin/articles/`（过滤/分页/排序）、按 slug 删除 |
+| tests/test_admin_article_detail.py | 4 | `GET /admin/articles/{id}/` |
+| tests/test_admin_categories.py | 15 | 分类 CRUD |
+| tests/test_admin_tags.py | 14 | 标签 CRUD |
+| tests/test_slug_generation.py | 6 | slug 自动生成/唯一化 |
+| tests/test_media_url_relative.py | 3 | 媒体 URL 相对路径 |
+| tests/test_user_avatar.py | 4 | 头像路径与校验 |
 
-| 用例 ID | 接口 | 场景 | 结果 |
-| :--- | :--- | :--- | :--- |
-| AUTH-001 | POST /api/v1/login/ | 正常登录 | ✅ |
-| AUTH-002 | POST /api/v1/login/ | 用户名错误 → 401 | ✅ |
-| AUTH-003 | POST /api/v1/login/ | 密码错误 → 401 | ✅ |
-| AUTH-004 | POST /api/v1/login/ | 缺少 username → 422 | ✅ |
-| AUTH-005 | POST /api/v1/login/ | 缺少 password → 422 | ✅ |
-| AUTH-006 | POST /api/v1/login/ | username 为空 → 422 | ✅ |
-| AUTH-010 | POST /api/v1/token/refresh/ | 正常刷新 | ✅ |
-| AUTH-011 | POST /api/v1/token/refresh/ | token 过期 → 401 | ✅ |
-| AUTH-012 | POST /api/v1/token/refresh/ | 无效 token → 401 | ✅ |
-| AUTH-013 | POST /api/v1/token/refresh/ | 缺少 refresh → 422 | ✅ |
-| AUTH-016 | GET /api/v1/me/ | 正常获取用户信息 | ✅ |
-| AUTH-017 | GET /api/v1/me/ | 未携带 Token → 401 | ✅ |
-| AUTH-018 | GET /api/v1/me/ | Token 格式错误 → 401 | ✅ |
-| AUTH-019 | GET /api/v1/me/ | Token 过期 → 401 | ✅ |
+## 二、本轮迭代新增/变更的用例
 
-### 文章公开接口（articles）
-
-| 用例 ID | 接口 | 场景 | 结果 |
-| :--- | :--- | :--- | :--- |
-| CAT-001 | GET /api/v1/categories/ | 正常获取分类列表 | ✅ |
-| CAT-002 | GET /api/v1/categories/ | 无分类返回空数组 | ✅ |
-| ART-001 | GET /api/v1/articles/ | 默认分页第 1 页 10 条 | ✅ |
-| ART-002 | GET /api/v1/articles/?page=2 | 第 2 页 5 条 | ✅ |
-| ART-003 | GET /api/v1/articles/?page_size=5 | 自定义每页数量 | ✅ |
-| ART-004 | GET /api/v1/articles/?page=0 | 非法 page → 422 | ✅ |
-| ART-005 | GET /api/v1/articles/ | 草稿不出现 | ✅ |
-| ART-006 | GET /api/v1/articles/?category_slug= | 按分类过滤 | ✅ |
-| ART-007 | GET /api/v1/articles/ | 空数据库 | ✅ |
-| ART-015 | GET /api/v1/articles/{slug}/ | 正常获取详情 | ✅ |
-| ART-016 | GET /api/v1/articles/{slug}/ | 文章不存在 → 404 | ✅ |
-| ART-017 | GET /api/v1/articles/{slug}/ | 未发布文章 → 404 | ✅ |
-| ART-018 | GET /api/v1/articles/{slug}/ | 阅读量 +1 | ✅ |
-| SRC-001 | GET /api/v1/articles/search/ | 正常搜索 | ✅ |
-| SRC-002 | GET /api/v1/articles/search/ | 无匹配返回空数组 | ✅ |
-| SRC-003 | GET /api/v1/articles/search/ | 缺少 keyword → 422 | ✅ |
-| SRC-004 | GET /api/v1/articles/search/ | 大小写不敏感 | ✅ |
-| SRC-005 | GET /api/v1/articles/search/ | 草稿不参与搜索 | ✅ |
-
-### 文章管理接口（articles - admin）
-
-| 用例 ID | 接口 | 场景 | 结果 |
-| :--- | :--- | :--- | :--- |
-| ADM-001 | POST /api/v1/admin/articles/ | 正常创建（201） | ✅ |
-| ADM-002 | POST /api/v1/admin/articles/ | 未登录 → 401 | ✅ |
-| ADM-003 | POST /api/v1/admin/articles/ | 缺少 title → 422 | ✅ |
-| ADM-004 | POST /api/v1/admin/articles/ | 缺少 cover → 422 | ✅ |
-| ADM-005 | POST /api/v1/admin/articles/ | slug 重复 → 400 | ✅ |
-| ADM-006 | POST /api/v1/admin/articles/ | 封面格式错误 → 400 | ✅ |
-| ADM-007 | POST /api/v1/admin/articles/ | 封面超 20MB → 400 | ✅ |
-| ADM-008 | POST /api/v1/admin/articles/ | 附件格式错误 → 400 | ✅ |
-| ADM-009 | POST /api/v1/admin/articles/ | 中文文件名保留 | ✅ |
-| ADM-010 | POST /api/v1/admin/articles/ | category_id/tag_ids 传空串视为未填 | ✅ |
-| ADM-011 | POST /api/v1/admin/articles/ | tag_ids 传 JSON 数组字符串 | ✅ |
-| ADM-012 | POST /api/v1/admin/articles/ | tag_ids 用重复字段 / category_id 字符串 | ✅ |
-| ADM-038 | DELETE /api/v1/admin/articles/{id}/ | 正常删除（200 信封） | ✅ |
-| ADM-039 | DELETE /api/v1/admin/articles/{id}/ | 文章不存在 → 404 | ✅ |
-| ADM-040 | DELETE /api/v1/admin/articles/{id}/ | 未登录 → 401 | ✅ |
-| ADM-041 | GET /api/v1/admin/articles/ | 管理列表含草稿 | ✅ |
-| ADM-042 | GET /api/v1/admin/articles/ | 未登录 → 401 | ✅ |
-| ADM-043 | GET /api/v1/admin/articles/ | is_published=false 过滤草稿 | ✅ |
-| ADM-044 | GET /api/v1/admin/articles/ | 标题关键词搜索 | ✅ |
-| ADM-045 | GET /api/v1/admin/articles/ | category_slug 过滤 | ✅ |
-| ADM-046 | GET /api/v1/admin/articles/ | 管理列表分页 | ✅ |
-| ADM-047 | DELETE /api/v1/admin/articles/slug/{slug}/ | 按 slug 删除草稿 | ✅ |
-| ADM-048 | DELETE /api/v1/admin/articles/slug/{slug}/ | slug 不存在 → 404 | ✅ |
-| ADM-049 | DELETE /api/v1/admin/articles/slug/{slug}/ | 未登录 → 401 | ✅ |
-| ADM-050 | POST /api/v1/admin/articles/ | 英文标题自动生成 slug | ✅ |
-| ADM-051 | POST /api/v1/admin/articles/ | 中文标题自动生成拼音 slug | ✅ |
-| ADM-052 | POST /api/v1/admin/articles/ | 手动 slug 优先 | ✅ |
-| ADM-053 | POST /api/v1/admin/articles/ | 自动生成 slug 冲突加后缀 | ✅ |
-| ADM-054 | POST /api/v1/admin/articles/ | 手动 slug 冲突加后缀 | ✅ |
-| ADM-055 | PUT /api/v1/admin/articles/{id}/ | 更新 slug 冲突加后缀且排除自身 | ✅ |
+| 用例 ID | 内容 | 结果 |
+| :--- | :--- | :--- |
+| AUTH-007 | 登录连续失败达上限 → 429（正确密码同样被拦截） | ✅ |
+| AUTH-008 | 登录成功清除失败计数 | ✅ |
+| AUTH-010 | 刷新返回轮换后的 refresh（与旧值不同） | ✅ |
+| AUTH-014 | 轮换后旧 refresh 重放 → 401（黑名单）；新 refresh 可用 | ✅ |
+| ADM-041 | 按 id 删除文章同步清理封面/附件文件 | ✅ |
+| ADM-042 | 按 slug 删除同步清理文件 | ✅ |
+| ADM-043 | `QuerySet.delete()`（admin 批量删除路径）触发清理 | ✅ |
+| SRC-001~005 | 搜索返回值改为分页信封 `{items,total,page,page_size}` | ✅ |
+| SRC-006 | 搜索分页：total=3、page_size=2 时第 1 页 2 条、第 2 页 1 条 | ✅ |
+| SRC-007 | 搜索 `page_size=101` → 422 | ✅ |
+| TAG-001/002 | 公开标签列表正常/空数据 | ✅ |
+| AVT-001~004 | 头像路径 `avatars/YYYY/MM/<uuid>.jpg`；JPG 通过、GIF/超 2MB 拒绝 | ✅ |
+| ADM-056/057 | 管理列表 `ordering=publish_time` / `-publish_time` 升/降序 | ✅ |
+| ADM-058 | `ordering=password` → 400「不支持的排序字段」（白名单） | ✅ |
+| ADM-059 | 状态过滤与排序组合 | ✅ |
 
 ## 三、代码覆盖率
 
-| 模块 | 覆盖率 |
-| :--- | :--- |
-| articles | 97%（models 94%、schemas 95%、api 接近全绿） |
-| users | 98%（api 100%） |
-| common | 58%（exceptions 70%、responses 80%；pagination 0% —— 当前未被接口使用） |
-| **总计** | **86%** |
+| 模块 | 覆盖率 | 备注 |
+| :--- | :--- | :--- |
+| articles/models.py | 94% | |
+| articles/api.py | 92% | |
+| articles/schemas.py | 84% | multipart 归一化分支 |
+| articles/utils.py | 95% | |
+| articles/signals.py | 100% | 删除清理 |
+| articles/apps.py | 67% | `ready()` 中的进程判断分支 |
+| articles/defaults.py | 100% | |
+| users/api.py | 96% | 登录/刷新/me |
+| users/models.py | 96% | 头像 |
+| users/schemas.py | 100% | |
+| users/authentication.py | 88% | |
+| common/exceptions.py | 70% | 兜底 500 分支 |
+| common/responses.py | 80% | |
+| common/pagination.py | 0% | 当前未被任何接口引用（列表接口为手动分页） |
+| **总计** | **88%** | |
 
-## 四、测试期间发现并修复的问题
+## 四、已知的历史问题（已修复，保留记录）
 
-1. **AUTH-006（username 为空应返回 422）**：`LoginIn` 未约束最小长度，空字符串会通过 Pydantic 校验并进入 `authenticate()`，返回 401。已在 `users/schemas.py` 为 `username`/`password` 增加 `Field(..., min_length=1)`，空值现在返回 422。
-2. **接口响应信封统一**：为符合 TEST.md 断言与 DESIGN 5.1 的统一响应约定，将公开接口（login/refresh/me/categories/tags/articles 列表与详情/search）从裸 JSON 调整为 `{code, message, data}` 信封；`search` 由分页 dict 改为数组；`articles/` 列表改为手动分页（保留 `items/total/page/page_size`，page=0 返回 422）。
-3. **multipart 可选字段空串 / tag_ids 编码兼容（ADM-010~012）**：django-ninja 对 multipart 数组字段用 `getlist` 期望重复字段，且把空字符串当作真实值，导致 Swagger UI 发送的 `category_id=`、`tag_ids=`、`tag_ids=[1]` 均报 422。已在 `articles/schemas.py` 为 `ArticleCreateIn`/`ArticleUpdateIn` 的 `category_id`/`tag_ids` 增加 `mode='before'` 校验器，统一兼容：空串视为未填、JSON 数组字符串、逗号分隔、重复字段四种编码。
-4. **新增管理文章列表与按 slug 删除（ADM-041~049）**：此前无管理列表接口，未发布草稿无法通过 API 定位（公开接口仅返回已发布文章）。新增 `GET /api/v1/admin/articles/`（含草稿，支持 `is_published`/`keyword`/`category_slug` 过滤与分页）与 `DELETE /api/v1/admin/articles/slug/{slug}/`，草稿可被枚举并删除。
-5. **slug 后端自动生成（ADM-050~055）**：新增 `articles/utils.py`（`generate_slug` 中文转拼音 + `unique_slug` 冲突自动加后缀）；`ArticleCreateIn.slug` 改为可选，创建时为空则由 title 生成（手动传入仍优先）；更新接口 slug 冲突时加后缀且排除自身。同时发现 django-ninja 的 `Schema` 内部 `model_validator(mode='wrap')` 会把输入包装成只读 `DjangoGetter`，导致 `mode='before'` 校验器不可写，故改为在 API 层生成；并记录 Django 6 `Client.put` 需显式 `content_type='application/x-www-form-urlencoded'` + `urlencode` 编码。
+1. **AUTH-006（username 为空应返回 422）**：`LoginIn` 增加 `Field(..., min_length=1)`。
+2. **响应信封统一**：公开接口统一为 `{code, message, data}`。
+3. **multipart 可选字段空串 / tag_ids 编码兼容（ADM-010~012）**：`schemas.py` 的 `mode='before'` 校验器统一处理空串、JSON 数组字符串、逗号分隔、重复字段。
+4. **管理文章列表与按 slug 删除（ADM-041~049）**。
+5. **slug 后端自动生成（ADM-050~055）**：中文转拼音 + 冲突加后缀；并记录 django-ninja `Schema` 内部 `model_validator(mode='wrap')` 会使 `mode='before'` 失效、以及 Django 6 `Client.put` 需显式 `content_type` + `urlencode` 的坑。
 
 ## 五、复现命令
 
 ```bash
-uv run pytest tests/                                        # 全部测试
-uv run pytest tests/test_login.py::TestLoginAPI             # 单个测试类
-uv run pytest tests/ --junitxml=tests/reports/junit.xml \
+uv run pytest                                                # 全部测试
+uv run pytest tests/test_login.py::TestLoginAPI              # 单个测试类
+uv run ruff check .                                          # lint
+uv run mypy config articles common users                     # 类型检查
+uv run pytest --junitxml=tests/reports/junit.xml \
   --cov=articles --cov=users --cov=common \
-  --cov-report=term --cov-report=html:tests/reports/htmlcov # 覆盖率
+  --cov-report=term --cov-report=html:tests/reports/htmlcov  # 覆盖率
 ```

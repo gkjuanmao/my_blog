@@ -155,9 +155,9 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | summary | CharField(500) | blank=True | 摘要 (用于列表展示) |
 | publish_time | DateTimeField | db_index=True | 发布时间 |
 | location | CharField(255) | blank=True | 写作/事件地点 |
-| cover_image | ImageField | not null | 封面图片，upload_to: `covers/%Y/%m/UUID.ext` |
+| cover_image | ImageField | not null | 封面图片，upload_to: `covers/UUID.ext` |
 | cover_image_name | CharField(255) | not null | 封面原始文件名 |
-| file | FileField | not null | 附件文件，upload_to: `files/%Y/%m/UUID.ext` |
+| file | FileField | not null | 附件文件，upload_to: `files/UUID.ext` |
 | file_name | CharField(255) | not null | 附件原始文件名 |
 | author | ForeignKey(User) | on_delete=CASCADE | 作者 |
 | category | ForeignKey(Category) | on_delete=SET_NULL, null=True | 所属分类 |
@@ -232,7 +232,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | 方法 | 路径 | 认证 | 说明 |
 | :--- | :--- | :--- | :--- |
 | POST | `/api/v1/login/` | ❌ | 用户名密码登录，返回 access + refresh token |
-| POST | `/api/v1/token/refresh/` | ❌ | 刷新 access token |
+| POST | `/api/v1/token/refresh/` | ❌ | 刷新 access token（并轮换 refresh，旧令牌进黑名单） |
 | GET | `/api/v1/me/` | ✅ | 获取当前用户信息 |
 
 #### 文章模块 (articles) - 公开接口
@@ -243,13 +243,13 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | GET | `/api/v1/tags/` | ❌ | 获取所有标签 |
 | GET | `/api/v1/articles/` | ❌ | 文章列表 (分页, 可按 category_slug 过滤) |
 | GET | `/api/v1/articles/{slug}/` | ❌ | 文章详情 (views +1) |
-| GET | `/api/v1/articles/search/?keyword=xxx` | ❌ | 按标题关键词搜索 |
+| GET | `/api/v1/articles/search/?keyword=xxx` | ❌ | 按标题关键词搜索（分页） |
 
 #### 文章模块 (articles) - 管理接口
 
 | 方法 | 路径 | 认证 | 说明 |
 | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/admin/articles/` | ✅ | 文章列表 (含未发布草稿，分页，可按 `is_published`/`keyword`/`category_slug` 过滤) |
+| GET | `/api/v1/admin/articles/` | ✅ | 文章列表 (含未发布草稿，分页，可按 `is_published`/`keyword`/`category_slug` 过滤，`ordering` 排序) |
 | POST | `/api/v1/admin/articles/` | ✅ | 创建文章 (含封面+附件上传) |
 | PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章 |
 | DELETE | `/api/v1/admin/articles/{id}/` | ✅ | 按 id 删除文章 (含草稿) |
@@ -326,6 +326,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 **错误**：
 - 401：「用户名或密码错误」（信封格式）
 - 422：缺少 `username`/`password` 或为空（`detail` 格式）
+- 429：「登录失败次数过多，请 5 分钟后再试」（同一客户端 IP + 用户名连续失败 5 次后锁定 5 分钟）
 
 #### POST `/api/v1/token/refresh/` (刷新访问令牌)
 
@@ -340,12 +341,17 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 {
   "code": 200,
   "message": "success",
-  "data": { "access": "eyJhbGciOiJIUzI1NiIs..." }
+  "data": {
+    "access": "eyJhbGciOiJIUzI1NiIs...",
+    "refresh": "eyJhbGciOiJIUzI1NiIs..."
+  }
 }
 ```
 
+> 启用 `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION`：每次刷新返回**新的** `refresh`，旧 refresh 立即进入黑名单，重放返回 401。
+
 **错误**：
-- 401：「refresh 令牌无效或已过期」（信封格式）
+- 401：「refresh 令牌无效或已过期」（含已进黑名单的旧令牌）（信封格式）
 - 422：缺少 `refresh`（`detail` 格式）
 
 #### GET `/api/v1/me/` (当前用户信息)
@@ -439,24 +445,30 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 #### GET `/api/v1/articles/search/` (搜索文章)
 
-**认证**：❌　按标题模糊搜索已发布文章，返回数组（非分页）。
+**认证**：❌　按标题模糊搜索已发布文章，返回**分页信封**。
 
 | 参数 | 类型 | 必填 | 说明 |
 | :--- | :--- | :- | :--- |
 | keyword | string | ✅ | 关键词，标题模糊匹配 |
+| page | int | ❌ | 页码，默认 1，≥1 |
+| page_size | int | ❌ | 每页数量，默认 10，1~100 |
 
-**响应** (200)：
+**响应** (200)：`data` 结构与 5.3.2 列表接口一致：
 ```json
 {
   "code": 200,
   "message": "success",
-  "data": [
-    { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" }
-  ]
+  "data": {
+    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post" } ],
+    "total": 1,
+    "page": 1,
+    "page_size": 10
+  }
 }
 ```
 
-**错误**：422：缺少 `keyword`（`detail` 格式）
+**错误**：
+- 422：缺少 `keyword`，或 `page`/`page_size` 非法取值（`detail` 格式）
 
 ---
 
@@ -475,8 +487,11 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | is_published | bool | ❌ | 按发布状态过滤 |
 | keyword | string | ❌ | 标题关键词模糊搜索 |
 | category_slug | string | ❌ | 按分类别名过滤 |
+| ordering | string | ❌ | 排序字段：`publish_time`（升序）/`-publish_time`（降序）；可选白名单 `created_at`/`updated_at`/`views`/`title`（前缀 `-` 降序）；不传按默认发布时间降序 |
 
 **响应** (200)：`data` 结构与公开 `GET /articles/` 一致（`items` 为 `ArticleOut` 数组 + `total`/`page`/`page_size`）。
+
+**错误**：400：`ordering` 不在白名单内（「不支持的排序字段」，信封格式）
 
 #### POST `/api/v1/admin/articles/` (创建文章)
 
@@ -667,6 +682,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=2),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
+    # 轮换后把旧 refresh token 加入黑名单（需安装 ninja_jwt.token_blacklist，含迁移）
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 ```
@@ -683,8 +700,8 @@ SIMPLE_JWT = {
 
 | 文件类型 | 存储路径模板 | 大小限制 | 允许格式 |
 | :--- | :--- | :--- | :--- |
-| 文章封面 | `media/covers/%Y/%m/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
-| 文章附件 | `media/files/%Y/%m/UUID.ext` | ≤ 50MB | PDF, DOCX, HTML |
+| 文章封面 | `media/covers/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
+| 文章附件 | `media/files/UUID.ext` | ≤ 50MB | PDF, DOCX, HTML |
 | 用户头像 | `media/avatars/%Y/%m/UUID.ext` | ≤ 2MB | JPG, PNG |
 
 ### 7.2 文件命名规则
@@ -721,6 +738,8 @@ SIMPLE_JWT = {
 └─────────────────────────────────────────────────┘
 ```
 
+> 说明：上图为包含 PostgreSQL 的完整形态；当前 `docker-compose.yml` 仅含 app + nginx + front 三个服务，数据库为 SQLite（bind mount `db_data/`），db/redis 服务已移除、配置预留。
+
 ### 8.2 Nginx 路由规则
 
 | 路径 | 处理方式 |
@@ -732,8 +751,10 @@ SIMPLE_JWT = {
 
 ### 8.3 数据持久化
 
-- 数据库：Docker named volume `pg_data`
-- 媒体文件：Docker named volume `media_data`，同时挂载到 web 和 nginx 容器
+- 数据库：prod 当前使用 SQLite，经 bind mount 持久化到宿主机 `db_data/`（容器重建不丢）
+- 媒体文件：named volume `media`，同时挂载到 app 与 nginx 容器
+- 静态文件：named volume `staticfiles`，由 `collectstatic` 收集后供 nginx alias
+- 说明：PostgreSQL（`pg_data`）与 Redis 为预留，当前 compose 未包含对应服务
 
 ---
 
@@ -797,6 +818,11 @@ DJANGO_ENV=dev
 DJANGO_SECRET_KEY=your-random-secret-key-here
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
 
+# 生产环境 TLS / CSRF（默认关闭，适配当前 nginx 纯 HTTP 反代；启用 HTTPS 后再打开）
+# DJANGO_USE_TLS=true
+# DJANGO_SECURE_HSTS_SECONDS=31536000
+# DJANGO_CSRF_TRUSTED_ORIGINS=https://blog.example.com
+
 # Database (生产环境，预留)
 # POSTGRES_DB=my_blog
 # POSTGRES_USER=my_blog
@@ -804,7 +830,7 @@ DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
 # POSTGRES_HOST=db
 # POSTGRES_PORT=5432
 
-# Cache (生产环境，预留)
+# Cache (生产环境，预留；未设置时 prod 回落进程内缓存)
 # REDIS_URL=redis://redis:6379/0
 ```
 

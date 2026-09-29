@@ -11,7 +11,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`，如 `http://<IP>:18888/api/v1/docs`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
-- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 123 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
+- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块，共 137 个用例）；报告在 `tests/reports/`（`htmlcov/` 已 gitignore）
 - pytest 的 `DJANGO_SETTINGS_MODULE` 由 `pyproject.toml` 直接指定为 `config.settings.dev`（绕过 `config/settings/__init__.py` 的 `DJANGO_ENV` 判断），恒走 dev 配置；`testpaths = ["tests"]` 限定只在 `tests/` 收集测试，各 app 内残留的 `tests.py`（如 `articles/tests.py`，为空）不会被运行
 - `tests/conftest.py` 有 autouse 的 `media_root` fixture，把 `MEDIA_ROOT` 隔离到 `tmp_path`，所以 pytest 上传的文件不会落进真实 `media/`（早期版本会污染）；仍需清理的是手工/接口联调产生的文件
 - **手工测试后必须清理上传产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
@@ -25,13 +25,15 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 - 环境由 `config/settings/__init__.py` 中的 `DJANGO_ENV` 选择（默认 `dev`）；`DJANGO_SETTINGS_MODULE` 恒为 `config.settings`。
 - `dev`：SQLite `db_data/db.sqlite3`（bind mount 持久化，已 gitignore）+ 内存缓存，`DEBUG=True`，硬编码 SECRET_KEY。
-- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。`prod.py` 中的 PostgreSQL/Redis 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db/redis 服务）。
+- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。TLS/CSRF/缓存均已环境化：`DJANGO_USE_TLS=true` 才开启 `SECURE_SSL_REDIRECT`/安全 Cookie/`SECURE_PROXY_SSL_HEADER`，`DJANGO_SECURE_HSTS_SECONDS`（默认 0）控制 HSTS，`DJANGO_CSRF_TRUSTED_ORIGINS` 配置信任来源，设置 `REDIS_URL` 则用 Redis 缓存（否则回落 LocMemCache）；`ALLOWED_HOSTS` 空值回落 `localhost,127.0.0.1`。`prod.py` 中的 PostgreSQL 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db/redis 服务）。
 - `.env` 仅被 docker-compose 的 `env_file` 消费；Django 不会自动加载。本地跑 prod 需手动 export，例如 `DJANGO_ENV=prod DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=127.0.0.1 uv run python manage.py runserver`。
 
 ## 应用结构
 
-- `users/` — 自定义 `User(AbstractUser + avatar + avatar_name)`；`AUTH_USER_MODEL='users.User'` 在 `base.py` 中设置 —— 不要再加其他用户模型。JWT 基于 `django-ninja-jwt`（读取 `base.py` 中的 `SIMPLE_JWT` 配置）：`users/api.py`（`POST /login/`、`POST /token/refresh/`、`GET /me/`）、`users/authentication.py` 中的 `JWTAuth(HttpBearer)`。
-- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（返回数组）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`GET /admin/articles/`（含草稿，`is_published`/`keyword`/`category_slug` 过滤+分页）、`POST/PUT/DELETE /admin/articles/...`、`DELETE /admin/articles/slug/{slug}/`（创建/更新为 multipart；封面 JPG/PNG/WebP <=20MB，附件 PDF/Word/HTML <=50MB）、分类/标签完整 CRUD：`POST/GET/PUT/DELETE /admin/categories/...`、`POST/GET/PUT/DELETE /admin/tags/...`（JSON body）。`slug` 创建时可省略：为空由 `title`/`name` 自动生成（`articles/utils.py` `generate_slug` 中文转拼音，依赖 `pypinyin`），冲突由 `unique_slug`（泛化为按 `model` 查询）自动加 `-2` 后缀，手动传入仍优先。
+- `users/` — 自定义 `User(AbstractUser + avatar + avatar_name)`；头像落盘路径 `avatars/%Y/%m/UUID.ext`，`users/models.py` 的 `validate_avatar` 限制 JPG/PNG 且 ≤2MB（对齐 DESIGN 4.1/7.2）。`AUTH_USER_MODEL='users.User'` 在 `base.py` 中设置 —— 不要再加其他用户模型。JWT 基于 `django-ninja-jwt`（读取 `base.py` 中的 `SIMPLE_JWT` 配置）：`users/api.py`（`POST /login/`、`POST /token/refresh/`、`GET /me/`）、`users/authentication.py` 中的 `JWTAuth(HttpBearer)`。
+  - `POST /login/` 有失败限流：同一「客户端 IP（取 `X-Forwarded-For` 最后一段）+ 用户名」连续失败 5 次锁定 5 分钟（缓存实现，`LOGIN_MAX_ATTEMPTS`/`LOGIN_LOCKOUT_SECONDS`），命中返回 429。
+  - `POST /token/refresh/` 会轮换 refresh：返回新的 `access` **与新的 `refresh`**，旧 refresh 进黑名单（`ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION=True`，依赖 `ninja_jwt.token_blacklist` app，已含迁移）。
+- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（**分页信封** `{items,total,page,page_size}`，参数含 `page`/`page_size`）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`GET /admin/articles/`（含草稿，`is_published`/`keyword`/`category_slug` 过滤 + 分页 + `ordering` 排序，白名单：`publish_time`/`created_at`/`updated_at`/`views`/`title`，非法值返回 400）、`POST/PUT/DELETE /admin/articles/...`、`DELETE /admin/articles/slug/{slug}/`（创建/更新为 multipart；封面 JPG/PNG/WebP <=20MB，附件 PDF/Word/HTML <=50MB；**删除文章会经 `articles/signals.py` 的 `post_delete` 同步清理封面/附件文件**）、分类/标签完整 CRUD：`POST/GET/PUT/DELETE /admin/categories/...`、`POST/GET/PUT/DELETE /admin/tags/...`（JSON body）。`slug` 创建时可省略：为空由 `title`/`name` 自动生成（`articles/utils.py` `generate_slug` 中文转拼音，依赖 `pypinyin`），冲突由 `unique_slug`（泛化为按 `model` 查询）自动加 `-2` 后缀，手动传入仍优先。
 - `common/` — 已实现：`responses.py`（信封 `{code,message,data}`，`code` = HTTP 状态码）、`exceptions.py`（`register_exception_handlers` 覆盖 HttpError/ValidationError/Exception）、`pagination.py`（`CustomPagination`）。`utils.py` 为空。
 - 无 `records/`、`comments/`、`blog/` app（已移除）。
 
@@ -56,5 +58,5 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - 宿主机缺 docker compose 插件 / docker.sock 无权限时无法 `docker compose` 或 `docker build` 验证，只能在本机做 YAML 语法校验（`python3 -c "import yaml..."`）。
 - **容器数据持久化**：prod 容器中 SQLite 数据库经 bind mount 存宿主机 `db_data/`（容器销毁重建不丢，首次 migrate 前需先 `mkdir -p db_data`）；`media/`、`staticfiles/` 走 named volume（app 与 nginx 共享 media）；`docker compose down` 不删数据，只有 `rm -rf db_data` 才删除数据库。
-- `TEST.md` 是面向 AI 的测试用例规范文档（用于生成 pytest 用例），但已落后于实际测试（未覆盖分类/标签/slug 相关用例）——以 `tests/` 实际代码为准。
+- `TEST.md` 是面向 AI 的测试用例规范文档（用于生成 pytest 用例），主体仍是历史草案，但 2026-09 迭代已补充「六、存量用例增补」（限流/黑名单/删除清理/搜索分页/头像/分类标签）并在顶部标注——仍以 `tests/` 实际代码为准。
 - Git 仓库已有提交（identity 已配置为 `gkjuanmao`）；提交信息遵循 `DESIGN.md` 9.2 的规范（`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀）。
