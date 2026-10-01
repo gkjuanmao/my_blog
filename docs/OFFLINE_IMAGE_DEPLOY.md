@@ -40,11 +40,19 @@ podman save --format docker-archive -m \
   localhost/my_blog_front:latest \
   docker.io/library/nginx:1.27 \
   docker.io/library/redis:7-alpine
-sha256sum ~/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d).tar \
-  | awk '{print $1}' > ~/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d).tar.sha256
+# 校验和写成 GNU 标准格式 "<hash>  <文件名>"，目标机才能直接 sha256sum -c
+( cd ~/my_blog_images && sha256sum "my_blog_images_amd64_$(date +%Y%m%d).tar" ) \
+  > ~/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d).tar.sha256
 ```
 
 （`scripts/blog.sh export` 就是上面这段，命名规则为 `my_blog_images_<arch>_<YYYYMMDD>.tar` +同名 `.sha256`。）
+
+目标机校验（**必须在 tar 所在目录执行**，`-c` 按当前目录解析文件名）：
+
+```bash
+cd ~/Code/my_blog            # 或 tar 所在处
+sha256sum -c my_blog_images_amd64_20261001.tar.sha256     # → "…: 成功"
+```
 
 - `--format docker-archive`：podman 与 docker 都能 `load`
 - `-m`：多镜像归档（一个 tar 装 4 个镜像）

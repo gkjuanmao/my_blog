@@ -528,11 +528,12 @@ cmd_export() {
   if ! "$ENGINE" save ${save_args[@]+"${save_args[@]}"} -o "$out" "${IMAGES[@]}" 2>&1 | sed 's/^/    /'; then
     die "$ENGINE save 失败"
   fi
-  sha256sum "$out" | awk '{print $1}' > "${out}.sha256"
+  # GNU 标准格式 "<hash>  <文件名>"：这样目标机上 sha256sum -c xxx.tar.sha256 可直接校验
+  ( cd "$(dirname "$out")" && sha256sum "$(basename "$out")" ) > "${out}.sha256"
   ok "$(human_size "$(stat -c%s "$out")")"
 
   step "校验和"
-  ok "$(cat "${out}.sha256")"
+  ok "$(awk '{print $1}' "${out}.sha256")"
   printf '\n产物：%s%s%s\n' "$C_BOLD" "$out" "$C_END"
   printf '  目标机：%s load -i %s\n' "$ENGINE" "$(basename "$out")"
   printf '  或直接：scripts/blog.sh import --in %s\n' "$out"
@@ -560,7 +561,7 @@ cmd_import() {
   step "校验校验和"
   if [ -f "${in}.sha256" ]; then
     local expect actual
-    expect="$(cat "${in}.sha256")"
+    expect="$(awk '{print $1}' "${in}.sha256")"   # 兼容裸哈希与 "<hash>  <file>" 两种格式
     actual="$(sha256sum "$in" | awk '{print $1}')"
     [ "$expect" = "$actual" ] || die "sha256 不匹配（文件可能损坏或传输不完整）" "期望 ${expect:0:16}… 实际 ${actual:0:16}…"
     ok "${actual:0:16}…"
