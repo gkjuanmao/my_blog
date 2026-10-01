@@ -6,6 +6,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 ## 常用命令
 
+- **部署运维统一入口：`scripts/blog.sh <子命令>`**（预检/启动/停止/状态/日志/质量门禁/导出/导入/演示数据/清理，见 `scripts/blog.sh help`）—— 它把“podman-compose 不会因镜像变更重建容器”、“SELinux 需 `:z`”、“`.env` 必填校验”、“轮询等就绪”等实测坑点固化成了代码，优先用它而不是手敲步骤。
 - `uv sync` — 安装依赖（runtime + dev 组：ruff/mypy/django-stubs）
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`；局域网访问需用 `runserver 0.0.0.0:8000`（dev 的 `ALLOWED_HOSTS=['*']` 且 `CORS_ALLOW_ALL_ORIGINS=True`）
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`，如 `http://<IP>:18888/api/v1/docs`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露
@@ -33,7 +34,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `users/` — 自定义 `User(AbstractUser + avatar + avatar_name)`；头像落盘路径 `avatars/%Y/%m/UUID.ext`，`users/models.py` 的 `validate_avatar` 限制 JPG/PNG 且 ≤2MB（对齐 DESIGN 4.1/7.2）。`AUTH_USER_MODEL='users.User'` 在 `base.py` 中设置 —— 不要再加其他用户模型。JWT 基于 `django-ninja-jwt`（读取 `base.py` 中的 `SIMPLE_JWT` 配置）：`users/api.py`（`POST /login/`、`POST /token/refresh/`、`GET /me/`）、`users/authentication.py` 中的 `JWTAuth(HttpBearer)`。
   - `POST /login/` 有失败限流：同一「客户端 IP（取 `X-Forwarded-For` 最后一段）+ 用户名」连续失败 5 次锁定 5 分钟（缓存实现，`LOGIN_MAX_ATTEMPTS`/`LOGIN_LOCKOUT_SECONDS`），命中返回 429。
   - `POST /token/refresh/` 会轮换 refresh：返回新的 `access` **与新的 `refresh`**，旧 refresh 进黑名单（`ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION=True`，依赖 `ninja_jwt.token_blacklist` app，已含迁移）。
-- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（**分页信封** `{items,total,page,page_size}`，参数含 `page`/`page_size`）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`GET /admin/articles/`（含草稿，`is_published`/`keyword`/`category_slug` 过滤 + 分页 + `ordering` 排序，白名单：`publish_time`/`created_at`/`updated_at`/`views`/`title`，非法值返回 400）、`POST/PUT/DELETE /admin/articles/...`、`DELETE /admin/articles/slug/{slug}/`（创建/更新为 multipart；封面 JPG/PNG/WebP <=20MB，附件 PDF/Word/HTML <=50MB；**删除文章会经 `articles/signals.py` 的 `post_delete` 同步清理封面/附件文件**）、分类/标签完整 CRUD：`POST/GET/PUT/DELETE /admin/categories/...`、`POST/GET/PUT/DELETE /admin/tags/...`（JSON body）。`slug` 创建时可省略：为空由 `title`/`name` 自动生成（`articles/utils.py` `generate_slug` 中文转拼音，依赖 `pypinyin`），冲突由 `unique_slug`（泛化为按 `model` 查询）自动加 `-2` 后缀，手动传入仍优先。
+- `articles/` — `Article`/`Category`/`Tag`。公开接口：`GET /categories/`、`GET /tags/`、`GET /articles/`（分页，支持 `category_slug` 过滤）、`GET /articles/search/?keyword=`（**分页信封** `{items,total,page,page_size}`，参数含 `page`/`page_size`）、`GET /articles/{slug}/`（阅读量 +1）。管理接口（JWT 认证）：`GET /admin/articles/`（含草稿，`is_published`/`keyword`/`category_slug` 过滤 + 分页 + `ordering` 排序，白名单：`publish_time`/`created_at`/`updated_at`/`views`/`title`，非法值返回 400）、`POST/PUT/DELETE /admin/articles/...`、`DELETE /admin/articles/slug/{slug}/`（创建/更新为 multipart；封面 JPG/PNG/WebP <=20MB，附件 PDF/Word <=50MB；**删除文章会经 `articles/signals.py` 的 `post_delete` 同步清理封面/附件文件**）、分类/标签完整 CRUD：`POST/GET/PUT/DELETE /admin/categories/...`、`POST/GET/PUT/DELETE /admin/tags/...`（JSON body）。`slug` 创建时可省略：为空由 `title`/`name` 自动生成（`articles/utils.py` `generate_slug` 中文转拼音，依赖 `pypinyin`），冲突由 `unique_slug`（泛化为按 `model` 查询）自动加 `-2` 后缀，手动传入仍优先。
 - `common/` — 已实现：`responses.py`（信封 `{code,message,data}`，`code` = HTTP 状态码）、`exceptions.py`（`register_exception_handlers` 覆盖 HttpError/ValidationError/Exception）、`pagination.py`（`CustomPagination`）。`utils.py` 为空。
 - 无 `records/`、`comments/`、`blog/` app（已移除）。
 
@@ -42,9 +43,15 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - 在 `config/urls.py` 中创建一个 `NinjaAPI` 实例；挂载于 `/api/v1/`，因此真实路径为 `/api/v1/login/`、`/api/v1/me/`、`/api/v1/articles/`、`/api/v1/admin/articles/`、`/api/v1/admin/categories/`、`/api/v1/admin/tags/`。Swagger UI 在 `/api/v1/docs`。
 - 响应统一使用 `success_response()` 信封；`HttpError`/`ValidationError`/500 均通过 `common.exceptions.register_exception_handlers(api)` 返回同一信封。
 - 分页：`GET /articles/` 在 view 内手动分页（`Query(page, page_size)`，`ge=1`）；输出为信封内 `{items,total,page,page_size}`。
+- **文章归档（导入/导出，仅 staff）**：`GET /admin/articles/export/` 与 `/export/estimate/`（**必须早于详情路由**，见下）、`GET /admin/archives/{ticket}/`（能力 URL、`auth=None`、单次使用、重复访问 410、可 `POST .../reissue/` 重签）、两阶段导入 `POST /admin/articles/import/stage/`（上传+校验，返回 `staged_id` 与预检报告）与 `POST /admin/articles/import/commit/`（JSON 传 `staged_id`，不重传文件）、`DELETE /admin/articles/import/stage/{id}/`、`GET /admin/articles/import/limits/`。实现见 `articles/archive/`（`export`/`validate`/`planner`/`importer`/`locks`/`staging`/`limits`/`format`/`errors`），方案与 D1–D24 决策见 `docs/ARTICLE_IMPORT_EXPORT.md`，产物清扫用 `manage.py purge_archives`。
 
 ## 易踩坑点
 
+- **文章归档（导入/导出）路由顺序敏感**：`GET /admin/articles/export/` 必须注册在 `GET /admin/articles/{article_id}/` **之前**——详情路由没有 int 转换器，`resolve()` 会把 `export` 解析成 `article_id`（实测）。`tests/test_archive_export.py::TestArchiveRouting` 钉住了这一点。
+- 归档产物（导出包/回滚包/导入暂存）落在 `ARCHIVE_ROOT`（默认 `private_archives/`，已 gitignore），**绝不能在 `MEDIA_ROOT` 下**：nginx 对 `/media/` 无鉴权且 `expires 7d`。
+- 媒体幂等靠 `Article.cover_image_sha256` / `file_sha256`，语义是**当前落盘文件的字节哈希**；封面**按需**重编码（已规范且无 EXIF 方向就原样存），否则 `导出→导入` 每轮都会重写并损失画质（实测教训）。
+- 导入锁用缓存 `SET NX`（**不是** `select_for_update`：SQLite 上它是静默空操作），缓存不可用时 fail-closed 返回 503；且顺序必须是**取锁 → 限流 → 最后消费 `staged_id`**，否则被 429/409 挡住时暂存包已作废，用户白传 1GB。
+- 判断封面是否需要方向校正必须看 `Orientation` **标签值**：Pillow 12.x 在无 Orientation 时 `exif_transpose` 也返回副本，用"对象是否相同"判定会给每张封面假阳告警（实测）。
 - **默认分类/标签机制**（`articles/defaults.py`）：创建文章时未填分类/标签（含 `0`/空串占位值）自动挂默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"）；`AppConfig.ready()` 启动时 `ensure_defaults()` 幂等创建，pytest/mypy 进程内跳过（`sys.modules` 判断）、迁移期捕获 `DatabaseError`。默认分类/标签按 slug 受删除保护（DELETE 返回 400）。
 - multipart 下"无分类/标签"的占位值（`''`/`'0'`/`'null'`/非正数）必须归一化为 `None`/`[]`（`articles/schemas.py` `_normalize_category_id`/`_normalize_tag_ids`），否则 `category_id=0` 会触发外键 `IntegrityError`；创建时引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）。
 - `create_article` 的 `IntegrityError` 不能一律当成 slug 冲突：只有同 slug 记录存在时才报"slug 已存在"（此时会加 `-2` 后缀重试），否则报通用创建失败；插入失败会清理已落盘的 cover/attachment，避免孤儿文件。
@@ -56,7 +63,17 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `templates/` 和 `static/` 存在但为空 —— 新增模板/静态文件时创建文件即可。
 - `docker-compose.yml` 仅含 app+nginx 服务（postgres/redis 已移除）；`prod.py` 中仍有 PostgreSQL/Redis 注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
-- 宿主机缺 docker compose 插件 / docker.sock 无权限时无法 `docker compose` 或 `docker build` 验证，只能在本机做 YAML 语法校验（`python3 -c "import yaml..."`）。
+- **`uv.lock` 的源是清华 TUNA 镜像**（仓库内已固化）：因此 Dockerfile **不再需要**构建期 `sed` 换源；也与本机 `~/.config/uv/uv.toml` 的默认源一致，所以 plain `uv run` 不会再重写 lock（若把 lock 换回 pypi.org，这个坑会重新出现）。
+- **本机用 podman 验证部署（无 docker）**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`cp .env.example .env`（compose 的 `env_file` 必需，且 `DJANGO_ENV=prod` 时必须有 `DJANGO_SECRET_KEY`）→ `podman-compose up -d --build` → 访问 `http://<IP>:18888/`。
+- **podman 部署的几个硬坑（均已踩过并修复）**：
+  - Fedora SELinux `Enforcing` 下，bind mount **必须加 `:z`**（`./db_data:/app/db_data:z`、`nginx.conf:...:ro,z`），否则容器内 `Permission denied`。
+  - `podman-compose up -d` **不会因镜像变更而重建已存在的容器**（只比镜像名）→ 改了 Dockerfile/依赖后必须 `podman-compose down && podman-compose up -d`，或至少检查容器 `Image` ID 是否等于 `latest`。
+  - `RedisCache` 需要 `redis` Python 包（已加入依赖）；缺了会 `ModuleNotFoundError`，而导入锁是 fail-closed → 归档导入全 503。
+  - nginx 正则里含 `{n}` 量词**必须加引号**（`location ~ "^/api/v1/admin/archives/[0-9a-f-]{36}/"`），否则 `{` 被当块定界符，nginx 启不来。
+  - `.dockerignore` 必须排除 `private_archives/`：否则 `COPY . .` 把开发期归档产物打进镜像，挂空命名卷时还会被 podman 拷进卷里。
+  - `podman-compose build` 首次会拉 `python:3.12-slim`/`node:22-alpine`/`nginx:1.27`/`redis:7-alpine`；本机镜像源是用户自配的 `~/.config/containers/registries.conf.d/100-dockerhub-mirrors.conf`（daocloud 优先、`docker.io` blocked），实测约 0.5～1.7 MB/s，且会瞬时抖动（重试即可），直连 docker.io 需代理（本机在 `127.0.0.1:12450`）但实测并不更快。
+  - **离线/免构建部署**：`podman save --format docker-archive -m` 把 app/front/nginx/redis 四个镜像打成一个 tar，目标机 `podman load -i` 后 `podman-compose up -d`（**不加 `--build`**）。完整步骤与注意事项见 `docs/OFFLINE_IMAGE_DEPLOY.md`；注意镜像内是**代码快照**，改了代码必须重新 build + 重新导出。
+  - **自制镜像已做多阶段构建（别改回单阶段）**：`Dockerfile` 的 builder 阶段装 `build-essential` + `uv` 并 `uv sync` 到 `/opt/venv`，运行阶段只 `COPY --from=builder /opt/venv`；`front/Dockerfile` 的 builder 跑 `npm ci + build`，运行阶段只带 `.output`。效果：app 683→**220MB**、front 959→**179MB**。副作用：运行阶段 `PATH` 指向 `/opt/venv/bin`，且**镜像内没有 `uv`/`gcc`**（在容器内临时装东西需自行 apt/pip）；Nuxt 的 `.output` 自包含，不需要 `node_modules`。
 - **容器数据持久化**：prod 容器中 SQLite 数据库经 bind mount 存宿主机 `db_data/`（容器销毁重建不丢，首次 migrate 前需先 `mkdir -p db_data`）；`media/`、`staticfiles/` 走 named volume（app 与 nginx 共享 media）；`docker compose down` 不删数据，只有 `rm -rf db_data` 才删除数据库。
 - `TEST.md` 是面向 AI 的测试用例规范文档（用于生成 pytest 用例），主体仍是历史草案，但 2026-09 迭代已补充「六、存量用例增补」（限流/黑名单/删除清理/搜索分页/头像/分类标签）并在顶部标注——仍以 `tests/` 实际代码为准。
 - Git 仓库已有提交（identity 已配置为 `gkjuanmao`）；提交信息遵循 `DESIGN.md` 9.2 的规范（`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀）。

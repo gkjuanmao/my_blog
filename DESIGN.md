@@ -508,14 +508,14 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | tag_ids      | array[int]        | ❌   | 标签 ID 列表；不传/`0` 视为未填，自动使用默认标签 (`default-tag`)      |
 | is_published | bool              | ❌   | 是否发布 (默认 false)                                    |
 | cover        | File (image)      | ✅   | 封面图片 (JPG/PNG/Webp, ≤20MB)                         |
-| attachment   | File              | ✅   | 附件文件 (PDF/DOCX/HTML, ≤50MB)                        |
+| attachment   | File              | ✅   | 附件文件 (PDF/DOCX, ≤50MB)                            |
 
 > **默认分类/标签机制**：创建文章时若未填 `category_id`/`tag_ids`（含 `''`/`'0'`/`'null'` 等占位值），自动挂载默认分类 `default-category`（名称"默认分类"）与默认标签 `default-tag`（名称"默认标签"），确保每个新建文章都有分类与标签。默认数据由服务启动时 `AppConfig.ready()` 幂等创建；引用不存在的分类/标签返回 400（"分类不存在"/"标签不存在"）。
 
 **响应** (201)：`data` 为完整 `ArticleOut`（`code` 为 201）。
 
 **错误**：
-- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word/HTML 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
+- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
 - 422：缺少必填字段（如 `title`/`publish_time`/`cover`/`attachment`）或 `tag_ids` 格式错误（`detail` 格式）
 
 #### PUT `/api/v1/admin/articles/{id}/` (更新文章)
@@ -701,7 +701,7 @@ SIMPLE_JWT = {
 | 文件类型 | 存储路径模板 | 大小限制 | 允许格式 |
 | :--- | :--- | :--- | :--- |
 | 文章封面 | `media/covers/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
-| 文章附件 | `media/files/UUID.ext` | ≤ 50MB | PDF, DOCX, HTML |
+| 文章附件 | `media/files/UUID.ext` | ≤ 50MB | PDF, DOCX |
 | 用户头像 | `media/avatars/%Y/%m/UUID.ext` | ≤ 2MB | JPG, PNG |
 
 ### 7.2 文件命名规则

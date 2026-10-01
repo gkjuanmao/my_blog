@@ -157,6 +157,29 @@ curl -X POST http://127.0.0.1:8000/api/v1/token/refresh/ \
 
 ## 生产环境（Docker）
 
+### 一键脚本（推荐）
+
+`scripts/blog.sh` 把构建 / 启动 / 体检 / 导出 / 导入固化为子命令，已内建本项目实测踩过的坑（podman-compose 不会因镜像变更重建容器、SELinux 需 `:z`、`.env` 必填项校验、等就绪而非 `sleep`）：
+
+```bash
+scripts/blog.sh preflight           # 环境体检（podman/compose/架构/SELinux/端口/磁盘/配置语法）
+scripts/blog.sh up --build          # 构建 → 重建容器 → 等待就绪 → 健康检查
+scripts/blog.sh status              # 容器/镜像/端口/健康/归档产物/磁盘 一览
+scripts/blog.sh check --front       # 质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc）
+scripts/blog.sh logs app -f         # 看日志（app|nginx|front|redis）
+scripts/blog.sh down                # 停止（保留数据卷与 db_data/）
+
+scripts/blog.sh export              # 导出离线镜像包（tar + .sha256）
+scripts/blog.sh import --in 包.tar   # 目标机离线部署（校验 → load → 重建 → 健康检查）
+scripts/blog.sh seed-media          # 把本机 media/ 同步进媒体卷（数据迁移用）
+scripts/blog.sh seed-demo           # 生成并导入30 篇演示游记
+scripts/blog.sh purge               # 清归档过期产物 + 悬空镜像
+```
+
+完整参数：`scripts/blog.sh help`；离线部署细节见 [`docs/OFFLINE_IMAGE_DEPLOY.md`](./docs/OFFLINE_IMAGE_DEPLOY.md)。
+
+> 下面为手动步骤（用 docker compose 也可以用同样顺序）。
+
 ```bash
 DJANGO_ENV=prod docker compose up --build
 ```
