@@ -6,6 +6,24 @@ interface ApiOptions {
   params?: Record<string, unknown>
 }
 
+export interface UploadProgress {
+  loaded: number
+  total: number
+  percent: number
+}
+
+interface UploadOptions {
+  onProgress?: (progress: UploadProgress) => void
+  signal?: AbortSignal
+}
+
+/** 与 `$fetch` 抛出的错误形状对齐，便于调用方统一用 `e?.data?.message` */
+interface UploadError {
+  status: number
+  response: { status: number }
+  data: { message?: string }
+}
+
 export function useApi() {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase as string
@@ -44,6 +62,76 @@ export function useApi() {
     }
   }
 
+  /**
+   * 带进度的 multipart 上传。
+   *
+   * 为什么不用 `$fetch`：Fetch API 不暴露上传进度，而导入包可能很大，
+   * 没进度条用户无法判断是否卡死。
+   */
+  function uploadWithProgress<T>(
+    url: string,
+    body: FormData,
+    options: UploadOptions = {},
+  ): Promise<ApiResponse<T>> {
+    const resolved = resolveUrl(url)
+    const target = import.meta.server
+      ? new URL(resolved, useRequestURL()).toString()
+      : resolved
+
+    return new Promise<ApiResponse<T>>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', target)
+      if (import.meta.client) {
+        const token = localStorage.getItem('access_token')
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+      xhr.upload.onprogress = (event) => {
+        if (!options.onProgress || !event.lengthComputable) return
+        options.onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.round((event.loaded / event.total) * 100),
+        })
+      }
+      xhr.onload = () => {
+        let payload: ApiResponse<T> | null = null
+        try {
+          payload = JSON.parse(xhr.responseText) as ApiResponse<T>
+        } catch {
+          payload = null
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && payload) {
+          resolve(payload)
+          return
+        }
+        const failure: UploadError = {
+          status: xhr.status,
+          response: { status: xhr.status },
+          data: { message: (payload as any)?.message }, // 后端信封里的中文提示
+        }
+        if (xhr.status === 401 && import.meta.client) {
+          localStorage.removeItem('access_token')
+          navigateTo('/administrator/login')
+        }
+        reject(failure)
+      }
+      xhr.onerror = () =>
+        reject({ status: 0, response: { status: 0 }, data: { message: '网络错误或服务不可用' } })
+      xhr.onabort = () =>
+        reject({ status: 0, response: { status: 0 }, data: { message: '上传已取消' } })
+      options.signal?.addEventListener('abort', () => xhr.abort())
+      xhr.send(body)
+    })
+  }
+
+  /**
+   * 用浏览器原生方式打开后端返回的**站内绝对路径**（归档票据下载）。
+   * 注意：不要拼 apiBase——后端返回的已是 `/api/v1/...`，再拼会变成双重前缀。
+   */
+  function openUrl(absolutePath: string): void {
+    if (import.meta.client) window.location.assign(absolutePath)
+  }
+
   return {
     get<T = unknown>(url: string, params?: Record<string, unknown>) {
       return request<ApiResponse<T>>(url, { method: 'GET', params })
@@ -57,5 +145,7 @@ export function useApi() {
     del<T = unknown>(url: string) {
       return request<ApiResponse<T>>(url, { method: 'DELETE' })
     },
+    uploadWithProgress,
+    openUrl,
   }
 }

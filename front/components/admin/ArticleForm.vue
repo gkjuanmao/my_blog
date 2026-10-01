@@ -153,11 +153,11 @@ function handleSubmit() {
         <el-button>选择封面</el-button>
       </el-upload>
     </el-form-item>
-    <el-form-item label="附件（PDF/Word/HTML ≤50MB）" :required="isCreateMode">
+    <el-form-item label="附件（PDF/Word ≤50MB）" :required="isCreateMode">
       <el-upload
         v-model:file-list="attachmentList"
         :auto-upload="false"
-        :accept="'.pdf,.doc,.docx,.html'"
+        :accept="'.pdf,.doc,.docx'"
         :on-change="onAttachmentChange"
         :on-remove="onAttachmentRemove"
       >

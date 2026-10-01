@@ -9,7 +9,7 @@ const loading = ref(true)
 const errorMsg = ref('')
 const coverError = ref(false)
 
-// 仅 PDF 支持在线预览；Word/HTML 等附件只提供下载（避免把不可预览内容交给 PDF 渲染器）
+// 仅 PDF 支持在线预览；Word 等附件只提供下载（避免把不可预览内容交给 PDF 渲染器）
 const fileExt = computed(() => {
   const name = article.value?.file_name ?? ''
   const dot = name.lastIndexOf('.')
