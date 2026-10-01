@@ -16,6 +16,9 @@ db.sqlite3
 db_data/
 media/
 staticfiles/
+# 归档产物（常驻卷挂在 /app/private_archives）：不排除的话 `COPY . .` 会把开发期
+# 的暂存包/导出包打进镜像，挂空命名卷时还会被 podman 拷进卷里
+private_archives/
 
 # 源码管理
 .git/

@@ -1,4 +1,6 @@
 """用户认证相关 API：登录、刷新令牌、当前用户信息。"""
+import logging
+
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.cache import cache
@@ -14,6 +16,8 @@ from .authentication import JWTAuth
 from .schemas import LoginIn, RefreshIn, TokenObtainPairOut, TokenRefreshOut, UserOut
 
 router = Router(tags=['认证'])
+
+logger = logging.getLogger(__name__)
 
 jwt_auth = JWTAuth()
 
@@ -41,6 +45,19 @@ def _login_throttle_key(request: HttpRequest, username: str) -> str:
     return f'login_failed:{_client_ip(request)}:{username.strip().lower()}'
 
 
+def _throttle_hits(key: str) -> int:
+    """读失败计数。
+
+    缓存后端（prod 为 Redis）不可用时不能把 /login/ 变成 500：这里 fail-open，
+    因为限流是缓解手段而非鉴权本身。
+    """
+    try:
+        return int(cache.get(key, 0) or 0)
+    except Exception:  # pragma: no cover - 仅在缓存故障时触发
+        logger.warning('登录限流缓存读取失败，本次跳过限流', exc_info=True)
+        return 0
+
+
 @router.post('/login/', response=ApiResponse[TokenObtainPairOut])
 def obtain_token(request: HttpRequest, payload: LoginIn) -> dict:
     """登录：校验用户名密码，签发 access 与 refresh 令牌。
@@ -49,16 +66,22 @@ def obtain_token(request: HttpRequest, payload: LoginIn) -> dict:
     期间一律返回 429（无论密码是否正确），用于缓解暴力破解。
     """
     key = _login_throttle_key(request, payload.username)
-    if cache.get(key, 0) >= LOGIN_MAX_ATTEMPTS:
+    if _throttle_hits(key) >= LOGIN_MAX_ATTEMPTS:
         raise HttpError(429, '登录失败次数过多，请 5 分钟后再试')
 
     user = authenticate(username=payload.username, password=payload.password)
     if user is None:
-        cache.set(key, cache.get(key, 0) + 1, LOGIN_LOCKOUT_SECONDS)
+        try:
+            cache.set(key, _throttle_hits(key) + 1, LOGIN_LOCKOUT_SECONDS)
+        except Exception:  # pragma: no cover - 仅在缓存故障时触发
+            logger.warning('登录限流缓存写入失败，本次未计数', exc_info=True)
         raise HttpError(401, '用户名或密码错误')
 
     # 登录成功清除失败计数
-    cache.delete(key)
+    try:
+        cache.delete(key)
+    except Exception:  # pragma: no cover - 仅在缓存故障时触发
+        logger.warning('登录限流缓存清除失败', exc_info=True)
     refresh = RefreshToken.for_user(user)  # type: ignore[misc]
     return success_response({
         'access': str(refresh.access_token),

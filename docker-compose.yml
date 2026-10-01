@@ -3,17 +3,37 @@ services:
     build: .
     env_file:
       - .env
+    environment:
+      # 跨进程共享缓存（导入锁 / 登录失败限流 / 票据辅助）。
+      # 未设置时 prod 会回落到进程内缓存并打警告：多 worker 下锁只在各自进程内有效。
+      - REDIS_URL=redis://redis:6379/0
+      # 归档产物与上传暂存目录（必须在挂载卷上，且不得位于对外服务的 media/static 下）
+      - ARCHIVE_ROOT=/app/private_archives
+      - FILE_UPLOAD_TEMP_DIR=/app/tmp
     volumes:
       - staticfiles:/app/staticfiles
       - media:/app/media
-      - ./db_data:/app/db_data
+      # :z 是 SELinux 重新打标签（Fedora 默认 Enforcing，否则容器内无权限读写）
+      - ./db_data:/app/db_data:z
+      - archives:/app/private_archives
+      - apptmp:/app/tmp
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    # 仅作缓存/锁使用，不需要持久化
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
 
   nginx:
     image: nginx:1.27
     volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # :ro,z = 只读 + SELinux 重新打标签（否则容器内读不到该配置）
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro,z
       - staticfiles:/staticfiles
       - media:/media
+      # 大文件上传缓冲目录（默认就在此路径，挂卷避免写满容器 overlay）
+      - nginxtmp:/var/cache/nginx/client_temp
     ports:
       - "18888:18888"
     depends_on:
@@ -32,3 +52,6 @@ services:
 volumes:
   staticfiles:
   media:
+  archives:
+  apptmp:
+  nginxtmp:

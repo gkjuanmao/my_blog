@@ -1,4 +1,7 @@
-FROM node:22-alpine
+# =============================================================================
+# 构建阶段：装全部依赖（含 devDependencies）并产出 .output
+# =============================================================================
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -14,6 +17,18 @@ COPY . .
 ENV NUXT_PUBLIC_API_BASE=/api/v1/
 
 RUN npm run build
+
+# =============================================================================
+# 运行阶段：只带 .output（Nitro 产物自包含，无需 node_modules，约省 750MB）
+# =============================================================================
+FROM node:22-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NUXT_PUBLIC_API_BASE=/api/v1/
+
+COPY --from=builder /app/.output ./.output
 
 EXPOSE 3000
 

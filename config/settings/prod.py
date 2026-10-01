@@ -1,10 +1,10 @@
 """生产环境配置：继承 base，关闭调试并启用安全策略。
 
-TLS/CSRF/缓存均通过环境变量开关，默认适配当前「nginx 纯 HTTP 反代 + SQLite」的
-部署形态；启用 HTTPS 或 Redis 时只需设置对应环境变量，无需改代码。
-PostgreSQL 配置仍预留为注释（当前 prod 实际使用 base 中的 SQLite）。
+TLS/CSRF/缓存均通过环境变量开关，默认适配「nginx 反代 + SQLite」的部署形态；
+启用 HTTPS、Redis 或 PostgreSQL 时只需设置对应环境变量，无需改代码。
 """
 import os
+import warnings
 
 from .base import *  # noqa: F401, F403
 
@@ -63,6 +63,14 @@ else:
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         }
     }
+    # 重要提醒：LocMemCache 是**每进程**的。登录失败限流、归档导入锁与最小间隔
+    # 都建在缓存上，多 worker（见 Dockerfile 的 --workers 3）下各自为政：
+    # 锁不再能保证“单写者”，限流也会被放大到 N 倍。生产请配置 REDIS_URL。
+    warnings.warn(
+        'REDIS_URL 未设置：缓存回落为进程内 LocMemCache，多 worker 下导入锁/登录限流将不准确',
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
 # TODO: 生产环境使用 PostgreSQL，取消注释并按需设置环境变量
 # DATABASES = {
