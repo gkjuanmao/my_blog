@@ -7,6 +7,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 ## 常用命令
 
 - **部署运维统一入口：`scripts/blog.sh <子命令>`**（预检/启动/停止/状态/日志/质量门禁/导出/导入/演示数据/清理，见 `scripts/blog.sh help`）—— 它把“podman-compose 不会因镜像变更重建容器”、“SELinux 需 `:z`”、“`.env` 必填校验”、“轮询等就绪”等实测坑点固化成了代码，优先用它而不是手敲步骤。
+- **脚本自动识别容器工具链**：按 `docker compose(v2)` → `docker-compose(v1)` → `podman-compose` → `podman compose` 的顺序探测（docker 要求 daemon 可达，避免只装了 CLI 就误判），也可用 `BLOG_ENGINE=docker|podman` 强制指定。差异已内部抹平：容器名（podman `_1` / docker `-1`）按 compose 标签解析、`docker save` 不带 `-m`、镜像名 `localhost/` 前缀差异会自动补标签。
 - `uv sync` — 安装依赖（runtime + dev 组：ruff/mypy/django-stubs）
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`；局域网访问需用 `runserver 0.0.0.0:8000`（dev 的 `ALLOWED_HOSTS=['*']` 且 `CORS_ALLOW_ALL_ORIGINS=True`）
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`，如 `http://<IP>:18888/api/v1/docs`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露
@@ -64,7 +65,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `docker-compose.yml` 仅含 app+nginx 服务（postgres/redis 已移除）；`prod.py` 中仍有 PostgreSQL/Redis 注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - **`uv.lock` 的源是清华 TUNA 镜像**（仓库内已固化）：因此 Dockerfile **不再需要**构建期 `sed` 换源；也与本机 `~/.config/uv/uv.toml` 的默认源一致，所以 plain `uv run` 不会再重写 lock（若把 lock 换回 pypi.org，这个坑会重新出现）。
-- **本机用 podman 验证部署（无 docker）**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`cp .env.example .env`（compose 的 `env_file` 必需，且 `DJANGO_ENV=prod` 时必须有 `DJANGO_SECRET_KEY`）→ `podman-compose up -d --build` → 访问 `http://<IP>:18888/`。
+- **本机用 podman 验证部署（无 docker）；脚本同样支持 docker compose**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`cp .env.example .env`（compose 的 `env_file` 必需，且 `DJANGO_ENV=prod` 时必须有 `DJANGO_SECRET_KEY`）→ `scripts/blog.sh up --build`（或 `podman-compose up -d --build`）→ 访问 `http://<IP>:18888/`。
 - **podman 部署的几个硬坑（均已踩过并修复）**：
   - Fedora SELinux `Enforcing` 下，bind mount **必须加 `:z`**（`./db_data:/app/db_data:z`、`nginx.conf:...:ro,z`），否则容器内 `Permission denied`。
   - `podman-compose up -d` **不会因镜像变更而重建已存在的容器**（只比镜像名）→ 改了 Dockerfile/依赖后必须 `podman-compose down && podman-compose up -d`，或至少检查容器 `Image` ID 是否等于 `latest`。

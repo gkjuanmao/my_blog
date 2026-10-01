@@ -29,13 +29,12 @@ cd "$ROOT_DIR"
 PROJECT="my_blog"
 NGINX_PORT="18888"
 BASE_URL="http://127.0.0.1:${NGINX_PORT}"
-APP_CONTAINER="my_blog_app_1"
-IMAGES=(
-  "localhost/my_blog_app:latest"
-  "localhost/my_blog_front:latest"
-  "docker.io/library/nginx:1.27"
-  "docker.io/library/redis:7-alpine"
-)
+# 以下三个由 resolve_image_names 按检测到的引擎填充（podman 用 localhost/ 前缀，docker 不加）
+APP_IMAGE=""
+FRONT_IMAGE=""
+APP_ALT=""
+FRONT_ALT=""
+IMAGES=()
 HEALTH_PATHS=("/" "/api/v1/articles/" "/api/v1/docs")
 EXPORT_DIR_DEFAULT="${HOME}/my_blog_images"
 WAIT_READY_TIMEOUT=180
@@ -71,23 +70,124 @@ hint() { printf '  %s%s%s\n' "$C_DIM" "$1" "$C_END"; }
 title() { printf '\n%s=== %s ===%s\n' "$C_BOLD" "$1" "$C_END"; }
 
 # --------------------------------------------------------------------------- 基础
-COMPOSE_CMD=()
-detect_compose() {
-  if command -v podman-compose >/dev/null 2>&1; then
-    COMPOSE_CMD=(podman-compose)
-  elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(podman compose)
-  else
+# --------------------------------------------------------------------------- 引擎探测
+# 同时支持两套工具链，自动检测（可用 BLOG_ENGINE=docker|podman 覆盖）：
+#   docker：docker compose（v2 插件）或 docker-compose（v1，需 daemon 可达）
+#   podman：podman-compose 或 podman compose（转发到外部 provider）
+ENGINE=""          # 容器引擎 CLI：docker | podman
+COMPOSE_CMD=()     # compose 前端命令（数组）
+ENGINE_SOURCE=""   # 探测来源，供 preflight 展示
+PROBE_ERROR=""    # probe_engine 失败原因
+
+_has() { command -v "$1" >/dev/null 2>&1; }
+
+# 纯探测：设置 ENGINE/COMPOSE_CMD/ENGINE_SOURCE，失败返回 1 并把原因放 PROBE_ERROR（不退出）
+probe_engine() {
+  local forced="${BLOG_ENGINE:-}"
+  ENGINE=""; COMPOSE_CMD=(); ENGINE_SOURCE=""; PROBE_ERROR=""
+
+  if [ -n "$forced" ] && [ "$forced" != "docker" ] && [ "$forced" != "podman" ]; then
+    PROBE_ERROR="BLOG_ENGINE 只能是 docker 或 podman（当前：${forced}）"
     return 1
   fi
-  return 0
+
+  # docker：CLI 存在**且 daemon 可达**（只装了 CLI 但没启 daemon 时不应误判）
+  if [ "$forced" != "podman" ] && _has docker && docker info >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then
+      ENGINE=docker; COMPOSE_CMD=(docker compose); ENGINE_SOURCE="docker compose（v2 插件）"
+    elif _has docker-compose; then
+      ENGINE=docker; COMPOSE_CMD=(docker-compose); ENGINE_SOURCE="docker-compose（v1）"
+    fi
+    [ -n "$ENGINE" ] && return 0
+  fi
+
+  if [ "$forced" != "docker" ] && _has podman; then
+    if _has podman-compose; then
+      ENGINE=podman; COMPOSE_CMD=(podman-compose); ENGINE_SOURCE="podman-compose"
+    elif podman compose version >/dev/null 2>&1; then
+      ENGINE=podman; COMPOSE_CMD=(podman compose); ENGINE_SOURCE="podman compose"
+    fi
+    [ -n "$ENGINE" ] && return 0
+  fi
+
+  if [ -n "$forced" ]; then
+    PROBE_ERROR="BLOG_ENGINE=${forced}，但对应的引擎或 compose 前端不可用"
+  else
+    PROBE_ERROR="未检测到可用的容器工具链"
+  fi
+  return 1
 }
+
+# 强制探测：失败即退出（需要容器引擎的子命令用这个）
+detect_engine() {
+  probe_engine && return 0
+  if [ -n "${BLOG_ENGINE:-}" ]; then
+    die "$PROBE_ERROR" "docker 需要 daemon 在运行；podman 需要 podman-compose 或 podman compose"
+  fi
+  die "$PROBE_ERROR" "支持：docker compose(v2) / docker-compose(v1) / podman-compose / podman compose"
+}
+
 compose() { "${COMPOSE_CMD[@]}" "$@"; }
 
+# 镜像名：podman 把本地构建的镜像规范化为 localhost/<name>，docker 直接用 <name>
+# （compose 里已显式声明 image:，因此两引擎的镜像名可预期）
+# 但若实际存在的恰是“另一种命名”（例如把 podman 导出的离线包 load 进了 docker），
+# 则以实际存在的为准，避免误报“镜像缺失”。
+resolve_image_names() {
+  local app_pref front_pref app_alt front_alt
+  if [ "$ENGINE" = "docker" ]; then
+    app_pref="my_blog_app:latest";          front_pref="my_blog_front:latest"
+    app_alt="localhost/my_blog_app:latest"; front_alt="localhost/my_blog_front:latest"
+  else
+    app_pref="localhost/my_blog_app:latest"; front_pref="localhost/my_blog_front:latest"
+    app_alt="my_blog_app:latest";            front_alt="my_blog_front:latest"
+  fi
+  APP_IMAGE="$app_pref";   FRONT_IMAGE="$front_pref"
+  APP_ALT="$app_alt";      FRONT_ALT="$front_alt"
+  if ! image_exists "$app_pref" && image_exists "$app_alt"; then APP_IMAGE="$app_alt"; fi
+  if ! image_exists "$front_pref" && image_exists "$front_alt"; then FRONT_IMAGE="$front_alt"; fi
+  IMAGES=("$APP_IMAGE" "$FRONT_IMAGE" "docker.io/library/nginx:1.27" "docker.io/library/redis:7-alpine")
+}
+
+# 某个 compose 服务对应的容器名（podman-compose: <proj>_<svc>_1；docker compose: <proj>-<svc>-1）
+container_of() {
+  local svc="$1" name=""
+  name="$("$ENGINE" ps -a --filter "label=com.docker.compose.service=${svc}" \
+    --format '{{.Names}}' 2>/dev/null | head -1)"
+  if [ -z "$name" ]; then
+    name="$("$ENGINE" ps -a --format '{{.Names}}' 2>/dev/null \
+      | grep -E "^${PROJECT}[-_]${svc}[-_][0-9]+$" | head -1)"
+  fi
+  printf '%s' "$name"
+}
+app_container() { container_of app; }
+
+# 需要一个正在运行的 app 容器：返回容器名，否则退出
+require_app_running() {
+  local c
+  c="$(app_container)"
+  [ -n "$c" ] || die "app 容器未运行" "先执行 scripts/blog.sh up"
+  printf '%s' "$c"
+}
+
+# docker 没有 `image exists` 子命令，统一用 inspect 判断
+image_exists() { "$ENGINE" image inspect "$1" >/dev/null 2>&1; }
+image_size()   { "$ENGINE" image inspect "$1" --format '{{.Size}}' 2>/dev/null || echo 0; }
+image_mb()     { awk -v s="$(image_size "$1")" 'BEGIN{printf "%.0fMB", s/1024/1024}'; }
+
+# 跨引擎导入：podman 导出的是 localhost/<name>，docker 期望 <name>（反之同理）→ 自动补标签
+ensure_image_alias() {
+  local want="$1" alt="$2"
+  if ! image_exists "$want" && image_exists "$alt"; then
+    "$ENGINE" tag "$alt" "$want" >/dev/null 2>&1 || die "无法把 $alt 追加标签为 $want"
+    warn "跨引擎导入：已把 $alt 追加标签 $want"
+  fi
+}
+
 require_tools() {
-  command -v podman >/dev/null 2>&1 || die "未找到 podman" "Fedora: sudo dnf install -y podman podman-compose"
-  detect_compose || die "未找到 compose 前端（podman-compose）" "Fedora: sudo dnf install -y podman-compose"
   command -v curl >/dev/null 2>&1 || die "未找到 curl" "Fedora: sudo dnf install -y curl"
+  [ -n "$ENGINE" ] || detect_engine
+  resolve_image_names
 }
 
 # 从 .env 读取某个键（不 source，避免执行任意代码）
@@ -145,23 +245,25 @@ wait_ready() {
   done
   printf '\n'
   fail "等待 ${WAIT_READY_TIMEOUT}s 仍不就绪"
-  hint "诊断：podman logs ${APP_CONTAINER} | tail -30"
-  hint "      podman logs my_blog_nginx_1 | tail -20"
+  hint "诊断：$ENGINE logs $(app_container) | tail -30"
+  hint "      $ENGINE logs $(container_of nginx) | tail -20"
   return 1
 }
 
 containers_running() {
-  [ -n "$(podman ps --filter "name=${PROJECT}_" --format '{{.Names}}' 2>/dev/null)" ]
+  [ -n "$("$ENGINE" ps --filter "label=com.docker.compose.project=${PROJECT}" --format '{{.Names}}' 2>/dev/null)" ] \
+    || [ -n "$("$ENGINE" ps --format '{{.Names}}' 2>/dev/null | grep -E "^${PROJECT}[-_]" | head -1)" ]
 }
 containers_exist() {
-  [ -n "$(podman ps -a --filter "name=${PROJECT}_" --format '{{.Names}}' 2>/dev/null)" ]
+  [ -n "$("$ENGINE" ps -a --filter "label=com.docker.compose.project=${PROJECT}" --format '{{.Names}}' 2>/dev/null)" ] \
+    || [ -n "$("$ENGINE" ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^${PROJECT}[-_]" | head -1)" ]
 }
 
 # 校验容器实际使用的镜像 == latest（防止 podman-compose 复用旧镜像）
 verify_container_image() {
   local container="$1" image="$2" cid iid
-  cid="$(podman inspect "$container" --format '{{.Image}}' 2>/dev/null || true)"
-  iid="$(podman image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)"
+  cid="$("$ENGINE" inspect "$container" --format '{{.Image}}' 2>/dev/null || true)"
+  iid="$("$ENGINE" image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)"
   if [ -n "$cid" ] && [ "$cid" != "$iid" ]; then
     die "容器 $container 仍在使用旧镜像" "执行 scripts/blog.sh down && scripts/blog.sh up"
   fi
@@ -180,9 +282,12 @@ norm_arch() {
 # --------------------------------------------------------------------------- preflight
 cmd_preflight() {
   title "环境体检"
-  step "podman / compose"
+  step "容器工具链"
   require_tools
-  ok "podman $(podman --version | awk '{print $3}') · ${COMPOSE_CMD[*]}"
+  ok "$ENGINE $("$ENGINE" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) · ${COMPOSE_CMD[*]} · ${ENGINE_SOURCE}"
+  if [ -n "${BLOG_ENGINE:-}" ]; then
+    hint "（由 BLOG_ENGINE=${BLOG_ENGINE} 显式指定）"
+  fi
 
   step "架构"
   ok "$(uname -m)（镜像标识 $(norm_arch)）"
@@ -244,23 +349,23 @@ cmd_up() {
     if ! compose build 2>&1 | sed 's/^/    /'; then
       die "镜像构建失败" "查看上面的构建输出"
     fi
-    ok "app $(podman image inspect localhost/my_blog_app:latest --format '{{.Size}}' | awk '{printf "%.0fMB", $1/1024/1024}') · front $(podman image inspect localhost/my_blog_front:latest --format '{{.Size}}' | awk '{printf "%.0fMB", $1/1024/1024}')"
+    ok "app $(image_mb "$APP_IMAGE") · front $(image_mb "$FRONT_IMAGE")"
   fi
 
   step "重建容器"
-  # 必须先 down：podman-compose up 只比较镜像名，改过 Dockerfile/依赖也要重建
+  # 必须先 down：podman-compose 不会因镜像变更重建容器（docker compose 会，但统一处理更省心）
   if containers_exist; then
     compose down >/dev/null 2>&1 || true
   fi
-  compose up -d >/dev/null 2>&1 || die "容器启动失败" "podman-compose up -d  # 看完整输出"
-  verify_container_image "$APP_CONTAINER" "localhost/my_blog_app:latest"
+  compose up -d >/dev/null 2>&1 || die "容器启动失败" "${COMPOSE_CMD[*]} up -d  # 看完整输出"
+  verify_container_image "$(app_container)" "$APP_IMAGE"
   ok "已按最新镜像重建"
 
   step "等待就绪"
   wait_ready
 
   step "健康检查"
-  health_check || die "健康检查未全部通过" "podman logs ${APP_CONTAINER} | tail -30"
+  health_check || die "健康检查未全部通过" "$ENGINE logs $(app_container) | tail -30"
   printf '\n%s服务已就绪%s → %s%s/%s\n' "$C_OK" "$C_END" "$C_BOLD" "$BASE_URL" "$C_END"
 }
 
@@ -276,7 +381,10 @@ cmd_down() {
   fi
   if [ "$purge" = "1" ]; then
     printf '%s将删除以下数据卷（文章图片/附件、归档产物、静态文件）:%s\n' "$C_WARN" "$C_END"
-    podman volume ls --format '{{.Name}}' | grep "^${PROJECT}_" | sed 's/^/  - /'
+    local vols
+    vols="$("$ENGINE" volume ls --filter "label=com.docker.compose.project=${PROJECT}" --format '{{.Name}}' 2>/dev/null)"
+    [ -n "$vols" ] || vols="$("$ENGINE" volume ls --format '{{.Name}}' | grep "^${PROJECT}_")"
+    printf '%s\n' "$vols" | grep -v '^$' | sed 's/^/  - /'
     printf '%s注意：SQLite 数据库在 bind mount 的 db_data/ 里，不会被删除；确需清空请自行 rm -rf db_data%s\n' "$C_DIM" "$C_END"
     if [ "$yes" != "1" ]; then
       read -r -p "确认删除？输入 yes 继续: " ans
@@ -296,13 +404,14 @@ cmd_restart() { cmd_down; cmd_up "$@"; }
 cmd_status() {
   require_tools
   title "容器"
-  podman ps -a --filter "name=${PROJECT}_" --format '  {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+  "$ENGINE" ps -a --filter "label=com.docker.compose.project=${PROJECT}" \
+    --format '  {{.Names}}\t{{.Status}}\t{{.Image}}' || true
 
   title "镜像"
   local total=0 size
   for img in "${IMAGES[@]}"; do
-    if podman image exists "$img"; then
-      size="$(podman image inspect "$img" --format '{{.Size}}' 2>/dev/null || echo 0)"
+    if image_exists "$img"; then
+      size="$(image_size "$img")"
       total=$((total + size / 1024 / 1024))
       printf '  %-44s %s\n' "$img" "$(awk -v s="$size" 'BEGIN{printf "%.0f MB", s/1024/1024}')"
     else
@@ -315,8 +424,10 @@ cmd_status() {
   if containers_running; then health_check || warn "存在未通过的路径"; else warn "容器未运行"; fi
 
   title "归档产物"
-  if podman ps --filter "name=${APP_CONTAINER}" --format '{{.Names}}' | grep -q .; then
-    podman exec "$APP_CONTAINER" sh -c '
+  local app
+  app="$(app_container)"
+  if [ -n "$app" ]; then
+    "$ENGINE" exec "$app" sh -c '
       for d in staging exports rollbacks; do
         printf "  %-10s %s 项\n" "$d" "$(ls -A /app/private_archives/$d 2>/dev/null | wc -l)"
       done' 2>/dev/null || warn "无法读取"
@@ -339,11 +450,11 @@ cmd_logs() {
       *) die "未知服务：$arg" "可选：app | nginx | front | redis" ;;
     esac
   done
-  local container="${PROJECT}_${svc}_1"
-  podman ps -a --format '{{.Names}}' | grep -qx "$container" \
-    || die "容器 $container 不存在" "先执行 scripts/blog.sh up"
+  local container
+  container="$(container_of "$svc")"
+  [ -n "$container" ] || die "服务 $svc 的容器不存在" "先执行 scripts/blog.sh up"
   # shellcheck disable=SC2086
-  podman logs $follow "$container"
+  "$ENGINE" logs $follow "$container"
 }
 
 # --------------------------------------------------------------------------- check
@@ -362,10 +473,13 @@ cmd_check() {
   python3 -c "import yaml;yaml.safe_load(open('docker-compose.yml'))" || die "compose YAML 错误"
   sh -n docker/entrypoint.sh || die "docker/entrypoint.sh 语法错误"
   bash -n scripts/blog.sh || die "scripts/blog.sh 语法错误"
-  if podman image exists docker.io/library/nginx:1.27; then
-    podman run --rm --add-host app:127.0.0.1 --add-host front:127.0.0.1 \
+  # 引擎是“可选”的：没有容器工具链时不应阻断 lint
+  if probe_engine && image_exists docker.io/library/nginx:1.27; then
+    "$ENGINE" run --rm --add-host app:127.0.0.1 --add-host front:127.0.0.1 \
       -v "$ROOT_DIR/docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro,z" \
       docker.io/library/nginx:1.27 nginx -t >/dev/null 2>&1 || die "nginx.conf 语法错误"
+  elif [ -z "$ENGINE" ]; then
+    warn "未检测到容器工具链，跳过 nginx -t"
   else
     warn "未找到 nginx 镜像，跳过 nginx -t"
   fi
@@ -400,14 +514,19 @@ cmd_export() {
   step "校验镜像"
   local img
   for img in "${IMAGES[@]}"; do
-    podman image exists "$img" || die "镜像缺失：$img" "先执行 scripts/blog.sh up --build"
+    image_exists "$img" || die "镜像缺失：$img" "先执行 scripts/blog.sh up --build"
   done
   ok "${#IMAGES[@]} 个镜像齐备"
 
   mkdir -p "$(dirname "$out")"
   block_step "打包"
-  if ! podman save --format docker-archive -m -o "$out" "${IMAGES[@]}" 2>&1 | sed 's/^/    /'; then
-    die "podman save 失败"
+  # docker save 默认即 docker-archive 多镜像格式；podman 需显式 --format 与 -m
+  local save_args=()
+  if [ "$ENGINE" = "podman" ]; then
+    save_args=(--format docker-archive -m)
+  fi
+  if ! "$ENGINE" save ${save_args[@]+"${save_args[@]}"} -o "$out" "${IMAGES[@]}" 2>&1 | sed 's/^/    /'; then
+    die "$ENGINE save 失败"
   fi
   sha256sum "$out" | awk '{print $1}' > "${out}.sha256"
   ok "$(human_size "$(stat -c%s "$out")")"
@@ -415,7 +534,7 @@ cmd_export() {
   step "校验和"
   ok "$(cat "${out}.sha256")"
   printf '\n产物：%s%s%s\n' "$C_BOLD" "$out" "$C_END"
-  printf '  目标机：podman load -i %s\n' "$(basename "$out")"
+  printf '  目标机：%s load -i %s\n' "$ENGINE" "$(basename "$out")"
   printf '  或直接：scripts/blog.sh import --in %s\n' "$out"
 }
 
@@ -468,10 +587,11 @@ cmd_import() {
   ok "$(human_size "$avail") 可用"
 
   step "加载镜像"
-  podman load -i "$in" >/dev/null 2>&1 || die "podman load 失败"
+  "$ENGINE" load -i "$in" >/dev/null 2>&1 || die "$ENGINE load 失败"
   local img
   for img in "${IMAGES[@]}"; do
-    podman image exists "$img" || die "加载后仍缺镜像：$img"
+    image_exists "$img" || ensure_image_alias "$img" "$APP_ALT"
+    image_exists "$img" || die "加载后仍缺镜像：$img"
   done
   ok "${#IMAGES[@]} 个镜像已就绪"
 
@@ -482,12 +602,12 @@ cmd_import() {
   step "重建容器（不使用 --build，直接用已加载镜像）"
   if containers_exist; then compose down >/dev/null 2>&1 || true; fi
   compose build >/dev/null 2>&1 || true   # 仅在镜像缺失时会真正构建；此处镜像已存在
-  compose up -d >/dev/null 2>&1 || die "容器启动失败" "podman-compose up -d"
-  verify_container_image "$APP_CONTAINER" "localhost/my_blog_app:latest"
+  compose up -d >/dev/null 2>&1 || die "容器启动失败" "${COMPOSE_CMD[*]} up -d"
+  verify_container_image "$(app_container)" "$APP_IMAGE"
   ok
 
   step "等待就绪"; wait_ready
-  step "健康检查"; health_check || die "健康检查未通过" "podman logs ${APP_CONTAINER} | tail -30"
+  step "健康检查"; health_check || die "健康检查未通过" "$ENGINE logs $(app_container) | tail -30"
   printf '\n%s部署完成%s → %s%s/%s\n' "$C_OK" "$C_END" "$C_BOLD" "$BASE_URL" "$C_END"
   if [ "$yes" != "1" ] && [ -d media ] && [ "$(ls -A media/covers 2>/dev/null | wc -l)" -gt 0 ]; then
     hint "提示：若要让文章封面/附件可见，需把 media/ 同步进媒体卷：scripts/blog.sh seed-media"
@@ -497,8 +617,8 @@ cmd_import() {
 # --------------------------------------------------------------------------- seed-media / seed-demo / purge
 cmd_seed_media() {
   require_tools
-  podman ps --filter "name=${APP_CONTAINER}" --format '{{.Names}}' | grep -q . \
-    || die "app 容器未运行" "先执行 scripts/blog.sh up"
+  local app
+  app="$(require_app_running)"
   [ -d media ] || die "本机没有 media/ 目录"
   title "把宿主机 media/ 同步进媒体卷"
   local n_covers n_files
@@ -506,10 +626,10 @@ cmd_seed_media() {
   n_files="$(ls -A media/files 2>/dev/null | wc -l)"
   printf '  本机：covers %s 个 / files %s 个\n' "$n_covers" "$n_files"
   [ "$n_covers" -gt 0 ] || warn "media/covers 为空，跳过"
-  podman cp media/. "${APP_CONTAINER}:/app/media/" || die "podman cp 失败"
+  "$ENGINE" cp media/. "$app:/app/media/" || die "$ENGINE cp 失败"
   printf '  容器内：covers %s 个 / files %s 个\n' \
-    "$(podman exec "$APP_CONTAINER" sh -c 'ls -A /app/media/covers | wc -l')" \
-    "$(podman exec "$APP_CONTAINER" sh -c 'ls -A /app/media/files | wc -l')"
+    "$("$ENGINE" exec "$app" sh -c 'ls -A /app/media/covers | wc -l')" \
+    "$("$ENGINE" exec "$app" sh -c 'ls -A /app/media/files | wc -l')"
   ok
 }
 
@@ -522,21 +642,21 @@ cmd_seed_demo() {
     esac
   done
   require_tools
-  podman ps --filter "name=${APP_CONTAINER}" --format '{{.Names}}' | grep -q . \
-    || die "app 容器未运行" "先执行 scripts/blog.sh up"
+  local app
+  app="$(require_app_running)"
 
   title "生成并导入演示游记"
   step "生成归档包（容器内）"
   local gen_args="--out /tmp/seed_demo.zip"
   [ -n "$count" ] && gen_args="$gen_args --count $count"
   # shellcheck disable=SC2086
-  podman exec "$APP_CONTAINER" python /app/scripts/seed_demo.py $gen_args | sed 's/^/  /'
-  podman cp "${APP_CONTAINER}:/tmp/seed_demo.zip" /tmp/seed_demo.zip >/dev/null
+  "$ENGINE" exec "$app" python /app/scripts/seed_demo.py $gen_args | sed 's/^/  /'
+  "$ENGINE" cp "$app:/tmp/seed_demo.zip" /tmp/seed_demo.zip >/dev/null
   ok "$(human_size "$(stat -c%s /tmp/seed_demo.zip)")"
 
   step "取管理员令牌"
   local token
-  token="$(podman exec "$APP_CONTAINER" python -c "
+  token="$("$ENGINE" exec "$app" python -c "
 import os, django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
@@ -572,15 +692,17 @@ cmd_purge() {
   require_tools
   title "清理"
   step "归档过期产物"
-  if podman ps --filter "name=${APP_CONTAINER}" --format '{{.Names}}' | grep -q .; then
-    podman exec "$APP_CONTAINER" python manage.py purge_archives 2>/dev/null | tail -1 | sed 's/^/  /'
+  local app
+  app="$(app_container)"
+  if [ -n "$app" ]; then
+    "$ENGINE" exec "$app" python manage.py purge_archives 2>/dev/null | tail -1 | sed 's/^/  /'
     ok
   else
     warn "app 容器未运行，跳过"
   fi
   step "悬空镜像"
-  podman image prune -f >/dev/null 2>&1 || true
-  ok "当前悬空镜像 $(podman images --filter dangling=true -q | wc -l) 个"
+  "$ENGINE" image prune -f >/dev/null 2>&1 || true
+  ok "当前悬空镜像 $("$ENGINE" images --filter dangling=true -q | wc -l) 个"
 }
 
 # --------------------------------------------------------------------------- 入口
@@ -588,7 +710,7 @@ usage() {
   cat <<'EOF'
 用法：scripts/blog.sh <子命令> [选项]
 
-  preflight              环境体检（podman/compose/架构/SELinux/端口/磁盘/配置语法）
+  preflight              环境体检（引擎探测/架构/SELinux/端口/磁盘/配置语法）
   up [--build]           构建（可选）→ 重建容器 → 等待就绪 → 健康检查
   down [--purge]         停止容器（--purge 连数据卷一起删，需确认）
   restart [--build]      等价于 down + up
@@ -602,8 +724,11 @@ usage() {
   purge                  清理归档过期产物 + 悬空镜像
   help                   显示本帮助
 
-说明：涉及"镜像已变"的操作一律 down + up —— podman-compose 不会因镜像变更
-     重建已存在的容器（它只比较镜像名），这是本项目实测踩过的坑。
+引擎：自动识别 docker compose(v2) / docker-compose(v1) / podman-compose / podman compose，
+      也可用 BLOG_ENGINE=docker|podman 强制指定（docker 需 daemon 可达）。
+
+说明：涉及"镜像已变"的操作一律 down + up —— podman-compose 不会因镜像变更重建已存在
+     的容器（它只比较镜像名）；docker compose 会重建，统一走 down+up 更省心。
 EOF
 }
 

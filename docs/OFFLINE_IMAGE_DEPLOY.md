@@ -5,7 +5,7 @@
 **适用的目标机**：`linux/amd64`（x86_64），已装 `podman` + `podman-compose`。
 （镜像架构必须在导出时确认：`podman image inspect localhost/my_blog_app:latest --format '{{.Architecture}}/{{.Os}}'`）
 
-> **推荐直接用脚本**，本节的手工步骤只作为原理参考：
+> **推荐直接用脚本**，本节的手工步骤只作为原理参考（脚本自动识别 `docker compose` 或 `podman`，不需改任何配置）：
 > ```bash
 > scripts/blog.sh export                        # 源机：导出（默认写到 ~/my_blog_images/，带日期与 .sha256）
 > scripts/blog.sh import --in <包路径>           # 目标机：校验 sha256/架构/磁盘 → load → 重建 → 健康检查
@@ -85,7 +85,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18888/api/v1/docs     
 ## 四、注意事项
 
 1. **镜像内是代码快照**：`my_blog_app` / `my_blog_front` 在构建时把源码 COPY 进去了（`.dockerignore` 已排除 `db_data/`、`media/`、`private_archives/`、`.env`、`tests/`）。因此**改了代码必须重新构建 + 重新导出**，直接改宿主机源码对已加载的镜像无效。
-2. **目标机是 docker 而非 podman 时**：`docker load` 也能导入（同为 docker-archive 格式），但 tag 是 `localhost/my_blog_app:latest`，而 docker compose 默认期望 `<项目名>-app`。此时要么 `docker tag localhost/my_blog_app:latest my_blog-app:latest`，要么在 `docker-compose.yml` 的两处 `build:` 旁显式加 `image: my_blog_app:latest` / `image: my_blog_front:latest`（推荐后者，跨引擎确定）。
+2. **目标机是 docker 而非 podman 时**：`docker load` 也能导入（同为 docker-archive 格式）。镜像 tag 的 `localhost/` 前缀差异（podman 导出为 `localhost/my_blog_app:latest`，docker 期望 `my_blog_app:latest`）已由 `scripts/blog.sh import` **自动补标签**；手工操作时需自行 `docker tag localhost/my_blog_app:latest my_blog_app:latest`。
 3. **SELinux（Fedora 等 Enforcing 发行版）**：compose 里 `./db_data` 与 `./docker/nginx/nginx.conf` 的挂载已带 `:z` / `:ro,z`，否则容器内会 `Permission denied`。
 4. **磁盘需求**：镜像解包后约 640 MB，加上 tar 本体共约 1.2 GB。
 5. **数据不在镜像里**：`db_data/`（SQLite）、`media/`（封面与附件）、`private_archives/`（归档产物）都是挂载卷/绑定目录。**换机器时若要带走文章数据**，需要单独拷贝 `db_data/`，以及把 `media/` 内容导入 `my_blog_media` 卷：
@@ -93,7 +93,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18888/api/v1/docs     
    podman volume create my_blog_media 2>/dev/null || true
    podman cp media/. my_blog_app_1:/app/media/     # 容器起来后执行
    ```
-6. **`podman-compose up -d` 不会因镜像变更重建容器**：更换了 tar/镜像后，要 `podman-compose down && podman-compose up -d`（或核对容器 `Image` ID 是否等于 `latest`）。
+6. **`podman-compose up -d` 不会因镜像变更重建容器**（docker compose 会）：更换了 tar/镜像后要 `podman-compose down && podman-compose up -d`。`scripts/blog.sh up` / `import` 已一律走 down+up 并核对容器 `Image` ID。
 
 ---
 

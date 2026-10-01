@@ -161,6 +161,8 @@ curl -X POST http://127.0.0.1:8000/api/v1/token/refresh/ \
 
 `scripts/blog.sh` 把构建 / 启动 / 体检 / 导出 / 导入固化为子命令，已内建本项目实测踩过的坑（podman-compose 不会因镜像变更重建容器、SELinux 需 `:z`、`.env` 必填项校验、等就绪而非 `sleep`）：
 
+**脚本会自动识别容器工具链**（`docker compose` v2 → `docker-compose` v1 → `podman-compose` → `podman compose`；docker 需 daemon 可达），也可用 `BLOG_ENGINE=docker|podman` 强制指定；两种引擎的容器命名、镜像名与 `save` 参数差异都由脚本内部处理。
+
 ```bash
 scripts/blog.sh preflight           # 环境体检（podman/compose/架构/SELinux/端口/磁盘/配置语法）
 scripts/blog.sh up --build          # 构建 → 重建容器 → 等待就绪 → 健康检查
@@ -178,7 +180,7 @@ scripts/blog.sh purge               # 清归档过期产物 + 悬空镜像
 
 完整参数：`scripts/blog.sh help`；离线部署细节见 [`docs/OFFLINE_IMAGE_DEPLOY.md`](./docs/OFFLINE_IMAGE_DEPLOY.md)。
 
-> 下面为手动步骤（用 docker compose 也可以用同样顺序）。
+> 下面为手动步骤（用 docker compose 也可以用同样顺序；脚本会自动识别引擎，无需改任何配置）。
 
 ```bash
 DJANGO_ENV=prod docker compose up --build

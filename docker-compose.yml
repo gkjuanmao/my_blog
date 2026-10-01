@@ -1,6 +1,9 @@
 services:
   app:
     build: .
+    # 显式声明镜像名：podman 会规范化为 localhost/my_blog_app:latest，docker 直接用该名；
+    # 离线包导出/导入依赖这个名字可预期（脚本会按引擎自动换算与补标签）
+    image: my_blog_app:latest
     env_file:
       - .env
     environment:
@@ -44,6 +47,7 @@ services:
     build:
       context: ./front
       dockerfile: Dockerfile
+    image: my_blog_front:latest
     environment:
       - NUXT_PUBLIC_API_BASE=/api/v1/
     depends_on:
