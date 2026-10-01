@@ -1,27 +1,46 @@
 """博客文章 API：公开文章浏览与管理接口。"""
+import hashlib
+import logging
+import shutil
+import uuid
+from datetime import timedelta
 from typing import Any, cast
 
+from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.db.models.query import QuerySet
-from django.http import HttpRequest
+from django.http import FileResponse, HttpRequest
+from django.utils import timezone
 from ninja import File, Form, Query, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.responses import Status
 
+from articles.archive import errors as archive_errors
+from articles.archive import export as archive_export
+from articles.archive import importer as archive_importer
+from articles.archive import planner as archive_planner
+from articles.archive import staging as archive_staging
+from articles.archive import validate as archive_validate
+from articles.archive.limits import ensure_free_space
+from articles.archive.limits import limits as archive_limits
+from articles.archive.locks import enforce_min_interval, import_lock
 from common.responses import success_response
 from common.schemas import ApiResponse, PageData
-from users.authentication import JWTAuth
+from users.authentication import JWTAuth, StaffJWTAuth
 from users.models import User
 
 from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
-from .models import Article, Category, Tag, cover_upload_path, file_upload_path
+from .models import ArchiveStaging, Article, Category, Tag, cover_upload_path, file_upload_path
 from .schemas import (
+    ArchiveImportCommitIn,
+    ArchiveImportPlanIn,
     ArticleCreateIn,
     ArticleDetailOut,
     ArticleOut,
     ArticleUpdateIn,
+    BulkDeleteIn,
     CategoryIn,
     CategoryOut,
     CategoryUpdateIn,
@@ -36,16 +55,31 @@ from .utils import generate_slug, unique_slug
 router = Router(tags=['文章'])
 admin_router = Router(tags=['文章管理'])
 
-# 文件类型与大小限制
-COVER_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
-ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'html'}
-COVER_MAX_SIZE = 20 * 1024 * 1024  # 20MB
-ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024  # 50MB
+# 封面/附件的扩展名与体积上限统一从 settings 读取（见 config/settings/base.py），
+# 避免与 articles/archive 两处维护；两者共用同一组白名单。
 
 # 管理列表允许的排序字段（前缀 - 表示降序），用白名单避免用户传入任意字段
 ADMIN_ARTICLE_ORDERING_FIELDS = {'publish_time', 'created_at', 'updated_at', 'views', 'title'}
 
+# 单次批量删除的 id 上限
+BULK_DELETE_MAX_IDS = 200
+
 jwt_auth = JWTAuth()
+staff_auth = StaffJWTAuth()
+
+logger = logging.getLogger(__name__)
+
+
+def _sha256_of(uploaded: UploadedFile) -> str:
+    """计算上传文件的 SHA-256（源字节），供归档幂等键使用。
+
+    读完必须 ``seek(0)``，否则后续 ``save()`` 会写入空文件。
+    """
+    digest = hashlib.sha256()
+    for chunk in uploaded.chunks():
+        digest.update(chunk)
+    uploaded.seek(0)
+    return digest.hexdigest()
 
 
 def _extension(filename: str) -> str:
@@ -56,18 +90,18 @@ def _extension(filename: str) -> str:
 def _validate_cover(cover: UploadedFile) -> None:
     """校验封面图片格式与大小。"""
     name = cover.name or ''
-    if _extension(name) not in COVER_EXTENSIONS:
+    if _extension(name) not in settings.COVER_EXTENSIONS:
         raise HttpError(400, '封面仅支持 JPG/PNG/WebP 格式')
-    if (cover.size or 0) > COVER_MAX_SIZE:
+    if (cover.size or 0) > settings.COVER_MAX_BYTES:
         raise HttpError(400, '封面大小不能超过 20MB')
 
 
 def _validate_attachment(attachment: UploadedFile) -> None:
     """校验附件格式与大小。"""
     name = attachment.name or ''
-    if _extension(name) not in ATTACHMENT_EXTENSIONS:
-        raise HttpError(400, '附件仅支持 PDF/Word/HTML 格式')
-    if (attachment.size or 0) > ATTACHMENT_MAX_SIZE:
+    if _extension(name) not in settings.ATTACHMENT_EXTENSIONS:
+        raise HttpError(400, '附件仅支持 PDF/Word 格式')
+    if (attachment.size or 0) > settings.ATTACHMENT_MAX_BYTES:
         raise HttpError(400, '附件大小不能超过 50MB')
 
 
@@ -199,6 +233,124 @@ def list_admin_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
+@admin_router.get('/articles/export/', response=ApiResponse[dict], auth=staff_auth)
+def create_export(
+    request: HttpRequest,
+    ids: str = Query('', description='逗号分隔的文章 id；与筛选参数互斥，以 ids 为准'),
+    keyword: str = Query('', description='标题关键词（与列表接口同义）'),
+    category_slug: str = Query('', description='按分类别名过滤'),
+    is_published: bool | None = Query(None, description='按发布状态过滤'),
+) -> dict:
+    """创建导出票据（**不**直接回 zip）。
+
+    ⚠️ 本路由与 /articles/export/estimate/ **必须注册在 /articles/{article_id}/ 之前**：
+    后者没有 int 转换器，`resolve()` 实测会把它解析成 article_id='export'。
+    """
+    lim = archive_limits()
+    id_list = _parse_ids(ids)
+    if len(id_list) > lim.max_ids_per_request:
+        raise HttpError(400, f'ids 数量超过上限 {lim.max_ids_per_request}，请改用筛选导出')
+
+    articles = archive_export.select_articles(
+        ids=id_list,
+        keyword=keyword,
+        category_slug=category_slug,
+        is_published=is_published,
+    )
+    if not articles:
+        raise HttpError(400, '没有符合条件的文章')
+
+    out_path = None
+    try:
+        estimate = archive_export.estimate_export(articles, lim=lim)
+        ensure_free_space(needed_bytes=estimate.source_bytes, extra_dirs=(lim.root,))
+        archive_staging.ensure_subdirs()
+        out_path = (
+            archive_staging.archive_root()
+            / archive_staging.EXPORTS_DIR
+            / f'{uuid.uuid4().hex}.zip'
+        )
+        info = archive_export.build_archive(articles, out_path, lim=lim)
+    except archive_errors.ArchiveError as exc:
+        if out_path is not None:
+            out_path.unlink(missing_ok=True)
+        raise _archive_error(exc) from None
+
+    ticket = archive_staging.create_ticket(
+        user=cast(User, request.auth),  # type: ignore[attr-defined]
+        kind='export',
+        path=out_path,
+        filename=archive_export.export_filename(),
+        size=info['bytes'],
+    )
+    return success_response({
+        'ticket': str(ticket.id),
+        'download_url': f'/api/v1/admin/archives/{ticket.id}/',
+        'expires_at': ticket.expires_at.isoformat(),
+        'filename': ticket.filename,
+        'count': info['count'],
+        'bytes': info['bytes'],
+        'warnings': info['warnings'],
+    })
+
+
+@admin_router.get('/articles/export/estimate/', response=ApiResponse[dict], auth=staff_auth)
+def estimate_export(
+    request: HttpRequest,
+    ids: str = Query(''),
+    keyword: str = Query(''),
+    category_slug: str = Query(''),
+    is_published: bool | None = Query(None),
+) -> dict:
+    """导出预估：篇数 / 源字节 / 条目数 / **是否可回导**。"""
+    lim = archive_limits()
+    id_list = _parse_ids(ids)
+    if len(id_list) > lim.max_ids_per_request:
+        raise HttpError(400, f'ids 数量超过上限 {lim.max_ids_per_request}')
+    articles = archive_export.select_articles(
+        ids=id_list,
+        keyword=keyword,
+        category_slug=category_slug,
+        is_published=is_published,
+    )
+    estimate = archive_export.estimate_export(articles, lim=lim)
+    return success_response(estimate.to_dict())
+
+
+@admin_router.post('/articles/bulk-delete/', response=ApiResponse[dict], auth=jwt_auth)
+def bulk_delete_articles(request: HttpRequest, payload: BulkDeleteIn) -> dict:
+    """批量删除文章（含草稿）。
+
+    - 一次请求代替 N 次单删，避免前端串行请求与中途部分成功无法交代；
+    - 封面/附件文件仍由 ``articles/signals.py`` 的 ``post_delete`` 统一清理
+      （``QuerySet.delete()`` 同样会逐条发出该信号）；
+    - 幂等友好：已不存在的 id 不算错误，单独在 ``not_found`` 里回显。
+
+    ⚠️ 本路由必须注册在 ``/articles/{article_id}/`` 之前（同 export：详情路由
+    没有 int 转换器，会先把路径吃掉，POST 到这里会变成 405）。
+    """
+    ids = payload.ids
+    if not ids:
+        raise HttpError(400, 'ids 不能为空')
+    if len(ids) > BULK_DELETE_MAX_IDS:
+        raise HttpError(400, f'单次最多删除 {BULK_DELETE_MAX_IDS} 篇')
+
+    unique_ids = sorted({int(value) for value in ids})
+    existing = list(
+        Article.objects.filter(pk__in=unique_ids).values_list('id', flat=True)
+    )
+    missing = [value for value in unique_ids if value not in set(existing)]
+    if existing:
+        with transaction.atomic():
+            Article.objects.filter(pk__in=existing).delete()
+
+    return success_response({
+        'requested': len(unique_ids),
+        'deleted': len(existing),
+        'not_found': missing,
+    })
+
+
 @admin_router.get('/articles/{article_id}/', response=ApiResponse[ArticleDetailOut], auth=jwt_auth)
 def get_admin_article(request: HttpRequest, article_id: int) -> dict:
     """获取单篇文章详情（含草稿），供后台编辑回填。"""
@@ -234,7 +386,9 @@ def create_article(
         author=author,
         category=category,
         cover_image_name=cover.name or '',
+        cover_image_sha256=_sha256_of(cover),
         file_name=attachment.name or '',
+        file_sha256=_sha256_of(attachment),
         is_published=payload.is_published,
     )
     article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
@@ -329,14 +483,16 @@ def update_article(
         stale_names.append(article.cover_image.name)
         article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
         article.cover_image_name = cover.name or ''
+        article.cover_image_sha256 = _sha256_of(cover)
         new_names.append(article.cover_image.name)
-        update_fields.update({'cover_image', 'cover_image_name'})
+        update_fields.update({'cover_image', 'cover_image_name', 'cover_image_sha256'})
     if attachment is not None:
         stale_names.append(article.file.name)
         article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
         article.file_name = attachment.name or ''
+        article.file_sha256 = _sha256_of(attachment)
         new_names.append(article.file.name)
-        update_fields.update({'file', 'file_name'})
+        update_fields.update({'file', 'file_name', 'file_sha256'})
 
     if not update_fields and tag_ids is None:
         return success_response(article_to_out(request, article).model_dump())
@@ -504,3 +660,291 @@ def delete_tag(request: HttpRequest, tag_id: int) -> dict:
         raise HttpError(400, '默认标签不可删除')
     tag.delete()
     return success_response(message='删除成功')
+
+
+# ---------------------------------------------------------------------------
+# 文章归档：票据下载 + 两阶段导入
+# 路由顺序敏感：/articles/export/ 必须早于 /articles/{article_id}/（见上方注释）。
+# ---------------------------------------------------------------------------
+
+
+def _archive_error(exc: archive_errors.ArchiveError) -> HttpError:
+    """把归档异常映射成统一信封的 HttpError（400/409/410/429/503）。"""
+    return HttpError(exc.http_status, exc.message)
+
+
+def _parse_ids(raw: str) -> list[int]:
+    """解析逗号分隔的文章 id 列表。"""
+    out: list[int] = []
+    for part in (raw or '').split(','):
+        text = part.strip()
+        if not text:
+            continue
+        if not text.isdigit():
+            raise HttpError(400, 'ids 必须是逗号分隔的正整数')
+        out.append(int(text))
+    return out
+
+
+def _package_info_dict(info: archive_validate.PackageInfo) -> dict:
+    """报告里的包级信息（不透传原始异常文本）。"""
+    return {
+        'entries': info.entries_count,
+        'bytes_uncompressed': info.uncompressed_bytes,
+        'sha256': info.sha256,
+    }
+
+
+def _plan_report(plan: archive_planner.Plan, *, dry_run: bool, package: dict) -> dict:
+    """预检/执行统一的报告结构（同一 planner 产出）。"""
+    return {
+        'dry_run': dry_run,
+        'schema': 'myblog.archive/v1',
+        'package': package,
+        'totals': plan.totals(),
+        'items': [item.to_dict() for item in plan.items],
+    }
+
+
+@admin_router.get('/archives/{ticket}/', auth=None)
+def download_archive(request: HttpRequest, ticket: str):
+    """一次性票据下载（能力 URL：auth=None，凭票据本身授权）。
+
+    票据在**流开始前**原子占用；第二次访问一律 410，可用 reissue 重签。
+    """
+    if not archive_staging.is_uuid(ticket):
+        raise HttpError(404, '归档票据不存在')
+    record = archive_staging.claim_ticket(ticket)
+    if record is None:
+        raise HttpError(410, '票据已使用或已过期，请重新生成')
+    try:
+        path = archive_staging.ticket_file(record)
+    except archive_errors.ArchiveError as exc:
+        raise _archive_error(exc) from None
+    return FileResponse(open(path, 'rb'), as_attachment=True, filename=record.filename)
+
+
+@admin_router.post('/archives/{ticket}/reissue/', response=ApiResponse[dict], auth=staff_auth)
+def reissue_archive(request: HttpRequest, ticket: str) -> dict:
+    """重签票据（下载中断或过期后用）。"""
+    if not archive_staging.is_uuid(ticket):
+        raise HttpError(404, '归档票据不存在')
+    from .models import ArchiveTicket
+
+    record = ArchiveTicket.objects.filter(pk=ticket).first()
+    if record is None:
+        raise HttpError(404, '归档票据不存在')
+    record = archive_staging.reissue_ticket(record)
+    return success_response({
+        'ticket': str(record.id),
+        'download_url': f'/api/v1/admin/archives/{record.id}/',
+        'expires_at': record.expires_at.isoformat(),
+        'filename': record.filename,
+    })
+
+
+@admin_router.post('/articles/import/stage/', response=ApiResponse[dict], auth=staff_auth)
+def stage_import(
+    request: HttpRequest,
+    file: UploadedFile = File(...),
+    strategy: str = Form('skip'),
+) -> dict:
+    """第一阶段：上传并完整校验压缩包，返回 staged_id + 预检报告（不写任何业务数据）。"""
+    lim = archive_limits()
+    size = file.size or 0
+    if size > lim.max_upload_bytes:
+        raise HttpError(413, f'压缩包超过上限 {lim.max_upload_bytes} 字节')
+    if strategy not in archive_planner.STRATEGIES:
+        raise HttpError(400, 'strategy 取值非法')
+
+    staging_id = uuid.uuid4()
+    staging_dir = None
+    try:
+        archive_staging.ensure_subdirs()
+        ensure_free_space(needed_bytes=size, extra_dirs=(lim.root,))
+        staging_dir = archive_staging.create_staging_dir(staging_id)
+        package_path = staging_dir / 'package.zip'
+        with open(package_path, 'wb') as handle:
+            for chunk in file.chunks():
+                handle.write(chunk)
+        info = archive_validate.validate_package(package_path, limits_override=lim)
+        plan = archive_planner.build_plan(
+            info.entries,
+            strategy=strategy,
+            user=cast(User, request.auth),  # type: ignore[attr-defined]
+            lim=lim,
+        )
+    except archive_errors.ArchiveError as exc:
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        raise _archive_error(exc) from None
+    except Exception:
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        logger.exception('归档预检失败')
+        raise HttpError(400, '压缩包处理失败') from None
+
+    staging = ArchiveStaging.objects.create(
+        id=staging_id,
+        user=cast(User, request.auth),  # type: ignore[attr-defined]
+        dir=archive_staging.rel_path(staging_dir),
+        sha256=info.sha256,
+        bytes=size,
+        entries=info.entries_count,
+        expires_at=timezone.now() + timedelta(seconds=lim.staging_ttl),
+    )
+    report = _plan_report(plan, dry_run=True, package=_package_info_dict(info))
+    report['staged_id'] = str(staging.id)
+    return success_response(report)
+
+
+@admin_router.post('/articles/import/plan/', response=ApiResponse[dict], auth=staff_auth)
+def plan_import(request: HttpRequest, payload: ArchiveImportPlanIn) -> dict:
+    """按指定策略对已暂存的包重新预检（**不重传文件**）。
+
+    前端在用户修改策略时需要准确报告，否则只能重传整个包（对大包代价不可接受）。
+    """
+    lim = archive_limits()
+    if payload.strategy not in archive_planner.STRATEGIES:
+        raise HttpError(400, 'strategy 取值非法')
+    if not archive_staging.is_uuid(payload.staged_id):
+        raise HttpError(404, '暂存包不存在')
+    user = cast(User, request.auth)  # type: ignore[attr-defined]
+    staging = ArchiveStaging.objects.filter(pk=payload.staged_id, user=user).first()
+    if staging is None:
+        raise HttpError(404, '暂存包不存在')
+    if staging.consumed_at is not None:
+        raise HttpError(409, '该暂存包已被执行，请重新上传')
+    if staging.expires_at <= timezone.now():
+        raise HttpError(409, '该暂存包已过期，请重新上传')
+
+    try:
+        package_path = archive_staging.staging_archive_path(staging)
+        info = archive_validate.validate_package(package_path, limits_override=lim)
+        plan = archive_planner.build_plan(
+            info.entries, strategy=payload.strategy, user=user, lim=lim
+        )
+    except archive_errors.ArchiveError as exc:
+        raise _archive_error(exc) from None
+
+    report = _plan_report(plan, dry_run=True, package=_package_info_dict(info))
+    report['staged_id'] = str(staging.id)
+    return success_response(report)
+
+
+@admin_router.post('/articles/import/commit/', response=ApiResponse[dict], auth=staff_auth)
+def commit_import(request: HttpRequest, payload: ArchiveImportCommitIn) -> dict:
+    """第二阶段：凭 staged_id 执行（**重新解析原包**，保证与预检一致）。"""
+    from .models import ArchiveTicket
+
+    lim = archive_limits()
+    if payload.strategy not in archive_planner.STRATEGIES:
+        raise HttpError(400, 'strategy 取值非法')
+    if not archive_staging.is_uuid(payload.staged_id):
+        raise HttpError(404, '暂存包不存在')
+    user = cast(User, request.auth)  # type: ignore[attr-defined]
+    staging = ArchiveStaging.objects.filter(pk=payload.staged_id, user=user).first()
+    if staging is None:
+        raise HttpError(404, '暂存包不存在')
+
+    now = timezone.now()
+    try:
+        # 顺序很重要：先取锁与限流，**最后**才消费 staged_id。
+        # 否则被 429/409 挡掉时暂存包已被标记消费，用户得白传一次（含 1GB 包）。
+        with import_lock(lim):
+            enforce_min_interval(user.id, lim)
+            claimed = ArchiveStaging.objects.filter(
+                pk=staging.pk, consumed_at__isnull=True, expires_at__gt=now
+            ).update(consumed_at=now, lease_until=now + timedelta(seconds=600))
+            if claimed != 1:
+                raise HttpError(409, '该暂存包已被执行或已过期，请重新上传')
+
+            package_path = archive_staging.staging_archive_path(staging)
+            info = archive_validate.validate_package(package_path, limits_override=lim)
+            plan = archive_planner.build_plan(
+                info.entries, strategy=payload.strategy, user=user, lim=lim
+            )
+
+            rollback = None
+            if plan.has_overwrite:
+                affected = list(
+                    Article.objects.filter(pk__in=plan.touched_ids)
+                    .select_related('author', 'category')
+                    .prefetch_related('tags')
+                )
+                if affected:
+                    archive_staging.ensure_subdirs()
+                    out_path = (
+                        archive_staging.archive_root()
+                        / archive_staging.ROLLBACKS_DIR
+                        / f'{uuid.uuid4().hex}.zip'
+                    )
+                    archive_export.build_rollback_archive(affected, out_path, lim=lim)
+                    ticket = archive_staging.create_ticket(
+                        user=user,
+                        kind=ArchiveTicket.Kind.ROLLBACK,
+                        path=out_path,
+                        filename=f'rollback-{archive_export.export_filename()}',
+                        size=out_path.stat().st_size,
+                    )
+                    rollback = {
+                        'count': len(affected),
+                        'ticket': str(ticket.id),
+                        'download_url': f'/api/v1/admin/archives/{ticket.id}/',
+                        'expires_at': ticket.expires_at.isoformat(),
+                    }
+
+            options = archive_importer.ImportOptions(
+                strategy=payload.strategy,
+                auto_create_taxonomy=payload.auto_create_taxonomy,
+                as_draft=payload.as_draft,
+                user=user,
+            )
+            report = archive_importer.execute_plan(
+                plan, options=options, package=_package_info_dict(info)
+            )
+            data = report.to_dict(
+                dry_run=False, plan=plan, package=_package_info_dict(info)
+            )
+            data['rollback_package'] = rollback
+    except archive_errors.ArchiveError as exc:
+        raise _archive_error(exc) from None
+    finally:
+        ArchiveStaging.objects.filter(pk=staging.pk).update(lease_until=None)
+
+    return success_response(data)
+
+
+@admin_router.delete(
+    '/articles/import/stage/{staging_id}/', response=ApiResponse[None], auth=staff_auth
+)
+def discard_staging(request: HttpRequest, staging_id: str) -> dict:
+    """放弃一个暂存包。"""
+    if not archive_staging.is_uuid(staging_id):
+        raise HttpError(404, '暂存包不存在')
+    user = cast(User, request.auth)  # type: ignore[attr-defined]
+    staging = ArchiveStaging.objects.filter(pk=staging_id, user=user).first()
+    if staging is None:
+        raise HttpError(404, '暂存包不存在')
+    shutil.rmtree(archive_staging.staging_path(staging.dir), ignore_errors=True)
+    staging.delete()
+    return success_response(message='已丢弃')
+
+
+@admin_router.get('/articles/import/limits/', response=ApiResponse[dict], auth=staff_auth)
+def archive_limits_view(request: HttpRequest) -> dict:
+    """把归档上限暴露给前端，便于上传前本地预检（避免白传 1GB）。"""
+    lim = archive_limits()
+    return success_response({
+        'max_upload_bytes': lim.max_upload_bytes,
+        'max_entries': lim.max_entries,
+        'max_total_uncompressed': lim.max_total_uncompressed,
+        'max_member_bytes': lim.max_member_bytes,
+        'max_articles_per_export': lim.max_articles_per_export,
+        'max_ids_per_request': lim.max_ids_per_request,
+        'cover_extensions': sorted(settings.COVER_EXTENSIONS),
+        'attachment_extensions': sorted(settings.ATTACHMENT_EXTENSIONS),
+        'attachment_legacy_extensions': sorted(settings.ATTACHMENT_LEGACY_EXTENSIONS),
+        'cover_max_bytes': settings.COVER_MAX_BYTES,
+        'attachment_max_bytes': settings.ATTACHMENT_MAX_BYTES,
+    })

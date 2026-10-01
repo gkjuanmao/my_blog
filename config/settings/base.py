@@ -1,4 +1,5 @@
 """Django 基础配置：所有环境共享的通用配置。"""
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -67,10 +68,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # 默认使用 SQLite，生产环境在 prod.py 中切换为 PostgreSQL
+# timeout：SQLite 写锁等待秒数，缓解并发写入时的 database is locked
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db_data' / 'db.sqlite3',
+        'OPTIONS': {'timeout': 20},
     }
 }
 
@@ -114,5 +117,44 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ---------------------------------------------------------------------------
+# 文章归档（导入 / 导出）
+# 说明：以下常量一律在**调用时**经 articles.archive.limits.limits() 读取，
+# 便于测试用 override_settings 收紧上限；不要把它们固化进模块级常量。
+# ---------------------------------------------------------------------------
+
+# 归档产物根目录：**不得**位于任何对外服务的静态/媒体目录下
+ARCHIVE_ROOT = os.environ.get('ARCHIVE_ROOT') or str(BASE_DIR / 'private_archives')
+
+# 上传暂存目录（默认为 None → 系统临时目录；容器内建议指向挂载卷）
+FILE_UPLOAD_TEMP_DIR = os.environ.get('FILE_UPLOAD_TEMP_DIR') or None
+
+ARCHIVE_STAGING_TTL_SECONDS = 1800  # 导入暂存有效期
+ARCHIVE_TICKET_TTL_SECONDS = 300  # 下载票据有效期
+ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60  # 同一用户两次导入的最小间隔
+ARCHIVE_LOCK_TTL_SECONDS = 900  # 导入锁最长持有时间（SIGKILL 后靠它自解）
+
+ARCHIVE_MAX_UPLOAD_BYTES = 1024**3  # 1GB（nginx 侧同限）
+ARCHIVE_MAX_ENTRIES = 500
+ARCHIVE_MAX_TOTAL_UNCOMPRESSED = 500 * 1024**2
+ARCHIVE_MAX_MEMBER_BYTES = 50 * 1024**2
+ARCHIVE_MAX_COMPRESSION_RATIO = 100
+ARCHIVE_MAX_PATH_LENGTH = 255
+ARCHIVE_MAX_DEPTH = 5
+ARCHIVE_MAX_JSON_BYTES = 256 * 1024
+ARCHIVE_MAX_ARTICLES_PER_EXPORT = 1000
+ARCHIVE_MAX_IDS_PER_REQUEST = 200
+ARCHIVE_MAX_NEW_CATEGORIES = 50
+ARCHIVE_MAX_NEW_TAGS = 50
+ARCHIVE_MAX_IMAGE_PIXELS = 80_000_000
+
+# 附件白名单（上传与归档共用）；html 已从上传侧移除
+ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx'}
+# 导入侧的"遗留"扩展名（决策 D23）：存量 .html 附件仍可回导，但会强制下载 + 告警
+ATTACHMENT_LEGACY_EXTENSIONS = {'html'}
+COVER_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
+COVER_MAX_BYTES = 20 * 1024**2
+ATTACHMENT_MAX_BYTES = 50 * 1024**2
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -1,8 +1,12 @@
 """Django Ninja 全局异常处理器：将异常转换为统一格式的 JSON 错误。"""
+import logging
+
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, JsonResponse
 from ninja import NinjaAPI
 from ninja.errors import HttpError
+
+logger = logging.getLogger(__name__)
 
 
 def _error_response(code: int, message) -> JsonResponse:
@@ -25,8 +29,14 @@ def handle_validation_error(request: HttpRequest, exc: ValidationError) -> JsonR
 
 
 def handle_exception(request: HttpRequest, exc: Exception) -> JsonResponse:
-    """兜底处理未知异常，返回 500。"""
-    return _error_response(500, str(exc))
+    """兜底处理未知异常，返回 500。
+
+    只回通用文案：``str(exc)`` 可能包含文件绝对路径、数据库约束名、字段名等内部
+    信息（归档导入会主动制造大量 IO/格式异常，直接回显等于把内部结构泄露给调用方）。
+    细节只写服务端日志。
+    """
+    logger.exception('未处理异常: %s %s', request.method, request.path)
+    return _error_response(500, '服务器内部错误')
 
 
 def register_exception_handlers(api: NinjaAPI) -> None:

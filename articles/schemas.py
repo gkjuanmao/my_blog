@@ -229,6 +229,28 @@ class ArticleCreateIn(Schema):
         return _normalize_tag_ids(value)
 
 
+class ArchiveImportCommitIn(Schema):
+    """归档导入第二阶段（commit）的请求体。"""
+
+    staged_id: str
+    strategy: str = 'skip'
+    auto_create_taxonomy: bool = True
+    as_draft: bool = False
+
+
+class ArchiveImportPlanIn(Schema):
+    """归档导入：按新策略对**已暂存**的包重新预检（不重传文件）。"""
+
+    staged_id: str
+    strategy: str = 'skip'
+
+
+class BulkDeleteIn(Schema):
+    """批量删除文章的请求体。"""
+
+    ids: list[int]
+
+
 class ArticleUpdateIn(Schema):
     """更新文章的表单数据（不含文件），所有字段可选。"""
 

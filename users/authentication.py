@@ -27,3 +27,17 @@ class JWTAuth(HttpBearer):
             raise HttpError(401, '用户不存在') from None
 
         return user
+
+
+class StaffJWTAuth(JWTAuth):
+    """在 JWT 校验基础上要求 is_staff / is_superuser。
+
+    用于归档导入导出等高风险端点：普通登录用户（只要在 admin 里被建过账号）
+    不应能导出全部草稿或执行破坏性导入。
+    """
+
+    def authenticate(self, request, token: str):
+        user = super().authenticate(request, token)
+        if user is not None and not (user.is_staff or user.is_superuser):
+            raise HttpError(403, '需要管理员权限')
+        return user

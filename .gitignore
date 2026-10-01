@@ -19,6 +19,9 @@ server.pid
 htmlcov/
 tests/reports/htmlcov/
 
+# 归档产物（导出包/回滚包/导入暂存）
+private_archives/
+
 # 本地编辑器 / 笔记
 .obsidian/
 .omo/

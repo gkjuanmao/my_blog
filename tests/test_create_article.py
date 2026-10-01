@@ -144,10 +144,14 @@ class TestCreateArticleAPI:
 
         assert response.status_code == 400
 
-    def test_adm_008b_html_attachment(
+    def test_adm_008b_html_attachment_rejected(
         self, api_client, auth_header, test_image, create_payload
     ):
-        """ADM-008b HTML 附件允许上传。"""
+        """ADM-008b HTML 附件被拒（决策 D19：附件白名单收紧为 PDF/Word）。
+
+        HTML 与站点同源（/media/ 由 nginx 直出），上传即存储型 XSS 入口；
+        导入侧另有"遗留扩展名"通道专门处理历史数据。
+        """
         html_file = SimpleUploadedFile(
             'page.html', b'<html><body>test</body></html>', content_type='text/html'
         )
@@ -157,13 +161,9 @@ class TestCreateArticleAPI:
             **auth_header,
         )
 
-        assert response.status_code == 201
-        data = response.json()['data']
-        assert data['file_name'] == 'page.html'
-
-        article = Article.objects.get(slug='test-article')
-        assert article.file_name == 'page.html'
-        assert article.file.name.endswith('.html')
+        assert response.status_code == 400
+        assert 'PDF/Word' in response.json()['message']
+        assert not Article.objects.filter(slug='test-article').exists()
 
     def test_adm_009_chinese_filename(self, api_client, auth_header, test_pdf, create_payload):
         """ADM-009 中文文件名：物理文件 UUID 化，保留原始文件名。"""
