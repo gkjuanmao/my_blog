@@ -75,7 +75,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `docker-compose.yml` 仅含 app+nginx 服务（postgres/redis 已移除）；`prod.py` 中仍有 PostgreSQL/Redis 注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - **`uv.lock` 的源是清华 TUNA 镜像**（仓库内已固化）：因此 Dockerfile **不再需要**构建期 `sed` 换源；也与本机 `~/.config/uv/uv.toml` 的默认源一致，所以 plain `uv run` 不会再重写 lock（若把 lock 换回 pypi.org，这个坑会重新出现）。
-- **本机用 podman 验证部署（无 docker）；脚本同样支持 docker compose**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`cp .env.example .env`（compose 的 `env_file` 必需，且 `DJANGO_ENV=prod` 时必须有 `DJANGO_SECRET_KEY`）→ `scripts/blog.sh up --build`（或 `podman-compose up -d --build`）→ 访问 `http://<IP>:18888/`。
+- **本机用 podman 验证部署（无 docker）；脚本同样支持 docker compose**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`scripts/blog.sh up --build`（或 `podman-compose up -d --build`）→ 访问 `http://<IP>:18888/`。`.env` 是 compose 的 `env_file` 必需项、且含机器本地密钥，因此**被 gitignore、不入库**；首次 `up` 时 `check_env_file` 会**自动从 `.env.example` 生成**一份并提示按需修改（也可提前手动 `cp .env.example .env`），`DJANGO_ENV=prod` 时必须有非空 `DJANGO_SECRET_KEY`。**不要把 `.env` 提交进仓库**（密钥/内网地址会进 git 历史，很难清干净）。
 - **podman 部署的几个硬坑（均已踩过并修复）**：
   - Fedora SELinux `Enforcing` 下，bind mount **必须加 `:z`**（`./db_data:/app/db_data:z`、`nginx.conf:...:ro,z`），否则容器内 `Permission denied`。
   - `podman-compose up -d` **不会因镜像变更而重建已存在的容器**（只比镜像名）→ 改了 Dockerfile/依赖后必须 `podman-compose down && podman-compose up -d`，或至少检查容器 `Image` ID 是否等于 `latest`。

@@ -75,10 +75,10 @@ scp yquian@<源IP>:~/my_blog_images/my_blog_4images_amd64.tar /tmp/
 podman load -i /tmp/my_blog_4images_amd64.tar
 podman images | grep -E 'my_blog_|nginx:1.27|redis'
 
-# 3) 准备环境变量（compose 的 env_file 必需）
+# 3) 准备环境变量（compose 的 env_file 必需；.env 不入库）
 cd /path/to/my_blog
-cp .env.example .env
-#   prod 必填：DJANGO_ENV=prod、DJANGO_SECRET_KEY=<随机串>、DJANGO_ALLOWED_HOSTS=<IP 或 *>
+cp .env.example .env          # 也可跳过：scripts/blog.sh up 会自动生成一份
+#   然后改成：DJANGO_ENV=prod、DJANGO_SECRET_KEY=<随机串>、DJANGO_ALLOWED_HOSTS=<IP 或 *>
 
 # 4) 首次需要数据库目录（compose 绑定挂载）
 mkdir -p db_data

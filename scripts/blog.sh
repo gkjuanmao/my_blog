@@ -203,7 +203,18 @@ env_value() {
 }
 
 check_env_file() {
-  [ -f .env ] || die "缺少 .env（compose 的 env_file 必需）" "cp .env.example .env 后按需修改"
+  # 新克隆的仓库没有 .env（它被 gitignore，且含机器本地密钥，不应入库）：
+  # 这里自动从 .env.example 生成一份，让「拉下来就能 up」，而不是直接报错退出。
+  if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+      cp .env.example .env
+      warn "未找到 .env，已从 .env.example 自动生成一份"
+      hint "请按需修改 .env：DJANGO_ENV / DJANGO_SECRET_KEY / DJANGO_ALLOWED_HOSTS"
+      hint "容器化部署建议 DJANGO_ENV=prod 且换成随机密钥：openssl rand -base64 48"
+    else
+      die "缺少 .env，且没有 .env.example 可参考" "请手动创建 .env（compose 的 env_file 必需）"
+    fi
+  fi
   local mode secret
   mode="$(env_value DJANGO_ENV || true)"
   secret="$(env_value DJANGO_SECRET_KEY || true)"
@@ -329,7 +340,7 @@ cmd_preflight() {
     check_env_file
     ok "DJANGO_ENV=$(env_value DJANGO_ENV || echo dev)，必需项已满足"
   else
-    warn "缺少 .env（up 之前需要：cp .env.example .env）"
+    warn "缺少 .env（up 时会自动从 .env.example 生成，之后再按需修改）"
   fi
 }
 
