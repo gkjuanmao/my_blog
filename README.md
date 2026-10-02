@@ -63,6 +63,8 @@ uv run python manage.py runserver 0.0.0.0:8000
 
 首次启动会自动创建默认分类（`默认分类`）与默认标签（`默认标签`），创建文章时若未填分类/标签将自动挂载。
 
+文章以 **Markdown 正文**为主（封面必填、附件可选）：正文在后台用 Markdown 编写、可「插入图片」（服务端会压成 WebP、最长边 1920 后落盘）与「预览」（走服务端渲染+消毒，与线上一致）。正文为空的历史文章会自动回退为「附件下载」入口。未引用的插图可用 `uv run python manage.py purge_inline_images --delete` 清理（默认只报告）。
+
 ## 前端本地开发（Nuxt）
 
 前端位于 [`front/`](./front/) 目录（Nuxt 3 + Vue 3 + Element Plus）。
@@ -171,10 +173,10 @@ scripts/blog.sh check --front       # 质量门禁（ruff/mypy/pytest/迁移/配
 scripts/blog.sh logs app -f         # 看日志（app|nginx|front|redis）
 scripts/blog.sh down                # 停止（保留数据卷与 db_data/）
 
-scripts/blog.sh export              # 导出离线镜像包（tar + .sha256）
+scripts/blog.sh export              # 导出离线镜像包（默认名带时间戳，省略 --out）
 scripts/blog.sh import --in 包.tar   # 目标机离线部署（校验 → load → 重建 → 健康检查）
 scripts/blog.sh seed-media          # 把本机 media/ 同步进媒体卷（数据迁移用）
-scripts/blog.sh seed-demo           # 生成并导入30 篇演示游记
+scripts/blog.sh seed-demo           # 生成并导入 30 篇演示游记（含 Markdown 正文与压缩插图）
 scripts/blog.sh purge               # 清归档过期产物 + 悬空镜像
 ```
 

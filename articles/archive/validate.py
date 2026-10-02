@@ -21,10 +21,15 @@ from django.core.validators import validate_slug
 from django.utils import timezone
 from PIL import Image, ImageOps
 
+from articles.images import InlineImageError, extract_inline_names, process_inline_image
+from articles.rendering import render_markdown
+
 from .errors import ItemError, LimitExceeded, PackageError
 from .format import (
+    ACCEPTED_ARTICLE_SCHEMAS,
     ARTICLE_JSON_NAME,
-    SCHEMA_ARTICLE,
+    IMAGES_DIR,
+    LEGACY_ARTICLE_SCHEMAS,
     extension_of,
     sha256_bytes,
 )
@@ -74,21 +79,37 @@ class Budget:
 
 @dataclass
 class MediaRef:
-    """包内一个媒体文件的引用。"""
+    """包内一个媒体文件的引用。
+
+    ⚠️ **不保留文件字节**：1GiB 级上限下把每个成员的字节常驻内存会导致整站 OOM
+    （gthread 多 worker 共享进程）。这里只留**重编码后落盘字节的哈希**，importer
+    需要字节时重新打开暂存 zip 读取，并重跑 ``process_cover`` 后用产物哈希与
+    ``stored_sha256`` 比对。
+    """
 
     entry_name: str
     original_name: str
-    data: bytes
     declared_sha256: str | None
     declared_size: int | None
     warnings: list[str] = field(default_factory=list)
-    # **将被写入存储的字节**：封面已是规范格式就原样存，否则重编码后存。
-    # 幂等比较与 `*_sha256` 列都基于它（见方案 D24）。
-    stored_bytes: bytes = b''
+    # 将被写入存储的字节的 SHA-256（幂等比较与 `*_sha256` 列的唯一依据，见方案 D24）
+    stored_sha256: str = ''
+    stored_size: int = 0
 
     @property
     def extension(self) -> str:
         return extension_of(self.entry_name)
+
+
+@dataclass
+class InlineImageRef:
+    """正文插图（包内 ``images/<name>``）的引用，同样不保留字节。"""
+
+    entry_name: str
+    name: str  # 包内文件名（内容寻址名，正文 URL 与之一致）
+    stored_sha256: str
+    stored_size: int
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -100,6 +121,7 @@ class ParsedArticle:
     publish_time: datetime
     present: frozenset[str]
     summary: str
+    content: str
     location: str
     is_published: bool | None
     category: dict | None
@@ -119,6 +141,7 @@ class ArticleEntry:
     parsed: ParsedArticle | None = None
     cover: MediaRef | None = None
     attachment: MediaRef | None = None
+    images: list[InlineImageRef] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -131,11 +154,13 @@ class ArticleEntry:
         return self.parsed.title if self.parsed else ''
 
     def all_warnings(self) -> list[str]:
-        """条目级 + 媒体级（哈希不一致、遗留 HTML 等）告警，供报告使用。"""
+        """条目级 + 媒体级（哈希不一致、遗留 HTML、插图缺失等）告警，供报告使用。"""
         out = list(self.warnings)
         for media in (self.cover, self.attachment):
             if media is not None:
                 out.extend(media.warnings)
+        for image in self.images:
+            out.extend(image.warnings)
         return out
 
     def ok(self) -> bool:
@@ -163,17 +188,22 @@ def read_member(
     budget: Budget,
     *,
     max_bytes: int | None = None,
+    check_ratio: bool = True,
 ) -> bytes:
     """分块读取一个条目，严格按**真实**字节数计费。
 
     不信任 ``info.file_size``：红队实测一个"声明 1 字节"的条目可解出 64MiB。
+
+    ``check_ratio=False`` 用于 ``article.json``：大段重复的正文 Markdown 压缩比可能
+    远超阈值，会被误判为"压缩比异常"而拒绝合法包（zip 炸弹仍由总量/单成员上限兜底）。
     """
     cap = min(max_bytes or lim.max_member_bytes, lim.max_member_bytes)
     if info.file_size and info.file_size > cap:
         raise LimitExceeded(f'条目 {info.filename} 声明尺寸超过上限 {cap} 字节')
-    declared_ratio = info.file_size / max(info.compress_size, 1)
-    if declared_ratio > lim.max_compression_ratio:
-        raise LimitExceeded(f'条目 {info.filename} 压缩比异常（{declared_ratio:.0f}:1）')
+    if check_ratio:
+        declared_ratio = info.file_size / max(info.compress_size, 1)
+        if declared_ratio > lim.max_compression_ratio:
+            raise LimitExceeded(f'条目 {info.filename} 压缩比异常（{declared_ratio:.0f}:1）')
 
     chunks: list[bytes] = []
     read = 0
@@ -186,7 +216,7 @@ def read_member(
             read += len(chunk)
             if read > cap:
                 raise LimitExceeded(f'条目 {info.filename} 解压后超过上限 {cap} 字节')
-            if read / max(info.compress_size, 1) > lim.max_compression_ratio:
+            if check_ratio and read / max(info.compress_size, 1) > lim.max_compression_ratio:
                 raise LimitExceeded(f'条目 {info.filename} 实际压缩比异常')
             budget.charge(len(chunk), lim)
             chunks.append(chunk)
@@ -377,13 +407,16 @@ def parse_fields(data: dict) -> ParsedArticle:
         publish_time=publish_time,
         present=frozenset(data.keys()),
         summary=_expect_str(data, 'summary', max_length=500, required=False) or '',
+        content=_expect_str(
+            data, 'content', max_length=settings.ARTICLE_CONTENT_MAX_CHARS, required=False
+        ) or '',
         location=_expect_str(data, 'location', max_length=255, required=False) or '',
         is_published=is_published,
         category=category,
         tags=tags,
         author_username=author_username,
         import_action=action,
-        schema_warning=schema not in (None, SCHEMA_ARTICLE),
+        schema_warning=schema not in (None, *ACCEPTED_ARTICLE_SCHEMAS),
     )
 
 
@@ -522,7 +555,7 @@ def validate_package(
                 continue
             try:
                 raw = read_member(
-                    zf, info, lim, budget, max_bytes=lim.max_json_bytes
+                    zf, info, lim, budget, max_bytes=lim.max_json_bytes, check_ratio=False
                 )
                 entry.raw = parse_article_json(raw)
                 entry.parsed = parse_fields(entry.raw)
@@ -530,7 +563,12 @@ def validate_package(
                     entry.warnings.append(
                         f'article.json 的 schema 版本未知，已尽力导入: {entry.raw.get("schema")!r}'
                     )
+                elif entry.raw.get('schema') in LEGACY_ARTICLE_SCHEMAS:
+                    entry.warnings.append(
+                        f'该包为旧版格式（{entry.raw.get("schema")}），不含 Markdown 正文与内联图'
+                    )
                 _resolve_media(zf, entry, files, lim, budget, allow_legacy_html)
+                _resolve_inline_images(zf, entry, files, lim, budget)
             except ItemError as exc:
                 entry.errors.append(exc.message)
             except LimitExceeded as exc:
@@ -569,63 +607,69 @@ def _resolve_media(
     budget: Budget,
     allow_legacy_html: bool,
 ) -> None:
-    """按 article.json 的声明解析封面与附件（含单候选回退）。"""
+    """按 article.json 的声明解析封面与附件（含单候选回退）。
+
+    - 封面**必填**（与创建接口一致）；
+    - 附件**可缺省**：键缺失/显式 ``null`` 且目录内无候选 → 视为没有附件，不报错。
+    """
     base = entry.dir_path
-    for role, key in (('cover', 'cover'), ('attachment', 'attachment')):
-        declared = entry.raw.get(key)
-        names: list[str] = []
+    for role in ('cover', 'attachment'):
+        declared = entry.raw.get(role)
         original = ''
         declared_sha = None
         declared_size = None
+        target: str | None = None
+
         if isinstance(declared, dict):
             rel = str(declared.get('file') or '')
             original = str(declared.get('original_name') or '')
             declared_sha = declared.get('sha256') or None
             declared_size = declared.get('size')
             if rel:
-                candidate = f'{base}/{rel}' if base else rel
-                candidate = normalize_entry_name(candidate)
+                candidate = normalize_entry_name(f'{base}/{rel}' if base else rel)
                 if '..' in PurePosixPath(candidate).parts:
                     entry.errors.append(f'{role}.file 不允许包含 ".."')
                     continue
-                names.append(candidate)
-        else:
-            # 键缺失：仅当目录下恰好只有一个同角色候选文件时才回退
+                target = candidate
+
+        # 声明的文件找不到 → 回退到"目录内唯一候选"（多个候选不猜）
+        if target is not None and _find_info(files, target) is None:
             candidates = _role_candidates(files, base, role, allow_legacy_html)
             if len(candidates) == 1:
-                names.append(candidates[0])
                 entry.warnings.append(
-                    f'{role} 未在 article.json 中声明，已按目录内唯一候选文件使用: '
+                    f'{role} 声明的 {target} 不存在，已改用目录内唯一候选文件 '
                     f'{PurePosixPath(candidates[0]).name}'
                 )
-            elif len(candidates) > 1:
-                entry.errors.append(
-                    f'{role} 未声明，且目录内存在多个同类型候选文件，无法自动选择'
-                )
-                continue
-            else:
-                entry.errors.append(f'缺少必填的{role}（封面/附件）')
-                continue
-
-        target = names[0]
-        info = _find_info(files, target)
-        if info is None:
-            candidates = _role_candidates(files, base, role, allow_legacy_html)
-            if len(candidates) == 1:
                 target = candidates[0]
-                info = _find_info(files, target)
-                entry.warnings.append(
-                    f'{role} 声明的 {names[0]} 不存在，已改用目录内唯一候选文件 '
-                    f'{PurePosixPath(target).name}'
-                )
             elif len(candidates) > 1:
                 entry.errors.append(
                     f'{role} 声明的文件不存在，且目录内存在多个候选文件，无法自动选择'
                 )
                 continue
             else:
-                entry.errors.append(f'{role} 声明的文件在压缩包内不存在: {names[0]}')
+                entry.errors.append(f'{role} 声明的文件在压缩包内不存在: {target}')
                 continue
+
+        if target is None:
+            candidates = _role_candidates(files, base, role, allow_legacy_html)
+            if len(candidates) == 1:
+                target = candidates[0]
+                entry.warnings.append(
+                    f'{role} 未在 article.json 中声明，已按目录内唯一候选文件使用: '
+                    f'{PurePosixPath(target).name}'
+                )
+            elif len(candidates) > 1:
+                entry.errors.append(
+                    f'{role} 未声明，且目录内存在多个同类型候选文件，无法自动选择'
+                )
+                continue
+            elif role == 'cover':
+                entry.errors.append('缺少必填的 cover（封面）')
+                continue
+            else:
+                continue  # 附件可缺省
+
+        info = _find_info(files, target)
         if info is None:  # 理论上不可达，仅为类型收窄
             entry.errors.append(f'{role} 的文件无法定位')
             continue
@@ -664,16 +708,123 @@ def _resolve_media(
         media = MediaRef(
             entry_name=target,
             original_name=original or PurePosixPath(target).name,
-            data=data,
             declared_sha256=declared_sha,
             declared_size=declared_size,
             warnings=media_warnings,
-            stored_bytes=stored,
+            stored_sha256=sha256_bytes(stored),
+            stored_size=len(stored),
         )
         if role == 'cover':
             entry.cover = media
         else:
             entry.attachment = media
+
+
+def _resolve_inline_images(
+    zf: zipfile.ZipFile,
+    entry: ArticleEntry,
+    files: list[zipfile.ZipInfo],
+    lim: Limits,
+    budget: Budget,
+) -> None:
+    """解析正文插图：只接受包内 ``images/`` 下的文件，并强制重新压缩为 WebP。
+
+    与上传端点共用 ``process_inline_image``：手改包无法把 polyglot / 超大像素 /
+    非图片字节直接落进公开的 ``/media/inline/``。
+    """
+    parsed = entry.parsed
+    if parsed is None:
+        return
+    base = entry.dir_path
+
+    declared = entry.raw.get('images')
+    if declared is None:
+        declared_items: list[dict] = []
+    elif isinstance(declared, list):
+        declared_items = [item for item in declared if isinstance(item, dict)]
+        if len(declared_items) != len(declared):
+            entry.warnings.append('images 中存在非对象项，已忽略')
+    else:
+        entry.errors.append('images 必须是数组')
+        return
+
+    prefix = f'{base}/{IMAGES_DIR}/' if base else f'{IMAGES_DIR}/'
+    packaged: dict[str, str] = {}
+    for info in files:
+        name = normalize_entry_name(info.filename)
+        if not name.startswith(prefix):
+            continue
+        rest = name[len(prefix):]
+        if not rest or '/' in rest:
+            continue
+        packaged[rest.lower()] = name
+
+    referenced = (
+        extract_inline_names(render_markdown(parsed.content)) if parsed.content else set()
+    )
+
+    wanted: list[str] = []
+    seen: set[str] = set()
+
+    def _add(name: str) -> None:
+        key = name.lower()
+        if key not in seen:
+            seen.add(key)
+            wanted.append(name)
+
+    for item in declared_items:
+        base_name = PurePosixPath(normalize_entry_name(str(item.get('file') or ''))).name
+        if not base_name:
+            continue
+        _add(base_name)
+        if base_name.lower() not in packaged:
+            entry.warnings.append(f'images 声明的插图 {base_name} 在压缩包内不存在')
+    for name in sorted(referenced):
+        if name.lower() in packaged:
+            _add(packaged[name.lower()])
+
+    if len(wanted) > settings.INLINE_IMAGE_MAX_PER_ARTICLE:
+        entry.errors.append(
+            f'正文插图数量 {len(wanted)} 超过上限 {settings.INLINE_IMAGE_MAX_PER_ARTICLE}'
+        )
+        return
+
+    unresolved = referenced - {name.lower() for name in wanted}
+    if unresolved:
+        sample = ', '.join(sorted(unresolved)[:5])
+        entry.warnings.append(
+            f'正文引用了 {len(unresolved)} 张未随包提供的插图: {sample}'
+        )
+
+    refs: list[InlineImageRef] = []
+    for name in wanted:
+        entry_name = packaged.get(name.lower())
+        if entry_name is None:
+            continue
+        member_info = _find_info(files, entry_name)
+        if member_info is None:
+            continue
+        if member_info.file_size and member_info.file_size > settings.INLINE_IMAGE_MAX_BYTES:
+            entry.errors.append(f'插图 {name} 超过单张上限 10MB')
+            continue
+        data = read_member(
+            zf, member_info, lim, budget, max_bytes=settings.INLINE_IMAGE_MAX_BYTES
+        )
+        try:
+            processed = process_inline_image(data, extension_of(entry_name))
+        except InlineImageError as exc:
+            entry.errors.append(f'插图 {name} 无法处理: {exc}')
+            continue
+        refs.append(
+            InlineImageRef(
+                entry_name=entry_name,
+                name=PurePosixPath(entry_name).name,
+                stored_sha256=processed.sha256,
+                stored_size=len(processed.data),
+                warnings=list(processed.warnings),
+            )
+        )
+    entry.images = refs
 
 
 def _find_info(files: list[zipfile.ZipInfo], target: str) -> zipfile.ZipInfo | None:

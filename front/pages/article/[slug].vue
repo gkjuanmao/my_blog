@@ -2,20 +2,11 @@
 import type { ArticleDetail } from '~/types/api'
 
 const route = useRoute()
-const slug = route.params.slug as string
+// 必须是 computed：同路由仅参数变化时组件实例复用、setup 不会重跑，
+// 常量 slug 会让 useAsyncData 的 key 恒为旧值，导致切换文章显示上一篇。
+const slug = computed(() => route.params.slug as string)
 
-const article = ref<ArticleDetail | null>(null)
-const loading = ref(true)
-const errorMsg = ref('')
 const coverError = ref(false)
-
-// 仅 PDF 支持在线预览；Word 等附件只提供下载（避免把不可预览内容交给 PDF 渲染器）
-const fileExt = computed(() => {
-  const name = article.value?.file_name ?? ''
-  const dot = name.lastIndexOf('.')
-  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
-})
-const isPdf = computed(() => fileExt.value === 'pdf')
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
@@ -24,20 +15,14 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   day: 'numeric',
 })
 
-async function fetchArticle() {
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const { data } = await useApi().get<ArticleDetail>(`/articles/${slug}/`)
-    article.value = data
-  } catch (e: any) {
-    errorMsg.value = '文章不存在或已下架'
-  } finally {
-    loading.value = false
-  }
-}
+const { data: article, pending, error: fetchError } = await useAsyncData<ArticleDetail>(
+  () => `article-${slug.value}`,
+  () => useApi().get<ArticleDetail>(`/articles/${slug.value}/`).then((res) => res.data),
+  { watch: [slug] },
+)
 
-await fetchArticle()
+// 正文由服务端渲染并消毒（content_html），前端只做展示，不再引入 markdown 依赖
+const hasContent = computed(() => Boolean(article.value?.content_html?.trim()))
 </script>
 
 <template>
@@ -67,34 +52,39 @@ await fetchArticle()
 
     <p v-if="article.summary" class="text-stone-600 dark:text-stone-300">{{ article.summary }}</p>
 
-    <div v-if="article.file_url" class="space-y-4">
-      <PdfViewer v-if="isPdf" :pdf-url="article.file_url" />
-      <div
-        v-else
-        class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400"
-      >
-        该附件为 {{ fileExt.toUpperCase() || '未知' }} 格式，暂不支持在线预览，请下载后查看。
-      </div>
-      <div class="flex justify-center">
-        <a
-          :href="article.file_url"
-          :download="article.file_name"
-          target="_blank"
-          rel="noopener"
-          class="rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 dark:bg-amber-600 dark:hover:bg-amber-500"
-        >
-          下载附件（{{ article.file_name }}）
-        </a>
-      </div>
+    <!-- 正文：服务端渲染 + 消毒后的 HTML -->
+    <div v-if="hasContent" class="md-body" v-html="article.content_html" />
+
+    <!-- 存量文章（无正文）回退：只给附件下载入口，不再做 PDF 在线预览 -->
+    <div
+      v-else-if="!article.file_url"
+      class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-400 dark:border-stone-700"
+    >
+      该文章暂无正文
     </div>
-    <div v-else class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-400 dark:border-stone-700">
-      该文章暂无附件
+    <div
+      v-else
+      class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400"
+    >
+      该文章以附件形式提供，请下载后查看。
+    </div>
+
+    <div v-if="article.file_url" class="flex justify-center">
+      <a
+        :href="article.file_url"
+        :download="article.file_name"
+        target="_blank"
+        rel="noopener"
+        class="rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+      >
+        下载附件（{{ article.file_name }}）
+      </a>
     </div>
   </article>
 
-  <div v-else-if="loading" class="py-16 text-center text-sm text-stone-400">加载中…</div>
+  <div v-else-if="pending" class="py-16 text-center text-sm text-stone-400">加载中…</div>
   <div v-else class="py-16 text-center">
-    <p class="mb-4 text-sm text-red-500">{{ errorMsg }}</p>
+    <p class="mb-4 text-sm text-red-500">{{ fetchError ? '文章不存在或已下架' : '文章不存在' }}</p>
     <NuxtLink to="/" class="text-sm text-brand-600 hover:underline dark:text-amber-400">返回首页</NuxtLink>
   </div>
 </template>

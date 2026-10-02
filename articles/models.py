@@ -63,6 +63,7 @@ class Article(models.Model):
     title = models.CharField(max_length=200, db_index=True, verbose_name='标题')
     slug = models.SlugField(max_length=200, unique=True, db_index=True, verbose_name='URL 别名')
     summary = models.CharField(max_length=500, blank=True, verbose_name='摘要')
+    content = models.TextField(blank=True, default='', verbose_name='Markdown 正文')
     publish_time = models.DateTimeField(db_index=True, verbose_name='发布时间')
     location = models.CharField(max_length=255, blank=True, verbose_name='地点')
     cover_image = models.ImageField(
@@ -73,8 +74,12 @@ class Article(models.Model):
     cover_image_sha256 = models.CharField(
         max_length=64, blank=True, verbose_name='封面源文件 SHA-256'
     )
-    file = models.FileField(upload_to=file_upload_path, verbose_name='附件文件')
-    file_name = models.CharField(max_length=255, verbose_name='附件原始文件名')
+    file = models.FileField(
+        upload_to=file_upload_path, blank=True, default='', verbose_name='附件文件'
+    )
+    file_name = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='附件原始文件名'
+    )
     file_sha256 = models.CharField(max_length=64, blank=True, verbose_name='附件源文件 SHA-256')
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,

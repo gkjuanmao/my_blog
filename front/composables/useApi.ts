@@ -55,8 +55,13 @@ export function useApi() {
       return data
     } catch (error: any) {
       if (error?.response?.status === 401) {
-        if (import.meta.client) localStorage.removeItem('access_token')
-        await navigateTo('/administrator/login')
+        if (import.meta.client) {
+          localStorage.removeItem('access_token')
+          await navigateTo('/administrator/login')
+        } else {
+          // SSR 阶段调用 navigateTo 不合法，抛 Nuxt 错误交给 useAsyncData/错误页处理
+          throw createError({ statusCode: 401, statusMessage: '未登录' })
+        }
       }
       throw error
     }

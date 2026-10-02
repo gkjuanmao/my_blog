@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ArticleDetail, Category, Tag } from '~/types/api'
+import type { AdminArticleDetail, Category, Tag } from '~/types/api'
 
 const props = defineProps<{
-  initial?: ArticleDetail | null
+  initial?: AdminArticleDetail | null
   submitLabel: string
   categories: Category[]
   tags: Tag[]
@@ -24,6 +24,7 @@ const form = reactive({
   title: props.initial?.title ?? '',
   slug: props.initial?.slug ?? '',
   summary: props.initial?.summary ?? '',
+  content: props.initial?.content ?? '',
   location: props.initial?.location ?? '',
   publish_time: toPickerValue(props.initial?.publish_time),
   category_id: (props.initial?.category?.id as number | null) ?? null,
@@ -79,11 +80,80 @@ function onAttachmentRemove() {
   attachmentFile.value = null
 }
 
+/* ---------------------------------------------------------------- Markdown 正文 */
+
+const contentRef = ref<any>(null)
+const previewHtml = ref('')
+const previewVisible = ref(false)
+const previewing = ref(false)
+const uploadingImage = ref(false)
+
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
+// 在光标处插入文本（不监听 v-model，避免长正文输入卡顿）
+function insertAtCursor(text: string) {
+  const el: HTMLTextAreaElement | undefined = contentRef.value?.textarea
+  if (!el) {
+    form.content += text
+    return
+  }
+  const start = el.selectionStart ?? form.content.length
+  const end = el.selectionEnd ?? start
+  form.content = form.content.slice(0, start) + text + form.content.slice(end)
+  nextTick(() => {
+    el.focus()
+    el.selectionStart = el.selectionEnd = start + text.length
+  })
+}
+
+async function onInlineImageChange(file: any) {
+  const raw: File | undefined = file?.raw
+  if (!raw) return
+  if (raw.size > IMAGE_MAX_BYTES) {
+    ElMessage.error('图片不能超过 10MB')
+    return
+  }
+  uploadingImage.value = true
+  try {
+    const fd = new FormData()
+    fd.append('image', raw)
+    const res = await useApi().uploadWithProgress<{ url: string; width: number; height: number }>(
+      '/admin/articles/images/',
+      fd,
+    )
+    insertAtCursor(`![${raw.name}](${res.data.url})`)
+    ElMessage.success('图片已插入正文')
+  } catch (e: any) {
+    ElMessage.error(e?.data?.message ?? '图片上传失败')
+  } finally {
+    uploadingImage.value = false
+  }
+}
+
+// 预览走服务端渲染（与线上同一条管线），保证"所见即所得"且不引入前端 markdown 依赖
+async function handlePreview() {
+  previewing.value = true
+  try {
+    const res = await useApi().post<{ content_html: string }>('/admin/articles/preview/', {
+      content: form.content,
+    })
+    previewHtml.value = res.data.content_html
+    previewVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.data?.message ?? '预览失败')
+  } finally {
+    previewing.value = false
+  }
+}
+
+/* -------------------------------------------------------------------- 提交 */
+
 function buildFormData(): FormData {
   const fd = new FormData()
   fd.append('title', form.title)
   if (form.slug.trim()) fd.append('slug', form.slug.trim())
   fd.append('summary', form.summary)
+  fd.append('content', form.content)
   fd.append('location', form.location)
   fd.append('publish_time', form.publish_time)
   if (form.category_id != null) fd.append('category_id', String(form.category_id))
@@ -99,8 +169,9 @@ function handleSubmit() {
     ElMessage.error('请上传封面')
     return
   }
-  if (isCreateMode.value && attachmentList.value.length === 0) {
-    ElMessage.error('请上传附件')
+  // 附件可选，但「正文与附件至少填一项」（后端同样校验）
+  if (!form.content.trim() && attachmentList.value.length === 0) {
+    ElMessage.error('正文与附件至少填写一项')
     return
   }
   const fd = buildFormData()
@@ -122,6 +193,36 @@ function handleSubmit() {
     </el-form-item>
     <el-form-item label="摘要">
       <el-input v-model="form.summary" type="textarea" :rows="3" placeholder="请输入摘要" />
+    </el-form-item>
+    <el-form-item label="正文（Markdown，图片请用「插入图片」上传）">
+      <el-input
+        ref="contentRef"
+        v-model="form.content"
+        type="textarea"
+        :rows="18"
+        resize="vertical"
+        class="font-mono"
+        placeholder="支持 Markdown：# 标题、**加粗**、- 列表、```代码块```、| 表格 |"
+      />
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="false"
+          :accept="'.jpg,.jpeg,.png,.webp'"
+          :on-change="onInlineImageChange"
+          :disabled="uploadingImage"
+        >
+          <el-button size="small" :loading="uploadingImage">插入图片</el-button>
+        </el-upload>
+        <el-button size="small" :loading="previewing" @click="handlePreview">
+          {{ previewVisible ? '刷新预览' : '预览' }}
+        </el-button>
+        <el-button v-if="previewVisible" size="small" text @click="previewVisible = false">收起预览</el-button>
+        <span class="text-xs text-stone-400">图片会压缩为 WebP（最长边 1920）后插入</span>
+      </div>
+    </el-form-item>
+    <el-form-item v-if="previewVisible" label="预览（服务端渲染结果）">
+      <div class="md-body w-full rounded-lg border border-stone-200 p-4 dark:border-stone-700" v-html="previewHtml" />
     </el-form-item>
     <el-form-item label="发布时间" prop="publish_time">
       <el-date-picker v-model="form.publish_time" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选择时间" style="width: 100%" />
@@ -153,7 +254,7 @@ function handleSubmit() {
         <el-button>选择封面</el-button>
       </el-upload>
     </el-form-item>
-    <el-form-item label="附件（PDF/Word ≤50MB）" :required="isCreateMode">
+    <el-form-item label="附件（可选，PDF/Word ≤50MB）">
       <el-upload
         v-model:file-list="attachmentList"
         :auto-upload="false"

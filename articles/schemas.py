@@ -8,6 +8,7 @@ from ninja import Schema
 from pydantic import field_validator
 
 from .models import Article
+from .rendering import render_markdown
 
 
 def _normalize_category_id(value: Any) -> Any:
@@ -191,9 +192,16 @@ class ArticleOut(Schema):
 
 
 class ArticleDetailOut(ArticleOut):
-    """文章详情响应：在列表基础上增加作者信息。"""
+    """文章详情响应（公开）：在列表基础上增加作者与**已消毒**的正文 HTML。"""
 
     author: str
+    content_html: str = ''
+
+
+class AdminArticleDetailOut(ArticleDetailOut):
+    """管理端文章详情：额外返回**原始 Markdown 正文**，供编辑表单回填。"""
+
+    content: str = ''
 
 
 class ArticleCreateIn(Schema):
@@ -202,6 +210,7 @@ class ArticleCreateIn(Schema):
     title: str
     slug: str | None = None
     summary: str = ''
+    content: str = ''
     publish_time: datetime
     location: str = ''
     category_id: int | None = None
@@ -251,12 +260,19 @@ class BulkDeleteIn(Schema):
     ids: list[int]
 
 
+class ArticlePreviewIn(Schema):
+    """编辑器预览请求体：只渲染正文，不落库。"""
+
+    content: str = ''
+
+
 class ArticleUpdateIn(Schema):
     """更新文章的表单数据（不含文件），所有字段可选。"""
 
     title: str | None = None
     slug: str | None = None
     summary: str | None = None
+    content: str | None = None
     publish_time: datetime | None = None
     location: str | None = None
     category_id: int | None = None
@@ -325,6 +341,16 @@ def article_to_out(request, article: Article) -> ArticleOut:
 
 
 def article_to_detail(request, article: Article) -> ArticleDetailOut:
-    """将模型实例转换为 ArticleDetailOut（含作者）。"""
+    """将模型实例转换为 ArticleDetailOut（含作者与**已消毒**的正文 HTML）。"""
     out = article_to_out(request, article).model_dump()
-    return ArticleDetailOut(**out, author=article.author.username)
+    return ArticleDetailOut(
+        **out,
+        author=article.author.username,
+        content_html=render_markdown(article.content),
+    )
+
+
+def article_to_admin_detail(request, article: Article) -> AdminArticleDetailOut:
+    """管理端详情：额外带**原始 Markdown**，供编辑表单回填。"""
+    out = article_to_detail(request, article).model_dump()
+    return AdminArticleDetailOut(**out, content=article.content)

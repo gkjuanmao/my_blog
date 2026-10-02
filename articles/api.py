@@ -19,6 +19,7 @@ from ninja.responses import Status
 
 from articles.archive import errors as archive_errors
 from articles.archive import export as archive_export
+from articles.archive import format as archive_format
 from articles.archive import importer as archive_importer
 from articles.archive import planner as archive_planner
 from articles.archive import staging as archive_staging
@@ -32,13 +33,17 @@ from users.authentication import JWTAuth, StaffJWTAuth
 from users.models import User
 
 from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
+from .images import InlineImageError, process_inline_image, store_inline_image
 from .models import ArchiveStaging, Article, Category, Tag, cover_upload_path, file_upload_path
+from .rendering import render_markdown
 from .schemas import (
+    AdminArticleDetailOut,
     ArchiveImportCommitIn,
     ArchiveImportPlanIn,
     ArticleCreateIn,
     ArticleDetailOut,
     ArticleOut,
+    ArticlePreviewIn,
     ArticleUpdateIn,
     BulkDeleteIn,
     CategoryIn,
@@ -47,6 +52,7 @@ from .schemas import (
     TagIn,
     TagOut,
     TagUpdateIn,
+    article_to_admin_detail,
     article_to_detail,
     article_to_out,
 )
@@ -103,6 +109,18 @@ def _validate_attachment(attachment: UploadedFile) -> None:
         raise HttpError(400, '附件仅支持 PDF/Word 格式')
     if (attachment.size or 0) > settings.ATTACHMENT_MAX_BYTES:
         raise HttpError(400, '附件大小不能超过 50MB')
+
+
+def _validate_content(content: str) -> None:
+    """校验 Markdown 正文长度（ninja 的 Form 不会自动执行 max_length）。"""
+    if len(content) > settings.ARTICLE_CONTENT_MAX_CHARS:
+        raise HttpError(400, f'正文过长（上限 {settings.ARTICLE_CONTENT_MAX_CHARS} 字符）')
+
+
+def _ensure_content_or_attachment(content: str | None, has_file: bool) -> None:
+    """最终态校验：正文与附件至少填一项（create / update 共用）。"""
+    if not (content or '').strip() and not has_file:
+        raise HttpError(400, '正文与附件至少填写一项')
 
 
 def _resolve_category_and_tags(
@@ -351,9 +369,47 @@ def bulk_delete_articles(request: HttpRequest, payload: BulkDeleteIn) -> dict:
     })
 
 
-@admin_router.get('/articles/{article_id}/', response=ApiResponse[ArticleDetailOut], auth=jwt_auth)
+@admin_router.post('/articles/preview/', response=ApiResponse[dict], auth=jwt_auth)
+def preview_article_content(request: HttpRequest, payload: ArticlePreviewIn) -> dict:
+    """预览 Markdown 正文（只渲染消毒，不落库）。
+
+    ⚠️ 本路由必须注册在 ``/articles/{article_id}/`` 之前：详情路由没有 int 转换器，
+    会把 ``preview`` 解析成 ``article_id``（同 export / bulk-delete）。
+    """
+    content = payload.content or ''
+    _validate_content(content)
+    return success_response({'content_html': render_markdown(content)})
+
+
+@admin_router.post('/articles/images/', response=ApiResponse[dict], auth=staff_auth)
+def upload_inline_image(request: HttpRequest, image: UploadedFile = File(...)) -> dict:
+    """上传正文内联图片：服务端压缩为 WebP、按内容寻址落盘，返回可插入正文的 URL。
+
+    ⚠️ 与 preview 同理，本路由必须注册在 ``/articles/{article_id}/`` 之前。
+    """
+    ext = _extension(image.name or '')
+    if ext not in settings.INLINE_IMAGE_EXTENSIONS:
+        raise HttpError(400, '图片仅支持 JPG/PNG/WebP 格式')
+    raw = image.read()
+    try:
+        processed = process_inline_image(raw, ext)
+    except InlineImageError as exc:
+        raise HttpError(400, str(exc)) from None
+    rel = store_inline_image(processed.data)
+    return success_response({
+        'url': f'{settings.MEDIA_URL}{rel}',
+        'width': processed.width,
+        'height': processed.height,
+        'bytes': len(processed.data),
+        'original_bytes': len(raw),
+    })
+
+
+@admin_router.get(
+    '/articles/{article_id}/', response=ApiResponse[AdminArticleDetailOut], auth=jwt_auth
+)
 def get_admin_article(request: HttpRequest, article_id: int) -> dict:
-    """获取单篇文章详情（含草稿），供后台编辑回填。"""
+    """获取单篇文章详情（含草稿与原始 Markdown），供后台编辑回填。"""
     article = (
         Article.objects.select_related('author', 'category')
         .prefetch_related('tags')
@@ -362,7 +418,7 @@ def get_admin_article(request: HttpRequest, article_id: int) -> dict:
     )
     if article is None:
         raise HttpError(404, '文章不存在')
-    return success_response(article_to_detail(request, article).model_dump())
+    return success_response(article_to_admin_detail(request, article).model_dump())
 
 
 @admin_router.post('/articles/', response={201: ApiResponse[ArticleOut]}, auth=jwt_auth)
@@ -370,29 +426,35 @@ def create_article(
     request: HttpRequest,
     payload: ArticleCreateIn = Form(...),
     cover: UploadedFile = File(...),
-    attachment: UploadedFile = File(...),
+    attachment: UploadedFile = File(None),
 ) -> Status:
-    """创建文章（multipart，含封面与附件上传），返回 201。"""
+    """创建文章（multipart，封面必填、附件可选，正文为主），返回 201。"""
     _validate_cover(cover)
-    _validate_attachment(attachment)
+    content = payload.content or ''
+    _validate_content(content)
+    if attachment is not None:
+        _validate_attachment(attachment)
+    _ensure_content_or_attachment(content, attachment is not None)
     author = cast(User, request.auth)  # type: ignore[attr-defined]
     category, tag_ids = _resolve_category_and_tags(payload.category_id, payload.tag_ids)
 
     article = Article(
         title=payload.title,
         summary=payload.summary,
+        content=content,
         publish_time=payload.publish_time,
         location=payload.location,
         author=author,
         category=category,
         cover_image_name=cover.name or '',
         cover_image_sha256=_sha256_of(cover),
-        file_name=attachment.name or '',
-        file_sha256=_sha256_of(attachment),
+        file_name=(attachment.name or '') if attachment is not None else '',
+        file_sha256=_sha256_of(attachment) if attachment is not None else '',
         is_published=payload.is_published,
     )
     article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
-    article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
+    if attachment is not None:
+        article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
 
     base_slug = payload.slug or generate_slug(payload.title)
     slug_candidate = unique_slug(base_slug)
@@ -450,9 +512,11 @@ def update_article(
         _validate_cover(cover)
     if attachment is not None:
         _validate_attachment(attachment)
+    if payload.content is not None:
+        _validate_content(payload.content)
 
     update_fields: set[str] = set()
-    for field in ['title', 'summary', 'location', 'is_published']:
+    for field in ['title', 'summary', 'content', 'location', 'is_published']:
         value = getattr(payload, field)
         if value is not None:
             setattr(article, field, value)
@@ -476,6 +540,14 @@ def update_article(
         if len(valid_ids) != len(set(payload.tag_ids)):
             raise HttpError(400, '标签不存在')
         tag_ids = payload.tag_ids
+
+    # 最终态校验：仅当本次请求涉及正文或附件时才判，避免"只改 slug/标题"被误判；
+    # 判的是「更新后」的状态，防止清空正文又不传附件而产出空文章。
+    if payload.content is not None or attachment is not None:
+        content_after = payload.content if payload.content is not None else article.content
+        _ensure_content_or_attachment(
+            content_after, attachment is not None or bool(article.file)
+        )
 
     stale_names: list[str | None] = []
     new_names: list[str | None] = []
@@ -699,7 +771,7 @@ def _plan_report(plan: archive_planner.Plan, *, dry_run: bool, package: dict) ->
     """预检/执行统一的报告结构（同一 planner 产出）。"""
     return {
         'dry_run': dry_run,
-        'schema': 'myblog.archive/v1',
+        'schema': archive_format.REPORT_SCHEMA,
         'package': package,
         'totals': plan.totals(),
         'items': [item.to_dict() for item in plan.items],
@@ -901,7 +973,10 @@ def commit_import(request: HttpRequest, payload: ArchiveImportCommitIn) -> dict:
                 user=user,
             )
             report = archive_importer.execute_plan(
-                plan, options=options, package=_package_info_dict(info)
+                plan,
+                options=options,
+                package=_package_info_dict(info),
+                package_path=package_path,
             )
             data = report.to_dict(
                 dry_run=False, plan=plan, package=_package_info_dict(info)

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { ArticleDetail, Category, Tag } from '~/types/api'
+import type { AdminArticleDetail, Category, Tag } from '~/types/api'
 
 definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
 const id = Number(route.params.id)
 
-const article = ref<ArticleDetail | null>(null)
+const article = ref<AdminArticleDetail | null>(null)
 const categories = ref<Category[]>([])
 const tags = ref<Tag[]>([])
 const loading = ref(true)
@@ -16,7 +16,7 @@ const errorMsg = ref('')
 onMounted(async () => {
   try {
     const [artRes, catRes, tagRes] = await Promise.all([
-      useApi().get<ArticleDetail>(`/admin/articles/${id}/`),
+      useApi().get<AdminArticleDetail>(`/admin/articles/${id}/`),
       useApi().get<Category[]>('/categories/'),
       useApi().get<Tag[]>('/tags/'),
     ])

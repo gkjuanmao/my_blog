@@ -4,8 +4,12 @@
 
     podman exec my_blog_app_1 python /app/scripts/seed_demo.py --out /tmp/seed30.zip --count 30
 
-产物是标准归档包（与系统导出的格式一致）：
-    manifest.json + README.md + articles/NNN-<slug>/{article.json, cover.jpg, attachment.pdf}
+产物是标准归档包（与系统导出的格式一致，schema 为 v2）：
+    manifest.json + README.md
+      + articles/NNN-<slug>/article.json   （含 content 结构化 Markdown 正文）
+      + articles/NNN-<slug>/cover.jpg
+      + articles/NNN-<slug>/attachment.pdf
+      + articles/NNN-<slug>/images/<内容寻址名>.webp   （正文插图）
 
 因此导入走的是真实链路（校验 → 预检 → 入库），不是直接写库。
 """
@@ -51,7 +55,13 @@ from articles.archive.format import (  # noqa: E402
     article_dir_name,
     attachment_entry_name,
     cover_entry_name,
+    images_entry_name,
     sha256_bytes,
+)
+from articles.images import (  # noqa: E402
+    inline_rel_path,
+    inline_url,
+    process_inline_image,
 )
 from articles.utils import generate_slug  # noqa: E402
 
@@ -253,6 +263,81 @@ def make_cover(index: int) -> bytes:
     return buf.getvalue()
 
 
+# --------------------------------------------------------------------------- 正文（Markdown）
+
+SEASONS = ['四月', '五月', '六月', '九月', '十月', '十一月']
+TRANSPORTS = ['高铁 + 自驾', '飞机 + 包车', '长途汽车', '自驾', '火车 + 骑行']
+COMPANIONS = ['一个人', '两个人', '和朋友', '带着家人']
+
+
+def build_content(
+    *,
+    title: str,
+    location: str,
+    category: str,
+    tags: list[str],
+    summary: str,
+    index: int,
+    image_url: str,
+) -> str:
+    """生成结构化 Markdown 正文（标题/表格/有序与无序列表/引用/插图/链接都用上）。"""
+    rnd = random.Random(3000 + index)
+    season = SEASONS[index % len(SEASONS)]
+    transport = TRANSPORTS[index % len(TRANSPORTS)]
+    companion = COMPANIONS[index % len(COMPANIONS)]
+    days = rnd.randint(3, 6)
+    budget = rnd.randrange(1800, 9000, 100)
+    cat_slug = generate_slug(category)
+    tag_text = '、'.join(f'`{tag}`' for tag in tags)
+
+    return f"""{season}的{location}，是{companion}走的一趟。{summary}
+
+## 行程速览
+
+| 项目 | 信息 |
+| :--- | :--- |
+| 目的地 | {location} |
+| 建议天数 | {days} 天 |
+| 最佳季节 | {season} |
+| 人均预算 | 约 {budget} 元 |
+| 交通方式 | {transport} |
+
+## 路上的几天
+
+![{title}]({image_url})
+
+1. **第一天**：抵达 {location}，先在住处附近走一圈，把路上的疲惫走散，顺手把第二天的路线确认一遍。
+2. **第二天**：按{transport}的方式往外走，路上留够停车的余地——值得看的地方往往不在计划里。
+3. **第三天**：放慢一点，只安排一个重点，其余时间交给街巷、市场或者一段没有目的的步行。
+4. **返程**：留半天机动，把没来得及去的地方补上，也为下一次留个理由。
+
+## 几个提醒
+
+- 出发前查一下当季天气，{season}的温差比想象中大，外套别省。
+- 门票与住宿尽量提前订，尤其是周末和节假日。
+- 现金少带一点备用即可，但小摊与乡镇不一定支持扫码。
+- 拍照别只盯着地标，清晨和傍晚的光线最值得多等半小时。
+
+> 行程写得再满，也总会留下遗憾；而遗憾恰好是下次再来的理由。
+
+## 参考信息
+
+- 地点：{location}
+- 分类：[{category}](/category/{cat_slug})
+- 标签：{tag_text}
+"""
+
+
+def make_inline_image(index: int) -> bytes:
+    """生成一张正文插图，并走与上传端点**相同**的管线压成规范 WebP。"""
+    w, h = 1200, 800
+    rnd = random.Random(4000 + index)
+    img = SCENES[(index + 3) % len(SCENES)](w, h, rnd).filter(ImageFilter.SMOOTH)
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=90, optimize=True)
+    return process_inline_image(buf.getvalue(), 'jpg').data
+
+
 # --------------------------------------------------------------------------- PDF
 
 _ASCII_FILLER = (
@@ -371,12 +456,35 @@ def build_package(out_path: str, *, count: int, author: str) -> tuple[int, int]:
             cover_name = cover_entry_name('jpg')
             attachment_name = attachment_entry_name('pdf')
 
+            # 正文插图：内容寻址名（sha256[:32].webp），正文 URL 与包内文件名天然一致，
+            # 导入时不需要改写正文（与上传端点同一条压缩管线）
+            image_bytes = make_inline_image(index - 1)
+            image_name = os.path.basename(inline_rel_path(image_bytes))
+            image_entry = images_entry_name(image_name)
+            content = build_content(
+                title=title,
+                location=location,
+                category=cat_name,
+                tags=tag_names,
+                summary=summary,
+                index=index,
+                image_url=inline_url(image_bytes),
+            )
+
             payload = {
                 'schema': SCHEMA_ARTICLE,
                 'source': {'id': None, 'exported_at': exported_at, 'app_version': 'seed-demo'},
                 'title': title,
                 'slug': slug,
                 'summary': summary,
+                'content': content,
+                'images': [
+                    {
+                        'file': image_entry,
+                        'sha256': sha256_bytes(image_bytes),
+                        'size': len(image_bytes),
+                    }
+                ],
                 'publish_time': publish_time.isoformat(),
                 'location': location,
                 'is_published': True,
@@ -407,6 +515,7 @@ def build_package(out_path: str, *, count: int, author: str) -> tuple[int, int]:
             }
             zf.writestr(f'{dir_name}/{cover_name}', cover)
             zf.writestr(f'{dir_name}/{attachment_name}', attachment)
+            zf.writestr(f'{dir_name}/{image_entry}', image_bytes)
             zf.writestr(
                 f'{dir_name}/{ARTICLE_JSON_NAME}',
                 json.dumps(payload, ensure_ascii=False, indent=2) + '\n',

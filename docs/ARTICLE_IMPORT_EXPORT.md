@@ -1,6 +1,18 @@
 # 文章导入 / 导出（ZIP 归档）方案 — v3 定稿
 
-> **状态：方案已定稿，尚未实现。** 本文是实现前的设计产物；实现完成后，API 契约并入 `DESIGN.md`（新增 5.3.4），本文保留为格式与决策的详细依据。
+> **状态：已实现。** 本文件保留为格式与决策的详细依据；API 契约见 `DESIGN.md`。
+>
+> ⚠️ **2026-10 格式升级到 v2**（Markdown 正文与内联图改造，方案见 `docs/ARTICLE_MARKDOWN_PLAN.md`）：
+> - `article.json` 新增 `content`（Markdown 原文）与 `images`（正文插图，包内 `images/<内容寻址名>.webp`）；
+>   `attachment` 可为 `null`（附件改为可选）。
+> - `schema` 写 `myblog.article/v2` / `myblog.archive/v2`；导入**接受 v1 与 v2**，v1 会显式告警
+>   「不含 Markdown 正文与内联图」（不再静默）。
+> - 容量上限按**实际条目**重新配平（不再用"篇数×3"）：`ARCHIVE_MAX_ENTRIES=2000`、
+>   `TOTAL_UNCOMPRESSED=1GiB`、`JSON_BYTES=2MiB`；导出与导入用**同一实际总数**。
+> - `validate_package` **不再驻留媒体字节**（只留 `stored_sha256`），importer 按需重开暂存 zip 并
+>   **重跑** `process_cover` / `process_inline_image`，用**产物**哈希比对（直接比原始字节会误判）。
+> - `article.json` 的压缩比校验被豁免（大段重复正文会被误判为"压缩比异常"）。
+> - 内联图在包内**强制重新校验+压缩**（与上传端点同一实现），手改包无法把 polyglot 落进公开目录。
 >
 > **版本**：v4（2026-09-30）
 > v1 → v2：对抗式自审挑出 36 条遗漏（含 3 处实质性设计错误）

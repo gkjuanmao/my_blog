@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from articles.models import Article, Category, Tag
 from articles.utils import unique_slug
 
-from .format import sha256_bytes
 from .limits import Limits, limits
 from .validate import ArticleEntry
 
@@ -26,6 +25,7 @@ class PlanItem:
     final_slug: str | None = None
     replace_cover: bool = False
     replace_attachment: bool = False
+    replace_images: bool = False
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -94,18 +94,39 @@ def _effective_action(entry: ArticleEntry, global_strategy: str) -> tuple[str, s
 
 
 def _identical_article(entry: ArticleEntry) -> Article | None:
-    """内容完全相同判定：slug + 封面/附件**存储字节**哈希。"""
-    if entry.parsed is None or entry.cover is None or entry.attachment is None:
+    """内容完全相同判定：slug + 封面/附件**存储字节**哈希（附件可缺省）+ 正文。
+
+    - 附件可选后不能要求"附件哈希必须存在"，否则无附件文章永远判不出 identical，
+      ``create_new`` 重试会无限复制。
+    - DB 没有 content 哈希列，因此先按 slug 取候选，再在 Python 中比对正文；
+      ``content`` 键不存在（v1 旧包）时不参与比对，避免破坏旧包幂等。
+    """
+    parsed = entry.parsed
+    if parsed is None:
         return None
-    return (
-        Article.objects.filter(
-            slug=entry.parsed.slug,
-            cover_image_sha256=sha256_bytes(entry.cover.stored_bytes),
-            file_sha256=sha256_bytes(entry.attachment.stored_bytes),
-        )
-        .only('id', 'slug')
-        .first()
+    if parsed.content.strip() == '' and entry.attachment is None and entry.cover is None:
+        return None
+
+    cover_sha = entry.cover.stored_sha256 if entry.cover is not None else ''
+    attachment_sha = entry.attachment.stored_sha256 if entry.attachment is not None else ''
+    candidates = Article.objects.filter(slug=parsed.slug).only(
+        'id', 'slug', 'content', 'cover_image_sha256', 'file_sha256'
     )
+    for article in candidates:
+        if entry.cover is not None:
+            if cover_sha != (article.cover_image_sha256 or ''):
+                continue
+        elif article.cover_image_sha256:
+            continue
+        if entry.attachment is not None:
+            if attachment_sha != (article.file_sha256 or ''):
+                continue
+        elif article.file_sha256:
+            continue
+        if 'content' in parsed.present and article.content != parsed.content:
+            continue
+        return article
+    return None
 
 
 def _collect_taxonomy(
@@ -177,6 +198,7 @@ def build_plan(
                 item.final_slug = unique_slug(entry.parsed.slug)
                 item.replace_cover = True
                 item.replace_attachment = True
+                item.replace_images = bool(entry.images)
             items.append(item)
             continue
 
@@ -185,6 +207,7 @@ def build_plan(
             item.final_slug = unique_slug(entry.parsed.slug)
             item.replace_cover = True
             item.replace_attachment = True
+            item.replace_images = bool(entry.images)
             items.append(item)
             continue
 
@@ -198,14 +221,34 @@ def build_plan(
         # update：按**存储字节**哈希决定是否替换媒体（幂等键，见 D24）
         item.action = 'update'
         if entry.cover is not None:
-            item.replace_cover = (
-                sha256_bytes(entry.cover.stored_bytes) != (existing.cover_image_sha256 or '')
-            )
+            item.replace_cover = entry.cover.stored_sha256 != (existing.cover_image_sha256 or '')
         if entry.attachment is not None:
             item.replace_attachment = (
-                sha256_bytes(entry.attachment.stored_bytes) != (existing.file_sha256 or '')
+                entry.attachment.stored_sha256 != (existing.file_sha256 or '')
             )
+        item.replace_images = bool(entry.images)
         items.append(item)
+
+    # A5：导入同样要满足「正文与附件至少一项」，且按**最终状态**判断
+    # （包内只改标题、目标文章本来就有正文/附件 → 合法；清空正文又没附件 → 失败）
+    for item in items:
+        if item.action not in ('create', 'update') or item.entry.parsed is None:
+            continue
+        parsed = item.entry.parsed
+        existing = (
+            Article.objects.filter(pk=item.target_id).only('content', 'file').first()
+            if item.target_id
+            else None
+        )
+        content = (
+            parsed.content
+            if 'content' in parsed.present
+            else (existing.content if existing else '')
+        )
+        has_file = item.entry.attachment is not None or bool(existing and existing.file)
+        if not content.strip() and not has_file:
+            item.action, item.reason = 'failed', 'invalid'
+            item.errors.append('导入后正文与附件皆为空，未满足「正文与附件至少填写一项」')
 
     categories_to_create, tags_to_create = _collect_taxonomy(items)
     if len(categories_to_create) > cfg.max_new_categories:

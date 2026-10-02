@@ -69,9 +69,15 @@ export interface Article {
   updated_at: string
 }
 
-/** 文章详情（articles/schemas.py ArticleDetailOut，作者为字符串） */
+/** 文章详情（articles/schemas.py ArticleDetailOut）：正文为服务端渲染并消毒后的 HTML */
 export interface ArticleDetail extends Article {
   author: string
+  content_html: string
+}
+
+/** 管理端文章详情（articles/schemas.py AdminArticleDetailOut）：额外带原始 Markdown */
+export interface AdminArticleDetail extends ArticleDetail {
+  content: string
 }
 
 /* ------------------------------------------------------------------ 归档（导入/导出） */

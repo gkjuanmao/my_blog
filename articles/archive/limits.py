@@ -59,32 +59,29 @@ def limits() -> Limits:
     )
 
 
-def entries_per_article() -> int:
-    """每篇文章在包内占用的条目数（article.json + 封面 + 附件）。"""
-    return 3
-
-
 def import_capacity_blockers(
     *,
     article_count: int,
+    entries: int,
     source_bytes: int,
     zip_bytes: int,
     lim: Limits | None = None,
 ) -> list[str]:
     """返回"该包不可能被本系统导入"的原因列表（导出侧的可回导性校验）。
 
-    这是 B1 的修正：导出上限必须受导入上限约束，否则系统会产出自己都导不回来的包。
+    ⚠️ ``entries`` 必须是**实际条目数**（含固定成员 manifest/README 与每张内联图），
+    不能再用"篇数 × 固定值"估算：正文与内联图让每篇的条目数不再固定，估算会产出
+    "导出成功但导入被拒"的包。
+
+    ``article_count`` 只是一道粗过滤；真正的门禁是 ``entries`` 与 ``source_bytes``
+    （与导入侧 ``_check_infos`` / ``budget`` 同口径）。
     """
     cfg = lim or limits()
     reasons: list[str] = []
     if article_count > cfg.max_articles_per_export:
         reasons.append(f'文章数 {article_count} 超过单次导出上限 {cfg.max_articles_per_export}')
-    needed_entries = article_count * entries_per_article()
-    if needed_entries > cfg.max_entries:
-        capacity = cfg.max_entries // entries_per_article()
-        reasons.append(
-            f'预计条目数 {needed_entries} 超过导入上限 {cfg.max_entries} 条（约 {capacity} 篇）'
-        )
+    if entries > cfg.max_entries:
+        reasons.append(f'预计条目数 {entries} 超过导入上限 {cfg.max_entries} 条')
     if source_bytes > cfg.max_total_uncompressed:
         reasons.append(
             f'源文件总字节 {source_bytes} 超过导入解压上限 {cfg.max_total_uncompressed}'

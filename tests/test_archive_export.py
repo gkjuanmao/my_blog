@@ -111,9 +111,11 @@ class TestExportFlow:
                 zf.read(f'{base}/cover.jpg')
             ).hexdigest()
             assert payload['import']['action'] == 'auto'
+            assert payload['content'] == article.content
+            assert payload['images'] == []
 
             manifest = json.loads(zf.read('manifest.json'))
-            assert manifest['schema'] == 'myblog.archive/v1'
+            assert manifest['schema'] == 'myblog.archive/v2'
             assert manifest['ignored_on_import'] == ['views', 'created_at', 'updated_at']
             assert manifest['articles'][0]['slug'] == article.slug
 
@@ -122,7 +124,8 @@ class TestExportFlow:
         assert response.status_code == 200
         data = response.json()['data']
         assert data['count'] == 1
-        assert data['entries'] == 3
+        # 固定成员 manifest.json + README.md，加上每篇的 article.json + 封面 + 附件
+        assert data['entries'] == 5
         assert data['importable'] is True
         assert data['blocking_reasons'] == []
 
