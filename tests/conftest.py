@@ -4,6 +4,7 @@ import io
 import zipfile
 
 import pytest
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
@@ -11,6 +12,7 @@ from django.utils import timezone
 from ninja_jwt.tokens import RefreshToken
 from PIL import Image
 
+from articles.covers import process_cover
 from articles.models import Article
 from users.models import User
 
@@ -143,7 +145,12 @@ def make_zip():
 
 @pytest.fixture
 def article_factory():
-    """创建带真实媒体文件的文章（`*_sha256` 按源字节写入）。"""
+    """创建带真实媒体文件的文章。
+
+    封面与真实链路一致：先过 ``process_cover``（压成 WebP 并限最长边），
+    ``cover_image_sha256`` 记的是**落盘字节**哈希 —— 归档幂等比对的就是这个值。
+    直接写原始字节会模拟出"改造前"的库，导致导出→导入判不出 identical。
+    """
 
     def _factory(
         user,
@@ -154,6 +161,7 @@ def article_factory():
         pdf_bytes=b'%PDF-1.4 hello',
         published=True,
     ):
+        cover = process_cover(cover_bytes, 'jpg', max_pixels=settings.COVER_MAX_PIXELS)
         article = Article(
             title=title,
             slug=slug,
@@ -163,11 +171,11 @@ def article_factory():
             author=user,
             is_published=published,
             cover_image_name='封面.jpg',
-            cover_image_sha256=hashlib.sha256(cover_bytes).hexdigest(),
+            cover_image_sha256=cover.sha256,
             file_name='附件.pdf',
             file_sha256=hashlib.sha256(pdf_bytes).hexdigest(),
         )
-        article.cover_image.save('cover.jpg', ContentFile(cover_bytes), save=False)
+        article.cover_image.save(f'cover.{cover.ext}', ContentFile(cover.data), save=False)
         article.file.save('attachment.pdf', ContentFile(pdf_bytes), save=False)
         article.save()
         return article

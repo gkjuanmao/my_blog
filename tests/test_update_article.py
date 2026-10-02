@@ -25,12 +25,17 @@ from articles.models import Article, Category, Tag
 
 
 def make_image(name: str, color: str = 'blue') -> SimpleUploadedFile:
-    """生成一张指定颜色的 JPEG 上传文件。"""
+    """生成一张上传图片，编码格式与扩展名一致（.png → PNG，其余 → JPEG）。
+
+    必须匹配扩展名：上传侧现在会校验「实际格式 vs 扩展名」，不匹配直接 400
+    （原先只查扩展名白名单，所以这里曾经能塞 JPEG 字节进 .png 而不报错）。
+    """
     image = Image.new('RGB', (30, 30), color=color)
     buffer = io.BytesIO()
-    image.save(buffer, format='JPEG')
+    fmt = 'PNG' if name.lower().endswith('.png') else 'JPEG'
+    image.save(buffer, format=fmt)
     buffer.seek(0)
-    return SimpleUploadedFile(name, buffer.read(), content_type='image/jpeg')
+    return SimpleUploadedFile(name, buffer.read(), content_type=f'image/{fmt.lower()}')
 
 
 def make_pdf(name: str = 'attachment.pdf') -> SimpleUploadedFile:

@@ -146,6 +146,70 @@ async function handlePreview() {
   }
 }
 
+/* ---------------------------------------------------------------- 导入 HTML */
+
+const htmlImportVisible = ref(false)
+const htmlImporting = ref(false)
+const htmlPaste = ref('')
+const htmlFile = ref<File | null>(null)
+const htmlWarnings = ref<string[]>([])
+
+function openHtmlImport() {
+  htmlPaste.value = ''
+  htmlFile.value = null
+  htmlWarnings.value = []
+  htmlImportVisible.value = true
+}
+
+function onHtmlFileChange(file: any) {
+  htmlFile.value = file?.raw ?? null
+}
+
+// 手机/第三方导出的 HTML → Markdown（服务端转换：base64 内嵌图压成 WebP 后落盘）
+async function handleHtmlImport() {
+  if (!htmlFile.value && !htmlPaste.value.trim()) {
+    ElMessage.warning('请选择 HTML 文件或粘贴 HTML 内容')
+    return
+  }
+  if (form.content.trim()) {
+    try {
+      await ElMessageBox.confirm('导入会覆盖当前正文，确定继续？', '覆盖确认', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+
+  htmlImporting.value = true
+  try {
+    const fd = new FormData()
+    if (htmlFile.value) fd.append('file', htmlFile.value)
+    else fd.append('html', htmlPaste.value)
+
+    const res = await useApi().post<{
+      markdown: string
+      images: number
+      warnings: string[]
+      suggested_title: string
+    }>('/admin/articles/convert-html/', fd)
+    form.content = res.data.markdown
+    htmlWarnings.value = res.data.warnings
+    // 便签导出的正文里没有标题，标题只在文件名里；仅在标题为空时回填，不覆盖已填内容
+    if (res.data.suggested_title && !form.title.trim()) {
+      form.title = res.data.suggested_title
+    }
+    // 有告警时保持对话框打开，让用户在关闭前看到提示（不可访问的图片等）
+    if (!res.data.warnings.length) {
+      htmlImportVisible.value = false
+      ElMessage.success(res.data.images > 0 ? `已导入正文与 ${res.data.images} 张图片` : '已导入正文')
+    }
+    await handlePreview()
+  } catch (e: any) {
+    ElMessage.error(e?.data?.message ?? 'HTML 转换失败')
+  } finally {
+    htmlImporting.value = false
+  }
+}
+
 /* -------------------------------------------------------------------- 提交 */
 
 function buildFormData(): FormData {
@@ -217,13 +281,63 @@ function handleSubmit() {
         <el-button size="small" :loading="previewing" @click="handlePreview">
           {{ previewVisible ? '刷新预览' : '预览' }}
         </el-button>
+        <el-button size="small" @click="openHtmlImport">导入 HTML</el-button>
         <el-button v-if="previewVisible" size="small" text @click="previewVisible = false">收起预览</el-button>
         <span class="text-xs text-stone-400">图片会压缩为 WebP（最长边 1920）后插入</span>
       </div>
     </el-form-item>
     <el-form-item v-if="previewVisible" label="预览（服务端渲染结果）">
-      <div class="md-body w-full rounded-lg border border-stone-200 p-4 dark:border-stone-700" v-html="previewHtml" />
+      <!-- 限高 + 内部滚动：长正文预览不会把后面的表单字段顶到很下面 -->
+      <div
+        class="md-body max-h-[32rem] w-full overflow-y-auto overscroll-contain rounded-lg border border-stone-200 p-4 dark:border-stone-700"
+        v-html="previewHtml"
+      />
     </el-form-item>
+
+    <el-dialog v-model="htmlImportVisible" title="导入 HTML 并转为 Markdown" width="640px">
+      <el-alert
+        v-if="htmlWarnings.length"
+        type="warning"
+        :closable="false"
+        title="导入完成，以下内容需要你留意："
+      >
+        <ul class="mt-1 list-disc pl-4 text-xs">
+          <li v-for="(w, index) in htmlWarnings" :key="index">{{ w }}</li>
+        </ul>
+      </el-alert>
+
+      <el-form-item label="选择 HTML 文件" class="mt-3">
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="true"
+          :limit="1"
+          accept=".html,.htm"
+          :on-change="onHtmlFileChange"
+        >
+          <el-button size="small">选择文件</el-button>
+        </el-upload>
+      </el-form-item>
+      <el-form-item label="或粘贴 HTML">
+        <el-input
+          v-model="htmlPaste"
+          type="textarea"
+          :rows="8"
+          resize="vertical"
+          class="font-mono"
+          placeholder="把手机导出的 HTML 源码粘贴到这里"
+        />
+      </el-form-item>
+      <p class="text-xs text-stone-400">
+        正文里的 base64 内嵌图会压缩为 WebP 并按内容寻址落盘（同图自动去重），外链图保留原样；
+        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 50MB。
+      </p>
+      <template #footer>
+        <el-button @click="htmlImportVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="htmlImporting" @click="handleHtmlImport">
+          导入并覆盖正文
+        </el-button>
+      </template>
+    </el-dialog>
     <el-form-item label="发布时间" prop="publish_time">
       <el-date-picker v-model="form.publish_time" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选择时间" style="width: 100%" />
     </el-form-item>

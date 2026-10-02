@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any, cast
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models import F
@@ -32,6 +33,9 @@ from common.schemas import ApiResponse, PageData
 from users.authentication import JWTAuth, StaffJWTAuth
 from users.models import User
 
+from .convert import ConvertError, html_to_markdown
+from .covers import CoverError, ProcessedCover
+from .covers import process_cover as process_cover_image
 from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
 from .images import InlineImageError, process_inline_image, store_inline_image
 from .models import ArchiveStaging, Article, Category, Tag, cover_upload_path, file_upload_path
@@ -56,7 +60,7 @@ from .schemas import (
     article_to_detail,
     article_to_out,
 )
-from .utils import generate_slug, unique_slug
+from .utils import generate_slug, suggest_title_from_filename, unique_slug
 
 router = Router(tags=['文章'])
 admin_router = Router(tags=['文章管理'])
@@ -93,6 +97,16 @@ def _extension(filename: str) -> str:
     return filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
 
 
+def _decode_html(raw: bytes) -> str:
+    """解码 HTML 字节：优先 UTF-8，回落 GBK（部分国产手机便签导出为 GBK）。"""
+    for encoding in ('utf-8', 'gbk'):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HttpError(400, '无法识别文件编码，请使用 UTF-8 编码的 HTML')
+
+
 def _validate_cover(cover: UploadedFile) -> None:
     """校验封面图片格式与大小。"""
     name = cover.name or ''
@@ -100,6 +114,24 @@ def _validate_cover(cover: UploadedFile) -> None:
         raise HttpError(400, '封面仅支持 JPG/PNG/WebP 格式')
     if (cover.size or 0) > settings.COVER_MAX_BYTES:
         raise HttpError(400, '封面大小不能超过 20MB')
+
+
+def _process_cover(cover: UploadedFile) -> ProcessedCover:
+    """校验并压缩上传的封面：统一转 WebP、限制最长边（与归档导入共用同一条管线）。
+
+    落盘扩展名由返回值给出（恒为 ``webp``），调用方**不要**再用原始文件名后缀，
+    否则会出现「.jpg 文件里装 WebP 字节」，nginx 会按扩展名发错 Content-Type。
+    """
+    raw = cover.read()
+    # 与 _sha256_of 同理：别把上传流留在 EOF —— 同一个 UploadedFile 可能被复用
+    # （测试里 fixture 常被循环使用），否则第二次会读到空字节而报"封面无法解析"。
+    cover.seek(0)
+    try:
+        return process_cover_image(
+            raw, _extension(cover.name or ''), max_pixels=settings.COVER_MAX_PIXELS
+        )
+    except CoverError as exc:
+        raise HttpError(400, str(exc)) from None
 
 
 def _validate_attachment(attachment: UploadedFile) -> None:
@@ -405,6 +437,48 @@ def upload_inline_image(request: HttpRequest, image: UploadedFile = File(...)) -
     })
 
 
+@admin_router.post('/articles/convert-html/', response=ApiResponse[dict], auth=staff_auth)
+def convert_html_article(
+    request: HttpRequest,
+    file: UploadedFile = File(None),
+    html: str = Form(''),
+) -> dict:
+    """把手机/第三方导出的 HTML 转成 Markdown（**不落库**），供后台「导入 HTML」回填编辑器。
+
+    输入二选一：``file``（走 multipart 文件通道，上限 ``HTML_IMPORT_MAX_BYTES``）或
+    ``html``（粘贴文本）。正文里的 base64 内嵌图会压成 WebP 落盘并改写为
+    ``/media/inline/...``；外链图与不可读来源分别保留 / 移除并告警。
+
+    ⚠️ 与 preview / images 同理，本路由必须注册在 ``/articles/{article_id}/`` 之前。
+    """
+    limit = int(settings.HTML_IMPORT_MAX_BYTES)
+    limit_mb = limit // 1024**2
+    if file is not None:
+        if (file.size or 0) > limit:
+            raise HttpError(400, f'HTML 文件不能超过 {limit_mb}MB')
+        raw = file.read()
+    else:
+        raw = html.encode('utf-8')
+
+    if not raw.strip():
+        raise HttpError(400, '请选择 HTML 文件或粘贴 HTML 内容')
+    if len(raw) > limit:
+        raise HttpError(400, f'HTML 文件不能超过 {limit_mb}MB')
+
+    try:
+        result = html_to_markdown(_decode_html(raw))
+    except ConvertError as exc:
+        raise HttpError(400, str(exc)) from None
+
+    return success_response({
+        'markdown': result.markdown,
+        'images': result.images,
+        'warnings': result.warnings,
+        # 便签导出的正文里通常没有标题，标题只在文件名里（如「44 上海-罗马_202610030035.html」）
+        'suggested_title': suggest_title_from_filename(file.name or '') if file else '',
+    })
+
+
 @admin_router.get(
     '/articles/{article_id}/', response=ApiResponse[AdminArticleDetailOut], auth=jwt_auth
 )
@@ -430,6 +504,7 @@ def create_article(
 ) -> Status:
     """创建文章（multipart，封面必填、附件可选，正文为主），返回 201。"""
     _validate_cover(cover)
+    processed_cover = _process_cover(cover)
     content = payload.content or ''
     _validate_content(content)
     if attachment is not None:
@@ -447,12 +522,16 @@ def create_article(
         author=author,
         category=category,
         cover_image_name=cover.name or '',
-        cover_image_sha256=_sha256_of(cover),
+        cover_image_sha256=processed_cover.sha256,
         file_name=(attachment.name or '') if attachment is not None else '',
         file_sha256=_sha256_of(attachment) if attachment is not None else '',
         is_published=payload.is_published,
     )
-    article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
+    article.cover_image.save(
+        cover_upload_path(article, f'cover.{processed_cover.ext}'),
+        ContentFile(processed_cover.data),
+        save=False,
+    )
     if attachment is not None:
         article.file.save(file_upload_path(article, attachment.name or ''), attachment, save=False)
 
@@ -508,8 +587,11 @@ def update_article(
         raise HttpError(404, '文章不存在')
 
     # 先校验后落盘：校验失败不得改动数据，也不留下新写入的文件
+    # （封面顺带在这压缩；下面再用 `is not None` 收窄类型，别改成依赖同一条件）
+    processed_cover: ProcessedCover | None = None
     if cover is not None:
         _validate_cover(cover)
+        processed_cover = _process_cover(cover)
     if attachment is not None:
         _validate_attachment(attachment)
     if payload.content is not None:
@@ -551,11 +633,15 @@ def update_article(
 
     stale_names: list[str | None] = []
     new_names: list[str | None] = []
-    if cover is not None:
+    if cover is not None and processed_cover is not None:
         stale_names.append(article.cover_image.name)
-        article.cover_image.save(cover_upload_path(article, cover.name or ''), cover, save=False)
+        article.cover_image.save(
+            cover_upload_path(article, f'cover.{processed_cover.ext}'),
+            ContentFile(processed_cover.data),
+            save=False,
+        )
         article.cover_image_name = cover.name or ''
-        article.cover_image_sha256 = _sha256_of(cover)
+        article.cover_image_sha256 = processed_cover.sha256
         new_names.append(article.cover_image.name)
         update_fields.update({'cover_image', 'cover_image_name', 'cover_image_sha256'})
     if attachment is not None:

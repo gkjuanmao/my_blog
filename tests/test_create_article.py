@@ -290,6 +290,9 @@ class TestCreateArticleDefaultsAPI:
         """ADM-014 重复创建不产生重复默认数据。"""
         for index in range(2):
             payload = {**create_payload, 'slug': f'default-mount-{index}'}
+            # 同一个 UploadedFile 被复用：multipart 编码会把它读到 EOF，
+            # 不 seek 回去第二次就会发出空封面（现在会被"封面无法解析"挡下）
+            test_image.seek(0)
             response = api_client.post(
                 '/api/v1/admin/articles/',
                 {**payload, 'cover': test_image, 'attachment': test_pdf},

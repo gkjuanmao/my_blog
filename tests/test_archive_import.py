@@ -6,6 +6,7 @@ import zipfile
 
 import pytest
 from django.utils import timezone
+from PIL import Image
 
 from articles.models import Article, Category, Tag
 from articles.utils import generate_slug
@@ -45,11 +46,20 @@ def commit(api_client, staff_header, staged_id, **options):
     return api_client.post(COMMIT_URL, body, content_type='application/json', **staff_header)
 
 
-def handcrafted_zip(make_zip, jpeg, *, article_json: dict, attachment=b'%PDF-1.4 x'):
-    """手工构造一个最小可导入包（用于精确控制 article.json）。"""
+def make_webp_cover(size: tuple[int, int] = (40, 30)) -> bytes:
+    """一张天然达标的封面字节（WebP、尺寸达标、无 EXIF/ICC、尾部无附加数据）。"""
+    buffer = io.BytesIO()
+    Image.new('RGB', size, color='green').save(buffer, format='WEBP', quality=90)
+    return buffer.getvalue()
+
+
+def handcrafted_zip(
+    make_zip, jpeg, *, article_json: dict, attachment=b'%PDF-1.4 x', cover_name='cover.jpg'
+):
+    """手工构造一个最小可导入包（用于精确控制 article.json 与封面文件名）。"""
     return make_zip({
         'articles/001-x/article.json': json.dumps(article_json, ensure_ascii=False).encode(),
-        'articles/001-x/cover.jpg': jpeg,
+        f'articles/001-x/{cover_name}': jpeg,
         'articles/001-x/attachment.pdf': attachment,
     })
 
@@ -136,24 +146,32 @@ class TestRoundTrip:
         assert [t.slug for t in restored.tags.all()] == ['photo']
         # views / 时间戳不恢复（D3）
         assert restored.views == 0
-        # 封面被服务端重编码过，但哈希列记录的是**源字节**
-        assert restored.cover_image_sha256 == hashlib.sha256(cover).hexdigest()
+        # 封面统一压成 WebP；哈希列记录的是**当前落盘文件**的字节哈希
+        assert restored.cover_image.name.endswith('.webp')
+        with restored.cover_image.open('rb') as handle:
+            stored = handle.read()
+        assert restored.cover_image_sha256 == hashlib.sha256(stored).hexdigest()
 
     def test_cover_is_reencoded_and_exif_stripped(
-        self,
-        api_client,
-        staff_header,
-        staff_user,
-        jpeg_factory,
-        article_factory,
-        archive_settings,
-        zip_bytes,
+        self, api_client, staff_header, jpeg_factory, archive_settings, make_zip
     ):
-        """D20：封面重编码 + exif_transpose（Orientation=6 会转置尺寸）。"""
+        """D20：封面重编码 + exif_transpose（Orientation=6 会转置尺寸）。
+
+        走手工包而不是 ``article_factory``：工厂现在也过 ``process_cover``，
+        造出来的库内封面在导出前就已被规范化，测不到导入侧的重编码。
+        """
         cover = jpeg_factory(size=(60, 40), orientation=6)
-        article = article_factory(staff_user, slug='exif-case', cover_bytes=cover)
-        payload = export_zip(api_client, staff_header, article.id, zip_bytes)
-        article.delete()
+        payload = handcrafted_zip(
+            make_zip,
+            cover,
+            article_json={
+                'title': 'EXIF 封面',
+                'slug': 'exif-case',
+                'publish_time': timezone.now().isoformat(),
+                'cover': {'file': 'cover.jpg'},
+                'attachment': {'file': 'attachment.pdf'},
+            },
+        )
 
         dry = stage(api_client, staff_header, payload).json()['data']
         report = commit(api_client, staff_header, dry['staged_id']).json()['data']
@@ -165,6 +183,7 @@ class TestRoundTrip:
             image = Image.open(handle)
             assert image.size == (40, 60)  # orientation=6 → 旋转后宽高互换
             assert not image.getexif()
+        assert restored.cover_image.name.endswith('.webp')
         assert any('EXIF' in w for w in report['items'][0]['warnings'])
 
     def test_no_exif_warning_when_orientation_absent(
@@ -192,18 +211,23 @@ class TestRoundTrip:
 
 
     def test_canonical_cover_is_stored_byte_identical(
-        self, api_client, staff_header, jpeg_factory, archive_settings, make_zip
+        self, api_client, staff_header, archive_settings, make_zip
     ):
-        """规范格式的封面必须**原样存储**（否则导出出去的字节永不等于记录的哈希）。"""
-        cover = jpeg_factory()
+        """已达标的封面必须**原样存储**，否则导出→导入每轮都会重写并损失画质。
+
+        "达标" = WebP + 最长边 ≤ COVER_MAX_LONG_EDGE + 无 EXIF/ICC + 尾部无附加数据。
+        JPEG/PNG **不算**达标 —— 现在封面统一压成 WebP（见 ``articles/covers.py``）。
+        """
+        cover = make_webp_cover()
         payload = handcrafted_zip(
             make_zip,
             cover,
+            cover_name='cover.webp',
             article_json={
                 'title': '原样存储',
                 'slug': 'canonical-cover',
                 'publish_time': timezone.now().isoformat(),
-                'cover': {'file': 'cover.jpg'},
+                'cover': {'file': 'cover.webp'},
                 'attachment': {'file': 'attachment.pdf'},
             },
         )

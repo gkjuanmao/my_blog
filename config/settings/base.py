@@ -168,12 +168,24 @@ INLINE_IMAGE_MAX_PER_ARTICLE = 50
 INLINE_IMAGE_TRASH_DIR = '_inline_trash'  # 回收站（nginx 侧显式拒绝访问）
 INLINE_IMAGE_PURGE_GRACE_HOURS = 24  # 宽限期：新文件不清理
 
+# 后台「导入 HTML」：把手机/第三方导出的 HTML 转成 Markdown 正文。
+# 走 multipart 的**文件**通道上传，因此不受 DATA_UPLOAD_MAX_MEMORY_SIZE（默认 2.5MB，
+# 只约束 request.body / 表单字段）限制 —— 手机导出的 HTML 常因图片内嵌 base64 而远超它。
+# 注意：nginx 的 client_max_body_size（60m）必须大于本值，否则会先被 nginx 以 413 拦掉。
+HTML_IMPORT_MAX_BYTES = 50 * 1024**2
+
 # 附件白名单（上传与归档共用）；html 已从上传侧移除
 ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx'}
 # 导入侧的"遗留"扩展名（决策 D23）：存量 .html 附件仍可回导，但会强制下载 + 告警
 ATTACHMENT_LEGACY_EXTENSIONS = {'html'}
 COVER_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 COVER_MAX_BYTES = 20 * 1024**2
+# 封面统一压成 WebP：最长边上限（只缩不放）与质量。
+# 封面在详情页只是题图，原图常达 3~4MB，压缩后通常 <300KB（内网穿透省流量的关键）。
+COVER_MAX_LONG_EDGE = 1600
+COVER_WEBP_QUALITY = 82
+COVER_OUTPUT_BYTES = 4 * 1024**2  # 压缩后上限（兜底，正常远小于此）
+COVER_MAX_PIXELS = 80_000_000  # 像素数上限（防解压炸弹）
 ATTACHMENT_MAX_BYTES = 50 * 1024**2
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

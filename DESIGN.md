@@ -156,7 +156,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | content | TextField | blank=True, default='' | **Markdown 正文**（≤200000 字符，服务端渲染为 `content_html`） |
 | publish_time | DateTimeField | db_index=True | 发布时间 |
 | location | CharField(255) | blank=True | 写作/事件地点 |
-| cover_image | ImageField | not null | 封面图片，upload_to: `covers/UUID.ext`（**必填**） |
+| cover_image | ImageField | not null | 封面图片，upload_to: `covers/UUID.webp`（**必填**；服务端统一压成 WebP） |
 | cover_image_name | CharField(255) | not null | 封面原始文件名 |
 | file | FileField | blank=True, default='' | 附件文件，upload_to: `files/UUID.ext`（**可缺省**） |
 | file_name | CharField(255) | blank=True, default='' | 附件原始文件名 |
@@ -517,7 +517,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 **响应** (201)：`data` 为完整 `ArticleOut`（`code` 为 201）。
 
 **错误**：
-- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「附件仅支持 PDF/Word 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
+- 400：「封面仅支持 JPG/PNG/WebP 格式」「封面大小不能超过 20MB」「封面实际格式 X 与扩展名 .Y 不一致」「封面无法解析」「附件仅支持 PDF/Word 格式」「附件大小不能超过 50MB」「分类不存在」「标签不存在」「slug 冲突过多」「创建失败：请检查分类/标签等参数是否正确」（信封格式）
 - 422：缺少必填字段（如 `title`/`publish_time`/`cover`）或 `tag_ids` 格式错误（`detail` 格式）
 
 > **Markdown 正文（2026-10）**：`content` 存 Markdown 原文；`GET /articles/{slug}/` 返回**服务端渲染并消毒**的 `content_html`（管线：Python-Markdown → nh3 白名单 → `html.parser` 回填属性，见 `articles/rendering.py`），管理详情额外返回 `content` 原文。正文插图上传统一走 `POST /admin/articles/images/`（staff）：压成 WebP（最长边 1920、剥 EXIF/ICC）后按**内容寻址**落盘 `media/inline/<sha256[:32]>.webp`。`POST /admin/articles/preview/` 仅渲染预览。详见 `docs/ARTICLE_MARKDOWN_PLAN.md`。
@@ -704,7 +704,7 @@ SIMPLE_JWT = {
 
 | 文件类型 | 存储路径模板 | 大小限制 | 允许格式 |
 | :--- | :--- | :--- | :--- |
-| 文章封面 | `media/covers/UUID.ext` | ≤ 20MB | JPG, PNG, Webp |
+| 文章封面 | `media/covers/UUID.webp` | 源 ≤ 20MB | 上传 JPG/PNG/WebP（**统一转 WebP**，最长边 1600，剥 EXIF/ICC） |
 | 文章附件 | `media/files/UUID.ext` | ≤ 50MB | PDF, DOCX |
 | 正文插图 | `media/inline/<sha256[:32]>.webp` | 源 ≤10MB / 压缩后 ≤8MB | 上传 JPG/PNG/WebP（**统一转 WebP**，最长边 1920，剥 EXIF/ICC） |
 | 用户头像 | `media/avatars/%Y/%m/UUID.ext` | ≤ 2MB | JPG, PNG |

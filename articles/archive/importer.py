@@ -32,7 +32,7 @@ from articles.models import Article, Category, Tag, cover_upload_path, file_uplo
 from articles.utils import unique_slug
 
 from .errors import ItemError
-from .format import REPORT_SCHEMA, sha256_bytes
+from .format import COVER_BASENAME, REPORT_SCHEMA, sha256_bytes
 from .limits import Limits
 from .planner import Plan, PlanItem
 from .validate import normalize_entry_name, process_cover
@@ -203,12 +203,14 @@ def _write_media(
 
     if item.replace_cover and entry.cover is not None:
         raw = _read_member(zf, entry.cover.entry_name, settings.COVER_MAX_BYTES)
-        stored, _warnings = process_cover(raw, entry.cover.extension, lim)
+        stored, stored_ext, _warnings = process_cover(raw, entry.cover.extension, lim)
         if sha256_bytes(stored) != entry.cover.stored_sha256:
             raise ItemError('封面与校验阶段记录不一致')
         stale.append(article.cover_image.name or '')
+        # 封面统一压成 WebP，落盘扩展名恒为 webp：不能沿用包内 cover.jpg 的名字，
+        # 否则会出现「.jpg 里装 WebP 字节」，nginx 会按扩展名发错 Content-Type
         article.cover_image.save(
-            cover_upload_path(article, entry.cover.entry_name),
+            cover_upload_path(article, f'{COVER_BASENAME}.{stored_ext}'),
             ContentFile(stored),
             save=False,
         )

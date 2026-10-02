@@ -100,15 +100,15 @@ class TestExportFlow:
             assert len(article_entries) == 1
             base = article_entries[0].rsplit('/', 1)[0]
             assert base.startswith('articles/001-')
-            assert f'{base}/cover.jpg' in names
+            assert f'{base}/cover.webp' in names
             assert f'{base}/attachment.pdf' in names
 
             payload = json.loads(zf.read(article_entries[0]))
             assert payload['title'] == '示例游记'
             assert payload['slug'] == article.slug
-            assert payload['cover']['file'] == 'cover.jpg'
+            assert payload['cover']['file'] == 'cover.webp'
             assert payload['cover']['sha256'] == hashlib.sha256(
-                zf.read(f'{base}/cover.jpg')
+                zf.read(f'{base}/cover.webp')
             ).hexdigest()
             assert payload['import']['action'] == 'auto'
             assert payload['content'] == article.content
@@ -159,7 +159,7 @@ class TestExportFlow:
         """导出不做重编码：包内封面字节与库内文件逐字节一致。"""
         data = api_client.get(f'{EXPORT_URL}?ids={article.id}', **staff_header).json()['data']
         with zipfile.ZipFile(io.BytesIO(zip_bytes(api_client.get(data['download_url'])))) as zf:
-            entry = [n for n in zf.namelist() if n.endswith('cover.jpg')][0]
+            entry = [n for n in zf.namelist() if n.endswith('cover.webp')][0]
             packed = zf.read(entry)
         with article.cover_image.open('rb') as handle:
             assert handle.read() == packed

@@ -5,12 +5,10 @@
 - 条目名按 NFC + 大小写折叠去重，任何重复 → 整包 400。
 - 读取一律 ``zf.open()`` + 分块，统计**真实**字节数，不信任 ``ZipInfo.file_size``。
 """
-import io
 import json
 import re
 import stat
 import unicodedata
-import warnings as warnings_module
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,8 +17,9 @@ from pathlib import PurePosixPath
 from django.conf import settings
 from django.core.validators import validate_slug
 from django.utils import timezone
-from PIL import Image, ImageOps
 
+from articles.covers import CoverError
+from articles.covers import process_cover as process_cover_image
 from articles.images import InlineImageError, extract_inline_names, process_inline_image
 from articles.rendering import render_markdown
 
@@ -38,9 +37,6 @@ from .limits import Limits, limits
 JUNK_DIR_PARTS = {'__macosx'}
 JUNK_FILES = {'.ds_store', 'thumbs.db'}
 VALID_IMPORT_ACTIONS = {'auto', 'skip', 'update', 'create_new'}
-# Pillow 的 format 名 → 允许的扩展名
-FORMAT_EXTENSIONS = {'jpeg': {'jpg', 'jpeg'}, 'png': {'png'}, 'webp': {'webp'}}
-SAVE_FORMATS = {'jpg': 'JPEG', 'jpeg': 'JPEG', 'png': 'PNG', 'webp': 'WEBP'}
 
 
 def _nfc(text: str) -> str:
@@ -420,79 +416,21 @@ def parse_fields(data: dict) -> ParsedArticle:
     )
 
 
-def _is_canonical_image(data: bytes, ext: str) -> bool:
-    """文件是否已到"规范"结构（尾部无附加数据）。
+def process_cover(data: bytes, ext: str, lim: Limits) -> tuple[bytes, str, list[str]]:
+    """校验封面，返回（应写入存储的字节, 落盘扩展名, 告警）。
 
-    只用于决定**是否需要重编码**，不是权威校验：拿不准就返回 False（宁可重编码）。
-    若无条件重编码，导出出去的字节就永远不等于记录的源哈希，
-    导致「导出 → 导入 → 导出 → 导入」无限重写（实测）。
+    实际处理在 ``articles/covers.py``：现在**统一压缩为 WebP** 并限制最长边
+    （``COVER_MAX_LONG_EDGE``），已达标则原样返回 —— 这句"已达标就原样返回"
+    是导出→导入幂等的前提，去掉它每轮导入都会重写封面并损失画质（实测教训）。
+    落盘扩展名恒为 ``webp``，调用方据此拼存储路径。
     """
-    if ext in ('jpg', 'jpeg'):
-        return data.endswith(b'\xff\xd9')
-    if ext == 'png':
-        return data.endswith(b'IEND\xaeB`\x82')
-    if ext == 'webp':
-        if len(data) < 12 or data[:4] != b'RIFF' or data[8:12] != b'WEBP':
-            return False
-        declared = int.from_bytes(data[4:8], 'little') + 8
-        return declared in (len(data), len(data) - 1)  # RIFF 允许 1 字节 padding
-    return False
-
-
-def process_cover(data: bytes, ext: str, lim: Limits) -> tuple[bytes, list[str]]:
-    """校验封面，返回**应写入存储的字节**。
-
-    - 已是规范格式且无 EXIF 方向 → **原样存储**（保证导出→导入字节等价、可幂等）；
-    - 否则重编码（校正方向 + 剥离 EXIF/尾部附加数据）。
-    """
-    warnings: list[str] = []
     if ext not in settings.COVER_EXTENSIONS:
         raise ItemError(f'封面扩展名不允许: {ext}')
-    if len(data) > settings.COVER_MAX_BYTES:
-        raise ItemError('封面大小不能超过 20MB')
-
-    with warnings_module.catch_warnings():
-        warnings_module.simplefilter('error', Image.DecompressionBombWarning)
-        try:
-            with Image.open(io.BytesIO(data)) as img:
-                width, height = img.size
-                if width * height > lim.max_image_pixels:
-                    raise ItemError(f'封面像素数超限（{width}x{height}）')
-                fmt = (img.format or '').lower()
-                img.load()
-                if ext not in FORMAT_EXTENSIONS.get(fmt, set()):
-                    raise ItemError(f'封面实际格式 {fmt or "未知"} 与扩展名 .{ext} 不一致')
-                # 告警依据必须是 Orientation 标签值，不能看对象身份：
-                # Pillow 12.x 在**没有** Orientation 时也会返回副本（实测）。
-                orientation = img.getexif().get(0x0112)
-                rotated = orientation not in (None, 1)
-                canonical = _is_canonical_image(data, ext)
-                if rotated:
-                    warnings.append('封面含 EXIF 方向信息，已按方向校正并剥离元数据')
-                elif not canonical:
-                    warnings.append('封面尾部含附加数据（疑似 polyglot），已重编码清除')
-
-                if rotated or not canonical:
-                    buffer = io.BytesIO()
-                    target = SAVE_FORMATS.get(ext, 'PNG')
-                    oriented = ImageOps.exif_transpose(img)
-                    if target == 'JPEG':
-                        oriented.convert('RGB').save(
-                            buffer, format='JPEG', quality=88, optimize=True
-                        )
-                    else:
-                        oriented.save(buffer, format=target)
-                    encoded = buffer.getvalue()
-                else:
-                    encoded = data
-        except ItemError:
-            raise
-        except Exception as exc:  # 解压炸弹、截断文件、伪造图片
-            raise ItemError(f'封面无法解析: {type(exc).__name__}') from None
-
-    if len(encoded) > settings.COVER_MAX_BYTES:
-        raise ItemError('封面重编码后仍超过 20MB')
-    return encoded, warnings
+    try:
+        result = process_cover_image(data, ext, max_pixels=lim.max_image_pixels)
+    except CoverError as exc:
+        raise ItemError(str(exc)) from None
+    return result.data, result.ext, result.warnings
 
 
 def _allowed_attachment_extensions(*, allow_legacy: bool) -> set[str]:
@@ -692,7 +630,7 @@ def _resolve_media(
                 continue
             # 在这里一次完成“校验 + 决定存储字节”，避免 planner/importer 重复处理
             try:
-                stored, cover_warnings = process_cover(data, ext, lim)
+                stored, _stored_ext, cover_warnings = process_cover(data, ext, lim)
             except ItemError as exc:
                 entry.errors.append(exc.message)
                 continue
