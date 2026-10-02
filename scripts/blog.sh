@@ -642,8 +642,11 @@ cmd_import() {
   ok ".env 就绪"
 
   step "重建容器（不使用 --build，直接用已加载镜像）"
+  # 这里**绝不能** build：podman-compose build 不看镜像是否已存在，一律把构建重跑一遍，
+  # 于是会用**目标机本地源码**覆盖刚 load 进来的镜像；若目标机源码没同步到最新，就悄悄
+  # 退回旧代码，而且容器与 latest 都是那个旧镜像，verify_container_image 也发现不了。
+  # 上面已逐个确认四个镜像就绪，这里只做 down + up。
   if containers_exist; then compose down >/dev/null 2>&1 || true; fi
-  compose build >/dev/null 2>&1 || true   # 仅在镜像缺失时会真正构建；此处镜像已存在
   compose up -d >/dev/null 2>&1 || die "容器启动失败" "${COMPOSE_CMD[*]} up -d"
   verify_container_image "$(app_container)" "$APP_IMAGE"
   ok
