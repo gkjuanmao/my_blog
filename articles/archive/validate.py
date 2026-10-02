@@ -701,25 +701,28 @@ def _resolve_inline_images(
         extract_inline_names(render_markdown(parsed.content)) if parsed.content else set()
     )
 
+    # ``wanted`` 恒存**小写文件名**（即 ``packaged`` 的 key）。声明侧给的是文件名、
+    # 引用侧给的是完整条目路径（``articles/001-x/images/x.webp``），两者必须归一成同一
+    # 形态：早期版本引用侧直接塞 ``packaged[...]``，与文件名互不相等 → 同一张图记两次、
+    # 数量翻倍，26 张以上的文章被误判超过上限（实测 36 张报 72）。
     wanted: list[str] = []
     seen: set[str] = set()
 
-    def _add(name: str) -> None:
-        key = name.lower()
-        if key not in seen:
+    def _add(key: str) -> None:
+        if key and key not in seen:
             seen.add(key)
-            wanted.append(name)
+            wanted.append(key)
 
     for item in declared_items:
         base_name = PurePosixPath(normalize_entry_name(str(item.get('file') or ''))).name
         if not base_name:
             continue
-        _add(base_name)
+        _add(base_name.lower())
         if base_name.lower() not in packaged:
             entry.warnings.append(f'images 声明的插图 {base_name} 在压缩包内不存在')
     for name in sorted(referenced):
         if name.lower() in packaged:
-            _add(packaged[name.lower()])
+            _add(name.lower())
 
     if len(wanted) > settings.INLINE_IMAGE_MAX_PER_ARTICLE:
         entry.errors.append(
@@ -727,7 +730,7 @@ def _resolve_inline_images(
         )
         return
 
-    unresolved = referenced - {name.lower() for name in wanted}
+    unresolved = referenced - set(wanted)
     if unresolved:
         sample = ', '.join(sorted(unresolved)[:5])
         entry.warnings.append(
@@ -736,7 +739,7 @@ def _resolve_inline_images(
 
     refs: list[InlineImageRef] = []
     for name in wanted:
-        entry_name = packaged.get(name.lower())
+        entry_name = packaged.get(name)
         if entry_name is None:
             continue
         member_info = _find_info(files, entry_name)

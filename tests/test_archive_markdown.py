@@ -11,6 +11,7 @@ from articles.archive import export as archive_export
 from articles.archive import importer as archive_importer
 from articles.archive import planner as archive_planner
 from articles.archive import validate as archive_validate
+from articles.archive.errors import PackageError
 from articles.images import inline_url, process_inline_image, store_inline_image
 from articles.models import Article
 
@@ -257,3 +258,97 @@ class TestIdempotencyKey:
 
         assert plan.items[0].action == 'create'
         assert report.items[0]['action'] == 'create'
+
+
+@pytest.mark.django_db
+class TestInlineImageCount:
+    """插图数量必须按「张数」统计。
+
+    回归：声明（article.json 的 images）与引用（正文 /media/inline/）指向同一批图时，
+    早期实现按原始字符串去重，一侧是文件名、另一侧是完整条目路径 → 每张图记两次、
+    数量翻倍，26 张以上的文章被误判「超过上限」（实测 36 张报 72）。
+    """
+
+    MAX_OK = 30  # 超过翻倍后的假上限（50 的一半），但低于真实上限 50
+
+    def _package(self, make_zip, jpeg_factory, count: int) -> bytes:
+        jpeg = jpeg_factory()
+        files = {'articles/001-many/cover.jpg': jpeg}
+        content_lines: list[str] = []
+        images: list[dict] = []
+        for index in range(count):
+            name = f'img{index:02d}.webp'
+            # 用真实管线产出合法 WebP 字节，文件名与内容寻址名无关也无妨
+            files[f'articles/001-many/images/{name}'] = process_inline_image(
+                jpeg_factory(size=(24, 16)), 'jpg'
+            ).data
+            images.append({'file': name})
+            content_lines.append(f'![p{index}](/media/inline/{name})')
+        files['articles/001-many/article.json'] = json.dumps(
+            _article_json(
+                slug='many-inline',
+                content='\n\n'.join(content_lines),
+                cover=_cover_meta(jpeg),
+                images=images,
+            )
+        ).encode()
+        return make_zip(files)
+
+    def test_declared_and_referenced_images_counted_once(
+        self, tmp_path, make_zip, jpeg_factory
+    ):
+        path = tmp_path / 'many.zip'
+        path.write_bytes(self._package(make_zip, jpeg_factory, self.MAX_OK))
+
+        info = archive_validate.validate_package(str(path))
+        entry = info.entries[0]
+
+        assert entry.errors == []
+        assert len(entry.images) == self.MAX_OK
+
+    def test_limit_still_enforced(self, tmp_path, make_zip, jpeg_factory, settings):
+        settings.INLINE_IMAGE_MAX_PER_ARTICLE = 2
+        path = tmp_path / 'limit.zip'
+        path.write_bytes(self._package(make_zip, jpeg_factory, 3))
+
+        info = archive_validate.validate_package(str(path))
+
+        assert any('插图数量' in error for error in info.entries[0].errors)
+
+    def _article_with_images(self, user, article_factory, jpeg_factory, count: int):
+        urls = []
+        for index in range(count):
+            # 颜色各不相同 → 内容寻址名不同，避免被去重成同一张图
+            processed = process_inline_image(
+                jpeg_factory(size=(24, 16), color=(index * 20 % 256, 40, 60)), 'jpg'
+            )
+            store_inline_image(processed.data)
+            urls.append(inline_url(processed.data))
+        article = article_factory(user, slug='export-many', cover_bytes=jpeg_factory())
+        article.content = '\n\n'.join(f'![p{i}]({url})' for i, url in enumerate(urls))
+        article.save(update_fields=['content'])
+        return article
+
+    def test_export_blocks_when_article_exceeds_import_limit(
+        self, tmp_path, user, article_factory, jpeg_factory, settings
+    ):
+        """导出侧同口径校验：单篇超限就不能导出，否则产出的包自己导不回。"""
+        article = self._article_with_images(user, article_factory, jpeg_factory, 3)
+        settings.INLINE_IMAGE_MAX_PER_ARTICLE = 2
+
+        estimate = archive_export.estimate_export([article])
+
+        assert not estimate.importable
+        assert any('超过单篇导入上限' in reason for reason in estimate.blocking_reasons)
+        with pytest.raises(PackageError):
+            archive_export.build_archive([article], tmp_path / 'blocked.zip')
+
+    def test_export_allows_article_within_import_limit(
+        self, tmp_path, user, article_factory, jpeg_factory
+    ):
+        article = self._article_with_images(user, article_factory, jpeg_factory, 3)
+
+        result = archive_export.build_archive([article], tmp_path / 'ok.zip')
+
+        assert result['count'] == 1
+        assert archive_export.estimate_export([article]).importable

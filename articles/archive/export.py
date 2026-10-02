@@ -242,6 +242,8 @@ def estimate_export(articles: list[Article], *, lim: Limits | None = None) -> Ex
     """统计条目数/字节，并给出"不可回导"的原因（与导入校验同口径）。"""
     cfg = lim or limits()
     result = ExportEstimate(count=len(articles), entries=FIXED_ENTRIES)
+    max_inline = int(settings.INLINE_IMAGE_MAX_PER_ARTICLE)
+    over_inline_limit: list[str] = []
     for article in articles:
         payload, _blobs, warnings = _scan_article(article, read_bytes=False)
         result.warnings.extend(warnings)
@@ -249,6 +251,13 @@ def estimate_export(articles: list[Article], *, lim: Limits | None = None) -> Ex
         result.entries += 1 + (1 if payload['cover'] else 0)
         result.entries += 1 if payload['attachment'] else 0
         result.entries += len(payload['images'])
+        # 单篇插图数也受导入侧限制（validate._resolve_inline_images）。导出不拦就会
+        # 产出「导出成功但导入被拒」的包，破坏"导出的包一定能导回"这个承诺。
+        inline_count = len(payload['images'])
+        if inline_count > max_inline:
+            over_inline_limit.append(
+                f'《{article.title}》正文插图 {inline_count} 张，超过单篇导入上限 {max_inline}'
+            )
         # 字节：生成型成员（article.json）用真实序列化长度 + 磁盘媒体真实字节
         result.source_bytes += len(_serialize(payload))
         for meta in (payload['cover'], payload['attachment'], *payload['images']):
@@ -263,7 +272,7 @@ def estimate_export(articles: list[Article], *, lim: Limits | None = None) -> Ex
         # zip 已压缩，按源字节估计上界（与导入侧同一组上限比较）
         zip_bytes=result.source_bytes,
         lim=cfg,
-    )
+    ) + over_inline_limit
     return result
 
 
