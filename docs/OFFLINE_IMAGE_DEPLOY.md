@@ -2,13 +2,17 @@
 
 **用途**：在无外网或拉取极慢的机器上部署本博客：不 `build`、不 `pull`，直接用导出的镜像 tar。
 
+> 默认导出路径：`~/my_blog_images/my_blog_images_<架构>_<YYYYmmdd-HHMMSS>.tar`（时间戳到秒，同一天多次导出不会互相覆盖）。
+
 **适用的目标机**：`linux/amd64`（x86_64），已装 `podman` + `podman-compose`。
 （镜像架构必须在导出时确认：`podman image inspect localhost/my_blog_app:latest --format '{{.Architecture}}/{{.Os}}'`）
 
 > **推荐直接用脚本**，本节的手工步骤只作为原理参考（脚本自动识别 `docker compose` 或 `podman`，不需改任何配置）：
 > ```bash
-> scripts/blog.sh export                        # 源机：导出（默认写到 ~/my_blog_images/，带日期与 .sha256）
+> scripts/blog.sh export                        # 源机：导出（省略 --out 即写到 ~/my_blog_images/，文件名带架构+时间戳，并生成 .sha256）
+> scripts/blog.sh export --out /data/pkg.tar    # 也可显式指定路径（--out 不带值时同样回落到默认名）
 > scripts/blog.sh import --in <包路径>           # 目标机：校验 sha256/架构/磁盘 → load → 重建 → 健康检查
+> scripts/blog.sh import                       # 省略 --in 时自动选用 ~/my_blog_images/ 下最新的包
 > scripts/blog.sh seed-media                    # 若要把本机 media/ 里的封面附件一起带过去
 > ```
 > 脚本会做同样的校验，并额外保证：**不用 `--build`**、`down` 后再 `up`、轮询等就绪、健康检查四条路径。
@@ -34,18 +38,17 @@
 
 ```bash
 mkdir -p ~/my_blog_images
-podman save --format docker-archive -m \
-  -o ~/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d).tar \
+PKG="$HOME/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d-%H%M%S).tar"
+podman save --format docker-archive -m -o "$PKG" \
   localhost/my_blog_app:latest \
   localhost/my_blog_front:latest \
   docker.io/library/nginx:1.27 \
   docker.io/library/redis:7-alpine
 # 校验和写成 GNU 标准格式 "<hash>  <文件名>"，目标机才能直接 sha256sum -c
-( cd ~/my_blog_images && sha256sum "my_blog_images_amd64_$(date +%Y%m%d).tar" ) \
-  > ~/my_blog_images/my_blog_images_amd64_$(date +%Y%m%d).tar.sha256
+( cd "$(dirname "$PKG")" && sha256sum "$(basename "$PKG")" ) > "${PKG}.sha256"
 ```
 
-（`scripts/blog.sh export` 就是上面这段，命名规则为 `my_blog_images_<arch>_<YYYYMMDD>.tar` +同名 `.sha256`。）
+（`scripts/blog.sh export` 就是上面这段，命名规则为 `my_blog_images_<arch>_<YYYYMMDD-HHMMSS>.tar` + 同名 `.sha256`。）
 
 目标机校验（**必须在 tar 所在目录执行**，`-c` 按当前目录解析文件名）：
 

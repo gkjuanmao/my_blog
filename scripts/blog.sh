@@ -12,9 +12,9 @@
 #   status               容器 / 镜像 / 端口 / 健康 / 归档产物 / 磁盘 一览
 #   logs [服务] [-f]     查看日志（app|nginx|front|redis，默认 app）
 #   check [--front]      质量门禁（ruff/mypy/pytest/迁移检查/配置语法；--front 加前端类型检查）
-#   export [--out 文件]  导出离线镜像包（4 镜像 → tar + .sha256）
+#   export [--out 文件]  导出离线镜像包（4 镜像 → tar + .sha256；省略 --out 用默认名）
 #   import [--in 文件]   目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
-#   seed-demo [--count N] 生成并导入演示游记（走真实导入链路）
+#   seed-demo [--count N] 生成并导入演示游记（含 Markdown 正文与压缩插图，走真实导入链路）
 #   purge                清理归档过期产物 + 悬空镜像
 #   help                 显示本帮助
 #
@@ -364,6 +364,17 @@ cmd_up() {
   step "等待就绪"
   wait_ready
 
+  step "重载 nginx 配置"
+  # nginx.conf 是 bind mount：若有人绕开本脚本用 `up -d`（不 down）改配置，容器不会重建，
+  # 这里显式 reload 一次兜底（down+up 已经重建过，reload 属幂等）。
+  local ngx
+  ngx="$(container_of nginx)"
+  if [ -n "$ngx" ] && "$ENGINE" exec "$ngx" nginx -s reload >/dev/null 2>&1; then
+    ok "nginx 配置已重载"
+  else
+    warn "nginx 未运行或重载失败（若刚重建过容器，配置其实已生效）"
+  fi
+
   step "健康检查"
   health_check || die "健康检查未全部通过" "$ENGINE logs $(app_container) | tail -30"
   printf '\n%s服务已就绪%s → %s%s/%s\n' "$C_OK" "$C_END" "$C_BOLD" "$BASE_URL" "$C_END"
@@ -503,12 +514,24 @@ cmd_export() {
   local out=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --out) out="${2:-}"; shift 2 ;;
+      --out)
+        # 值可选：只有「后面确实跟着一个不以 - 开头的值」才取用，否则回落到默认文件名。
+        # 旧写法 `shift 2` 在只剩 `--out` 一个参数时会失败，被 set -e 直接终止脚本（静默退出码 1）。
+        if [ $# -ge 2 ] && [ "${2#-}" = "${2:-}" ]; then
+          out="$2"; shift 2
+        else
+          shift
+        fi
+        ;;
       *) die "未知参数：$1" ;;
     esac
   done
   require_tools
-  [ -n "$out" ] || out="${EXPORT_DIR_DEFAULT}/my_blog_images_$(norm_arch)_$(date +%Y%m%d).tar"
+  # 默认文件名带架构与时间戳：不写 --out 也能直接用，且同一天多次导出不会互相覆盖
+  if [ -z "$out" ]; then
+    out="${EXPORT_DIR_DEFAULT}/my_blog_images_$(norm_arch)_$(date +%Y%m%d-%H%M%S).tar"
+    hint "未指定 --out，导出为默认名：$(basename "$out")"
+  fi
 
   title "导出离线镜像包"
   step "校验镜像"
@@ -543,7 +566,14 @@ cmd_import() {
   local in="" yes=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --in) in="${2:-}"; shift 2 ;;
+      --in)
+        # 同 --out：值可选（不以 - 开头才当作值），省略时自动选用导出目录下最新的包
+        if [ $# -ge 2 ] && [ "${2#-}" = "${2:-}" ]; then
+          in="$2"; shift 2
+        else
+          shift
+        fi
+        ;;
       --yes) yes=1; shift ;;
       *) die "未知参数：$1" ;;
     esac
@@ -719,9 +749,10 @@ usage() {
   logs [服务] [-f]       查看日志（app|nginx|front|redis，默认 app）
   check [--front]        质量门禁（ruff/mypy/pytest/迁移/配置语法；--front 加前端类型检查）
   export [--out 文件]    导出离线镜像包（4 镜像 → tar + .sha256）
+                         省略 --out 时用 ~/my_blog_images/my_blog_images_<架构>_<时间戳>.tar
   import [--in 文件]     目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
   seed-media             把本机 media/ 同步进媒体卷（数据迁移用）
-  seed-demo [--count N]  生成并导入演示游记（走真实导入链路）
+  seed-demo [--count N]  生成并导入演示游记（含 Markdown 正文与压缩插图，默认 30 篇）
   purge                  清理归档过期产物 + 悬空镜像
   help                   显示本帮助
 
