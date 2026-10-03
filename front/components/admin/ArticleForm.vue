@@ -329,7 +329,7 @@ function handleSubmit() {
       </el-form-item>
       <p class="text-xs text-stone-400">
         正文里的 base64 内嵌图会压缩为 WebP 并按内容寻址落盘（同图自动去重），外链图保留原样；
-        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 50MB。
+        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 100MB。
       </p>
       <template #footer>
         <el-button @click="htmlImportVisible = false">关闭</el-button>

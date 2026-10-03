@@ -171,8 +171,9 @@ INLINE_IMAGE_PURGE_GRACE_HOURS = 24  # 宽限期：新文件不清理
 # 后台「导入 HTML」：把手机/第三方导出的 HTML 转成 Markdown 正文。
 # 走 multipart 的**文件**通道上传，因此不受 DATA_UPLOAD_MAX_MEMORY_SIZE（默认 2.5MB，
 # 只约束 request.body / 表单字段）限制 —— 手机导出的 HTML 常因图片内嵌 base64 而远超它。
-# 注意：nginx 的 client_max_body_size（60m）必须大于本值，否则会先被 nginx 以 413 拦掉。
-HTML_IMPORT_MAX_BYTES = 50 * 1024**2
+# 注意：nginx 必须放行更大的体积，否则会先被 nginx 以 413 拦掉。该路由走独立 location
+# （`client_max_body_size 110m`），而不是调大全局 `/api/` 的 60m —— 后者会连带放宽所有普通接口。
+HTML_IMPORT_MAX_BYTES = 100 * 1024**2
 
 # 附件白名单（上传与归档共用）；html 已从上传侧移除
 ATTACHMENT_EXTENSIONS = {'pdf', 'doc', 'docx'}
