@@ -1,0 +1,305 @@
+/*
+ * 「优雅」皮肤 —— 源自 0627 的 assets/elegant-theme.css：
+ * 暖色羊皮纸底 + 金(#c9a46a) / 鼠尾草绿(#7c8f78) / 棕(#9b6f4f)，药丸按钮、柔和卡片。
+ *
+ * 仅在公开页生效（<html> 上的 skin-elegant 类由 layouts/default.vue 挂载），后台不受影响。
+ * 皮肤与「亮/暗」互斥：选中皮肤时强制亮色，因此这里只处理浅色基调。
+ */
+html.skin-elegant {
+  --skin-bg: #f5f1e8;
+  --skin-bg-2: #ebe4d6;
+  --skin-surface: rgba(255, 252, 246, 0.82);
+  --skin-surface-strong: #fffaf0;
+  --skin-border: rgba(58, 49, 38, 0.14);
+  --skin-ink: #211f1a;
+  --skin-ink-2: #686259;
+  --skin-ink-3: #8a8175;
+  --skin-primary: #c9a46a;
+  --skin-secondary: #7c8f78;
+  --skin-accent: #8f693f;
+  --skin-shadow: 0 18px 60px rgba(45, 38, 28, 0.1);
+  --skin-shadow-lg: 0 24px 70px rgba(45, 38, 28, 0.14);
+  /* 首屏粒子网络 / 鼠标光晕用的 RGB 分量（供 JS 拼 rgba） */
+  --skin-motion-line: 143, 105, 63;
+  --skin-motion-dot: 33, 31, 26;
+
+  /* Element Plus 变量对齐皮肤 */
+  --el-color-primary: #9b6f4f;
+  --el-color-primary-light-3: #b98a68;
+  --el-color-primary-light-5: #cfa687;
+  --el-color-primary-light-7: #e3c7b0;
+  --el-color-primary-light-8: #edd8c7;
+  --el-color-primary-light-9: #f6ece3;
+  --el-color-warning: #c9a46a;
+  --el-bg-color: #fffaf0;
+  --el-bg-color-overlay: #fffaf0;
+  --el-fill-color-blank: rgba(255, 250, 240, 0.9);
+  --el-border-color: rgba(58, 49, 38, 0.18);
+  --el-border-color-light: rgba(58, 49, 38, 0.12);
+  --el-border-color-lighter: rgba(58, 49, 38, 0.08);
+  --el-text-color-primary: #211f1a;
+  --el-text-color-regular: #3f3a31;
+  --el-text-color-secondary: #686259;
+  --el-text-color-placeholder: #8a8175;
+  color-scheme: light;
+}
+
+/* ---------- 背景（羊皮纸 + 极淡网格 + 金/鼠尾草光晕） ---------- */
+html.skin-elegant body {
+  background: var(--skin-bg);
+}
+
+html.skin-elegant .public-shell {
+  background-color: var(--skin-bg);
+  background-image:
+    linear-gradient(rgba(35, 31, 25, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35, 31, 25, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, rgba(201, 164, 106, 0.14), transparent 28%),
+    radial-gradient(circle at 86% 14%, rgba(124, 143, 120, 0.13), transparent 30%);
+  background-size: 44px 44px, 44px 44px, auto, auto;
+  background-attachment: fixed;
+  color: var(--skin-ink);
+  /* 建立层叠上下文：让 ::after 光晕（z-index:-1）落在背景之上、内容之下 */
+  isolation: isolate;
+}
+
+/* ---------- 首屏粒子网络 + 鼠标跟随光晕 ---------- */
+html.skin-elegant .skin-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+html.skin-elegant .skin-motion-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.8;
+  mix-blend-mode: multiply;
+}
+
+html.skin-elegant .public-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(
+    520px circle at var(--cursor-x, 50vw) var(--cursor-y, 50vh),
+    rgba(201, 164, 106, 0.22),
+    rgba(124, 143, 120, 0.08) 34%,
+    transparent 68%
+  );
+}
+
+html.skin-elegant.skin-pointer .public-shell::after {
+  opacity: 1;
+}
+
+/* ---------- 顶栏 / 页脚 ---------- */
+html.skin-elegant .public-shell > header {
+  background: rgba(255, 250, 240, 0.82);
+  border-bottom-color: var(--skin-border);
+  box-shadow: 0 12px 36px rgba(45, 38, 28, 0.06);
+}
+
+html.skin-elegant .public-shell > header a[href="/"] {
+  color: var(--skin-ink);
+}
+
+html.skin-elegant .public-shell > footer {
+  background: rgba(33, 31, 26, 0.94);
+  color: rgba(255, 250, 240, 0.72);
+  border-top-color: rgba(58, 49, 38, 0.2);
+}
+
+/* ---------- 把 Tailwind 中性色/主色重映射到皮肤调色板 ---------- */
+html.skin-elegant .public-shell .bg-white {
+  background-color: var(--skin-surface);
+}
+
+html.skin-elegant .public-shell .bg-stone-100 {
+  background-color: var(--skin-bg-2);
+}
+
+html.skin-elegant .public-shell .border-stone-200,
+html.skin-elegant .public-shell .border-stone-300,
+html.skin-elegant .public-shell .border-stone-600,
+html.skin-elegant .public-shell .border-stone-700 {
+  border-color: var(--skin-border);
+}
+
+html.skin-elegant .public-shell .text-stone-900 {
+  color: var(--skin-ink);
+}
+
+html.skin-elegant .public-shell .text-stone-600,
+html.skin-elegant .public-shell .text-stone-500 {
+  color: var(--skin-ink-2);
+}
+
+html.skin-elegant .public-shell .text-stone-400,
+html.skin-elegant .public-shell .text-stone-300 {
+  color: var(--skin-ink-3);
+}
+
+html.skin-elegant .public-shell .text-brand-600 {
+  color: var(--skin-accent);
+}
+
+html.skin-elegant .public-shell .bg-brand-100 {
+  background-color: rgba(201, 164, 106, 0.18);
+}
+
+html.skin-elegant .public-shell .hover\:text-brand-600:hover {
+  color: var(--skin-accent);
+}
+
+html.skin-elegant .public-shell .hover\:border-brand-500:hover {
+  border-color: var(--skin-primary);
+}
+
+/* 圆角统一收成 8px（0627 的观感），药丸元素单独保留 */
+html.skin-elegant .public-shell .rounded-2xl {
+  border-radius: 8px;
+}
+
+/* 卡片：柔和阴影 + 悬停金边、加重阴影 */
+html.skin-elegant .public-shell article.group {
+  border-color: var(--skin-border);
+  box-shadow: var(--skin-shadow);
+}
+
+html.skin-elegant .public-shell article.group:hover {
+  border-color: rgba(201, 164, 106, 0.42);
+  box-shadow: var(--skin-shadow-lg);
+}
+
+html.skin-elegant .public-shell a.rounded-2xl:hover {
+  border-color: rgba(201, 164, 106, 0.42);
+  box-shadow: var(--skin-shadow-lg);
+}
+
+/* ---------- 标签（药丸） ---------- */
+html.skin-elegant .el-tag {
+  border-radius: 999px;
+}
+
+html.skin-elegant .el-tag.el-tag--warning {
+  --el-tag-bg-color: rgba(201, 164, 106, 0.16);
+  --el-tag-border-color: rgba(201, 164, 106, 0.28);
+  --el-tag-text-color: var(--skin-accent);
+}
+
+html.skin-elegant .el-tag.el-tag--primary {
+  --el-tag-bg-color: rgba(124, 143, 120, 0.14);
+  --el-tag-border-color: rgba(124, 143, 120, 0.26);
+  --el-tag-text-color: #55684f;
+}
+
+/* ---------- 主操作按钮：墨黑底 + 奶油字（对齐 0627 的 .btn-primary） ---------- */
+html.skin-elegant .el-button--warning:not(.is-plain):not(.is-text):not(.is-link) {
+  --el-button-bg-color: #211f1a;
+  --el-button-border-color: #211f1a;
+  --el-button-text-color: #fffaf0;
+  --el-button-hover-bg-color: #332f27;
+  --el-button-hover-border-color: #332f27;
+  --el-button-hover-text-color: #fffaf0;
+  --el-button-active-bg-color: #171511;
+  --el-button-active-border-color: #171511;
+  border-radius: 999px;
+}
+
+/* 附件下载等自定义链接按钮 */
+html.skin-elegant .public-shell a.bg-brand-600 {
+  background-color: #211f1a;
+  border-radius: 999px;
+  color: #fffaf0;
+}
+
+/* ---------- 输入框 / 选择器 / 分页 ---------- */
+html.skin-elegant .el-input__wrapper {
+  background-color: var(--skin-surface-strong);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--skin-border) inset;
+}
+
+html.skin-elegant .el-input__inner {
+  color: var(--skin-ink);
+}
+
+html.skin-elegant .el-pagination.is-background .el-pager li {
+  background: rgba(255, 250, 240, 0.7);
+  border: 1px solid var(--skin-border);
+  border-radius: 999px;
+  color: var(--skin-ink-2);
+}
+
+html.skin-elegant .el-pagination.is-background .el-pager li.is-active {
+  background-color: #211f1a;
+  border-color: #211f1a;
+  color: #fffaf0;
+}
+
+html.skin-elegant .el-pagination.is-background .btn-prev,
+html.skin-elegant .el-pagination.is-background .btn-next {
+  background: rgba(255, 250, 240, 0.7);
+  border: 1px solid var(--skin-border);
+  border-radius: 999px;
+  color: var(--skin-ink-2);
+}
+
+html.skin-elegant .el-pagination__total,
+html.skin-elegant .el-pagination__jump {
+  color: var(--skin-ink-2);
+}
+
+/* ---------- Markdown 正文 ---------- */
+html.skin-elegant .md-body {
+  color: #3f3a31;
+}
+
+html.skin-elegant .md-body h1,
+html.skin-elegant .md-body h2,
+html.skin-elegant .md-body h3 {
+  color: var(--skin-ink);
+}
+
+html.skin-elegant .md-body a {
+  color: var(--skin-accent);
+}
+
+html.skin-elegant .md-body blockquote {
+  border-left-color: var(--skin-primary);
+}
+
+html.skin-elegant .md-body pre,
+html.skin-elegant .md-body code {
+  background: rgba(33, 31, 26, 0.92);
+  color: #e7c586;
+}
+
+html.skin-elegant .md-body pre code {
+  background: transparent;
+  color: inherit;
+}
+
+html.skin-elegant .md-body th,
+html.skin-elegant .md-body td {
+  border-color: var(--skin-border);
+}
+
+/* ---------- 下拉菜单（主题选择器） ---------- */
+html.skin-elegant .el-dropdown-menu__item {
+  color: var(--skin-ink-2);
+}
+
+html.skin-elegant .el-dropdown-menu__item:not(.is-disabled):focus {
+  background-color: rgba(201, 164, 106, 0.14);
+  color: var(--skin-ink);
+}

@@ -1,0 +1,315 @@
+/*
+ * 「赛博霓虹」皮肤 —— 源自 0627 index.html 内联的霓虹主题：
+ * 深空黑底(#0a0a0a) + 霓虹绿(#00ff88) / 粉(#ff0080) / 蓝(#0080ff)，发光边框 + 玻璃拟态卡片。
+ *
+ * 仅在公开页生效（<html> 上的 skin-neon 类由 layouts/default.vue 挂载），后台不受影响。
+ * 皮肤与「亮/暗」互斥：选中皮肤时强制亮色，因此霓虹的深色基调完全由本文件提供。
+ */
+html.skin-neon {
+  --skin-bg: #0a0a0a;
+  --skin-bg-2: #141414;
+  --skin-surface: rgba(255, 255, 255, 0.05);
+  --skin-surface-strong: #121212;
+  --skin-border: rgba(255, 255, 255, 0.12);
+  --skin-ink: #ffffff;
+  --skin-ink-2: #a0a0a0;
+  --skin-ink-3: #6f6f6f;
+  --skin-primary: #00ff88;
+  --skin-secondary: #ff0080;
+  --skin-accent: #0080ff;
+  --skin-glow: 0 0 18px rgba(0, 255, 136, 0.28);
+  --skin-shadow: 0 0 24px rgba(0, 255, 136, 0.12);
+  --skin-shadow-lg: 0 0 44px rgba(0, 255, 136, 0.22);
+  /* 首屏粒子网络 / 鼠标光晕用的 RGB 分量（供 JS 拼 rgba） */
+  --skin-motion-line: 0, 255, 136;
+  --skin-motion-dot: 0, 255, 136;
+
+  /* Element Plus 变量对齐霓虹暗色 */
+  --el-color-primary: #00ff88;
+  --el-color-primary-light-3: #33ffa0;
+  --el-color-primary-light-5: #66ffb8;
+  --el-color-primary-light-7: #99ffd0;
+  --el-color-primary-light-8: #b3ffdd;
+  --el-color-primary-light-9: #1a3a2c;
+  --el-color-warning: #00ff88;
+  --el-bg-color: #0f0f0f;
+  --el-bg-color-overlay: #141414;
+  --el-fill-color-blank: rgba(255, 255, 255, 0.05);
+  --el-border-color: rgba(255, 255, 255, 0.16);
+  --el-border-color-light: rgba(255, 255, 255, 0.12);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.08);
+  --el-text-color-primary: #ffffff;
+  --el-text-color-regular: #d0d0d0;
+  --el-text-color-secondary: #a0a0a0;
+  --el-text-color-placeholder: #7a7a7a;
+  color-scheme: dark;
+}
+
+/* ---------- 背景（深空黑 + 霓虹光晕 + 极淡网格） ---------- */
+html.skin-neon body {
+  background: var(--skin-bg);
+}
+
+html.skin-neon .public-shell {
+  background-color: var(--skin-bg);
+  background-image:
+    linear-gradient(rgba(0, 255, 136, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 136, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, rgba(0, 255, 136, 0.12), transparent 32%),
+    radial-gradient(circle at 84% 12%, rgba(255, 0, 128, 0.12), transparent 32%),
+    radial-gradient(circle at 50% 100%, rgba(0, 128, 255, 0.1), transparent 40%);
+  background-size: 44px 44px, 44px 44px, auto, auto, auto;
+  background-attachment: fixed;
+  color: var(--skin-ink);
+  /* 建立层叠上下文：让 ::after 光晕（z-index:-1）落在背景之上、内容之下 */
+  isolation: isolate;
+}
+
+/* ---------- 首屏粒子网络 + 鼠标跟随光晕 ---------- */
+html.skin-neon .skin-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+html.skin-neon .skin-motion-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.9;
+  mix-blend-mode: screen;
+}
+
+html.skin-neon .public-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(
+    520px circle at var(--cursor-x, 50vw) var(--cursor-y, 50vh),
+    rgba(0, 255, 136, 0.18),
+    rgba(255, 0, 128, 0.08) 34%,
+    transparent 68%
+  );
+}
+
+html.skin-neon.skin-pointer .public-shell::after {
+  opacity: 1;
+}
+
+/* ---------- 顶栏 / 页脚 ---------- */
+html.skin-neon .public-shell > header {
+  background: rgba(10, 10, 10, 0.82);
+  border-bottom-color: rgba(0, 255, 136, 0.22);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+html.skin-neon .public-shell > header a[href="/"] {
+  color: var(--skin-primary);
+  text-shadow: 0 0 14px rgba(0, 255, 136, 0.45);
+}
+
+html.skin-neon .public-shell > header a:not([href="/"]):hover {
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
+}
+
+html.skin-neon .public-shell > footer {
+  background: rgba(5, 5, 5, 0.94);
+  color: var(--skin-ink-2);
+  border-top-color: rgba(0, 255, 136, 0.18);
+}
+
+/* ---------- 把 Tailwind 中性色/主色重映射到霓虹调色板 ---------- */
+html.skin-neon .public-shell .bg-white {
+  background-color: var(--skin-surface);
+  backdrop-filter: blur(12px);
+}
+
+html.skin-neon .public-shell .bg-stone-100 {
+  background-color: var(--skin-bg-2);
+}
+
+html.skin-neon .public-shell .border-stone-200,
+html.skin-neon .public-shell .border-stone-300,
+html.skin-neon .public-shell .border-stone-600,
+html.skin-neon .public-shell .border-stone-700 {
+  border-color: var(--skin-border);
+}
+
+html.skin-neon .public-shell .text-stone-900 {
+  color: var(--skin-ink);
+}
+
+html.skin-neon .public-shell .text-stone-600,
+html.skin-neon .public-shell .text-stone-500 {
+  color: var(--skin-ink-2);
+}
+
+html.skin-neon .public-shell .text-stone-400,
+html.skin-neon .public-shell .text-stone-300 {
+  color: var(--skin-ink-3);
+}
+
+html.skin-neon .public-shell .text-brand-600 {
+  color: var(--skin-primary);
+}
+
+html.skin-neon .public-shell .bg-brand-100 {
+  background-color: rgba(0, 255, 136, 0.14);
+}
+
+html.skin-neon .public-shell .hover\:text-brand-600:hover {
+  color: var(--skin-primary);
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
+}
+
+html.skin-neon .public-shell .hover\:border-brand-500:hover {
+  border-color: var(--skin-primary);
+}
+
+html.skin-neon .public-shell .rounded-2xl {
+  border-radius: 12px;
+}
+
+/* 卡片：玻璃拟态 + 悬停霓虹发光 */
+html.skin-neon .public-shell article.group {
+  border-color: var(--skin-border);
+  box-shadow: var(--skin-shadow);
+}
+
+html.skin-neon .public-shell article.group:hover {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: var(--skin-shadow-lg);
+}
+
+html.skin-neon .public-shell a.rounded-2xl:hover {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: var(--skin-shadow-lg);
+}
+
+/* ---------- 标签 ---------- */
+html.skin-neon .el-tag {
+  border-radius: 999px;
+}
+
+html.skin-neon .el-tag.el-tag--warning {
+  --el-tag-bg-color: rgba(0, 255, 136, 0.12);
+  --el-tag-border-color: rgba(0, 255, 136, 0.4);
+  --el-tag-text-color: var(--skin-primary);
+}
+
+html.skin-neon .el-tag.el-tag--primary {
+  --el-tag-bg-color: rgba(0, 128, 255, 0.12);
+  --el-tag-border-color: rgba(0, 128, 255, 0.4);
+  --el-tag-text-color: #4da6ff;
+}
+
+/* ---------- 主操作按钮：霓虹绿底 + 深色字，药丸 + 发光 ---------- */
+html.skin-neon .el-button--warning:not(.is-plain):not(.is-text):not(.is-link) {
+  --el-button-bg-color: #00ff88;
+  --el-button-border-color: #00ff88;
+  --el-button-text-color: #04120b;
+  --el-button-hover-bg-color: #33ffa0;
+  --el-button-hover-border-color: #33ffa0;
+  --el-button-hover-text-color: #04120b;
+  --el-button-active-bg-color: #00d873;
+  --el-button-active-border-color: #00d873;
+  border-radius: 999px;
+  box-shadow: var(--skin-glow);
+}
+
+html.skin-neon .public-shell a.bg-brand-600 {
+  background-color: #00ff88;
+  border-radius: 999px;
+  color: #04120b;
+  box-shadow: var(--skin-glow);
+}
+
+/* ---------- 输入框 / 分页 ---------- */
+html.skin-neon .el-input__wrapper {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--skin-border) inset;
+}
+
+html.skin-neon .el-input__inner {
+  color: var(--skin-ink);
+}
+
+html.skin-neon .el-pagination.is-background .el-pager li {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--skin-border);
+  border-radius: 999px;
+  color: var(--skin-ink-2);
+}
+
+html.skin-neon .el-pagination.is-background .el-pager li.is-active {
+  background-color: #00ff88;
+  border-color: #00ff88;
+  color: #04120b;
+  box-shadow: var(--skin-glow);
+}
+
+html.skin-neon .el-pagination.is-background .btn-prev,
+html.skin-neon .el-pagination.is-background .btn-next {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--skin-border);
+  border-radius: 999px;
+  color: var(--skin-ink-2);
+}
+
+html.skin-neon .el-pagination__total,
+html.skin-neon .el-pagination__jump {
+  color: var(--skin-ink-2);
+}
+
+/* ---------- Markdown 正文 ---------- */
+html.skin-neon .md-body {
+  color: #d0d0d0;
+}
+
+html.skin-neon .md-body h1,
+html.skin-neon .md-body h2,
+html.skin-neon .md-body h3 {
+  color: var(--skin-ink);
+}
+
+html.skin-neon .md-body a {
+  color: var(--skin-primary);
+}
+
+html.skin-neon .md-body blockquote {
+  border-left-color: var(--skin-primary);
+}
+
+html.skin-neon .md-body pre,
+html.skin-neon .md-body code {
+  background: #141414;
+  color: #9dffcf;
+}
+
+html.skin-neon .md-body pre code {
+  background: transparent;
+  color: inherit;
+}
+
+html.skin-neon .md-body th,
+html.skin-neon .md-body td {
+  border-color: var(--skin-border);
+}
+
+/* ---------- 下拉菜单（主题选择器） ---------- */
+html.skin-neon .el-dropdown-menu__item {
+  color: var(--skin-ink-2);
+}
+
+html.skin-neon .el-dropdown-menu__item:not(.is-disabled):focus {
+  background-color: rgba(0, 255, 136, 0.14);
+  color: var(--skin-ink);
+}

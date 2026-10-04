@@ -31,7 +31,7 @@ await fetchArticles()
 
 <template>
   <div class="space-y-10">
-    <section class="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-700 dark:bg-stone-900">
+    <section class="skin-hero rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-700 dark:bg-stone-900">
       <div class="flex items-center gap-4">
         <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-100 text-2xl text-brand-600 dark:bg-brand-900/40 dark:text-amber-400">旅</div>
         <div>

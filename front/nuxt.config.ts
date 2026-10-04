@@ -30,7 +30,12 @@ export default defineNuxtConfig({
     preference: 'system',
     fallback: 'light',
   },
-  css: ['~/assets/css/tailwind.css'],
+  css: [
+    '~/assets/css/tailwind.css',
+    // 皮肤样式必须排在 tailwind 之后，才能在同等优先级下覆盖工具类
+    '~/assets/css/skin-elegant.css',
+    '~/assets/css/skin-neon.css',
+  ],
   nitro: {
     devProxy: {
       '/api/': { target: 'http://127.0.0.1:8000/api', changeOrigin: false },

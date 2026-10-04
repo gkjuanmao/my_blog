@@ -1,7 +1,27 @@
 <script setup lang="ts">
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
+
+const { skin, skinClass, isSkinActive } = useAppTheme()
+
+// 皮肤动效（滚动揭示/卡片倾斜/按钮磁场），仅在非默认皮肤且非 reduced-motion 时生效
+useSkinMotion()
+
+// 皮肤类只作用于公开页（本布局）：
+// SSR 直接输出（避免首屏闪烁）；客户端用 classList 同步，离开公开页时移除，后台 admin 不受影响
+if (import.meta.server) {
+  useHead({ htmlAttrs: { class: skinClass.value } })
+} else {
+  watchEffect(() => {
+    const el = document.documentElement
+    el.classList.toggle('skin-elegant', skin.value === 'elegant')
+    el.classList.toggle('skin-neon', skin.value === 'neon')
+  })
+  onBeforeUnmount(() => document.documentElement.classList.remove('skin-elegant', 'skin-neon'))
+}
+
 function toggleColorMode() {
+  if (isSkinActive.value) return
   colorMode.preference = isDark.value ? 'light' : 'dark'
 }
 
@@ -23,7 +43,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-paper-light text-ink-light dark:bg-stone-900 dark:text-stone-100">
+  <div class="public-shell flex min-h-screen flex-col bg-paper-light text-ink-light dark:bg-stone-900 dark:text-stone-100">
     <header class="sticky top-0 z-10 border-b border-stone-200 bg-paper-light/80 backdrop-blur dark:border-stone-800 dark:bg-stone-900/80">
       <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <NuxtLink to="/" class="text-xl font-serif font-bold tracking-wide text-brand-600 dark:text-amber-500 sm:text-2xl">
@@ -39,10 +59,16 @@ watch(
           >
             {{ link.label }}
           </NuxtLink>
+          <SkinSwitcher />
           <button
             type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-stone-600 transition-colors hover:border-brand-500 hover:text-brand-600 dark:border-stone-700 dark:text-stone-300 dark:hover:border-amber-500 dark:hover:text-amber-400"
-            :aria-label="isDark ? '切换到亮色模式' : '切换到暗色模式'"
+            class="flex h-9 w-9 items-center justify-center rounded-full border transition-colors"
+            :class="isSkinActive
+              ? 'cursor-not-allowed border-stone-200 text-stone-300 dark:border-stone-800 dark:text-stone-600'
+              : 'border-stone-300 text-stone-600 hover:border-brand-500 hover:text-brand-600 dark:border-stone-700 dark:text-stone-300 dark:hover:border-amber-500 dark:hover:text-amber-400'"
+            :disabled="isSkinActive"
+            :aria-label="isSkinActive ? '当前风格下不可切换亮/暗' : (isDark ? '切换到亮色模式' : '切换到暗色模式')"
+            :title="isSkinActive ? '当前风格下不可切换亮/暗' : '切换亮/暗'"
             @click="toggleColorMode"
           >
             <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="h-5 w-5" />
@@ -50,10 +76,15 @@ watch(
         </nav>
 
         <div class="flex items-center gap-2 md:hidden">
+          <SkinSwitcher />
           <button
             type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300"
-            :aria-label="isDark ? '切换到亮色模式' : '切换到暗色模式'"
+            class="flex h-9 w-9 items-center justify-center rounded-full border transition-colors"
+            :class="isSkinActive
+              ? 'cursor-not-allowed border-stone-200 text-stone-300 dark:border-stone-800 dark:text-stone-600'
+              : 'border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300'"
+            :disabled="isSkinActive"
+            :aria-label="isSkinActive ? '当前风格下不可切换亮/暗' : (isDark ? '切换到亮色模式' : '切换到暗色模式')"
             @click="toggleColorMode"
           >
             <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="h-5 w-5" />
