@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { Article, PaginatedResponse } from '~/types/api'
 
-const page = ref(1)
-const pageSize = ref(10)
+const { page, pageSize, clampPage } = usePageQuery()
 const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -18,6 +17,7 @@ async function fetchArticles() {
     })
     articles.value = data.items
     total.value = data.total
+    clampPage(data.total, pageSize.value)
   } catch (e: any) {
     errorMsg.value = e?.message ?? '加载失败'
   } finally {
@@ -49,7 +49,7 @@ await fetchArticles()
       </div>
       <div v-if="articles.length === 0" class="py-16 text-center text-sm text-stone-400">暂无文章</div>
       <div v-if="total > 0" class="mt-8 flex justify-center">
-        <AppPagination v-model:page="page" v-model:page-size="pageSize" :total="total" />
+        <AppPagination v-model:page="page" v-model:page-size="pageSize" :total="total" :reset-page-on-size-change="false" />
       </div>
     </template>
   </div>

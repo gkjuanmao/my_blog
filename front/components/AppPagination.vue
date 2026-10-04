@@ -5,11 +5,17 @@ const props = withDefaults(
     layout?: string
     background?: boolean
     pageSizes?: number[]
+    /**
+     * 每页条数变化时是否由组件内部回到第 1 页。
+     * 分页状态托管给 URL 的页面传 false，避免与外部同步产生双写竞态。
+     */
+    resetPageOnSizeChange?: boolean
   }>(),
   {
     layout: 'total, sizes, prev, pager, next',
     background: true,
     pageSizes: () => [10, 20, 50],
+    resetPageOnSizeChange: true,
   },
 )
 
@@ -35,7 +41,7 @@ onBeforeUnmount(() => {
 const effectiveLayout = computed(() => (isMobile.value ? 'prev, pager, next' : props.layout))
 
 watch(pageSize, () => {
-  page.value = 1
+  if (props.resetPageOnSizeChange) page.value = 1
 })
 </script>
 
