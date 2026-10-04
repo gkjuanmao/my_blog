@@ -9,6 +9,13 @@ export default defineNuxtConfig({
     '@pinia/nuxt',
   ],
   components: [{ path: '~/components', pathPrefix: false }],
+  // 图标改为构建期打包进产物。@nuxt/icon 默认在运行时向 api.iconify.design 取图标，
+  // 离线/局域网部署取不到时图标会消失（实测：主题切换按钮点一次后变成空圈）。
+  // 配合 @iconify-json/lucide 与 clientBundle.scan，图标数据随 bundle 一起发布，不再依赖外网。
+  icon: {
+    serverBundle: { collections: ['lucide'] },
+    clientBundle: { scan: true },
+  },
   runtimeConfig: {
     public: {
       apiBase: '/api/v1/',

@@ -49,3 +49,17 @@
 .md-body td {
   @apply border border-stone-200 px-3 py-2 dark:border-stone-700;
 }
+
+/*
+ * Element Plus 的 warning（琥珀）实心按钮在暗色主题下是「琥珀底 #e6a23c + 纯白字」，
+ * 对比度仅约 2.2:1，低于 WCAG AA 的 4.5:1，白字发虚、看不清。
+ * 这里仅在**暗色主题**下把文字改为深色（约 7.9:1，达 AA），并把 hover 底色提亮以保持对比；
+ * 亮色主题维持原样。用 :not() 排除 plain/text/link 等幽灵变体，避免误伤。
+ */
+html.dark .el-button--warning:not(.is-plain):not(.is-text):not(.is-link) {
+  --el-button-text-color: #1c1917;
+  --el-button-hover-text-color: #1c1917;
+  --el-button-active-text-color: #1c1917;
+  --el-button-hover-bg-color: #fbbf24; /* brand-400 */
+  --el-button-hover-border-color: #fbbf24;
+}
