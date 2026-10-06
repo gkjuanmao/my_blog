@@ -38,8 +38,8 @@ const status = ref('') // '' | 'true' | 'false'
 const sortOrder = ref<'asc' | 'desc'>('desc')
 
 const categories = ref<Category[]>([])
-const page = ref(1)
-const pageSize = ref(10)
+// 分页写进 URL：刷新/后退可回到原页（与公开列表口径一致，FE-17）
+const { page, pageSize, clampPage } = usePageQuery()
 const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -67,6 +67,7 @@ async function fetchArticles() {
     if (!guard.isLatest(seq)) return
     articles.value = data.items
     total.value = data.total
+    clampPage(data.total, pageSize.value)
     clearSelection()
   } catch (e) {
     if (!guard.isLatest(seq)) return

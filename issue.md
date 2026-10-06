@@ -64,7 +64,7 @@
 - [ ] **FE-14 · P2（部分完成：已加 vitest + 5 个纯逻辑用例，并纳入 `blog.sh check` 与 CI；ESLint 部分待补——现有代码无 lint 基线，直接引入 recommended 会让新门禁立即失败，需单独一轮清理）** 前端无 ESLint/Prettier 配置、无任何测试框架（`front/package.json` 仅 build/dev/preview/postinstall）。**建议**：加 `@nuxt/eslint-config` 最小规则集 + vitest 覆盖 `useApi`/`usePageQuery` 等纯逻辑。
 - [x] **FE-15 · P3** Pinia 死依赖：`nuxt.config.ts:9` 注册 `@pinia/nuxt` 但全仓零 `defineStore`。**建议**：移除依赖与模块注册（或落地真用）。
 - [x] **FE-16 · P3** 无 `error.vue`：SSR 期错误走 Nuxt 默认 500 页，与中文站/皮肤风格脱节。**建议**：自定义 `error.vue` 中文化 + 返回首页/重试按钮。
-- [ ] **FE-17 · P3** 后台列表分页用裸 `ref`（`pages/administrator/articles/index.vue:27-28`），未接 `usePageQuery` → 刷新丢页码，与公开页"分页写 URL、后退可回"（`f621d16`）的既定特性不一致。**建议**：后台列表也走 `usePageQuery`。
+- [x] **FE-17 · P3** 后台列表分页用裸 `ref`（`pages/administrator/articles/index.vue:27-28`），未接 `usePageQuery` → 刷新丢页码，与公开页"分页写 URL、后退可回"（`f621d16`）的既定特性不一致。**建议**：后台列表也走 `usePageQuery`。
 - [ ] **FE-18 · P3** 上传上限/尺寸文案散落 7 处硬编码（`ArticleForm.vue:49-50,91,242,286,332,360,371`：20MB/50MB/10MB/60MB/1920/100MB），与后端 `covers.py`/`images.py`/`nginx.conf` 阈值靠人肉同步。**建议**：后端出一个 `GET /admin/limits/`（已有 `import/limits/` 可扩展）或前端单一 `constants/uploads.ts`。
 - [ ] **FE-19 · P3** 品牌名「旅行游记」硬编码于 `layouts/default.vue:50,121`、`layouts/admin.vue:35,44`、`login.vue:32`、`index.vue:38` 等多处。**建议**：收敛到 `app.config.ts`。
 - [ ] **FE-20 · P3** `useSkinMotion.ts:12-14` 用 Tailwind 类名（`article.group`、`a.rounded-2xl`、`a.bg-brand-600`）当动效选择器锚点——改一个工具类动效就静默失效。**建议**：改语义 `data-*` 属性锚点。
