@@ -31,6 +31,7 @@ cd "$ROOT_DIR"
 # --------------------------------------------------------------------------- 常量
 PROJECT="my_blog"
 NGINX_PORT="18888"
+NGINX_IMAGE="docker.io/library/nginx:1.27"
 BASE_URL="http://127.0.0.1:${NGINX_PORT}"
 # 以下三个由 resolve_image_names 按检测到的引擎填充（podman 用 localhost/ 前缀，docker 不加）
 APP_IMAGE=""
@@ -151,7 +152,7 @@ resolve_image_names() {
   APP_ALT="$app_alt";      FRONT_ALT="$front_alt"
   if ! image_exists "$app_pref" && image_exists "$app_alt"; then APP_IMAGE="$app_alt"; fi
   if ! image_exists "$front_pref" && image_exists "$front_alt"; then FRONT_IMAGE="$front_alt"; fi
-  IMAGES=("$APP_IMAGE" "$FRONT_IMAGE" "docker.io/library/nginx:1.27" "docker.io/library/redis:7-alpine")
+  IMAGES=("$APP_IMAGE" "$FRONT_IMAGE" "$NGINX_IMAGE" "docker.io/library/redis:7-alpine")
 }
 
 # 某个 compose 服务对应的容器名（podman-compose: <proj>_<svc>_1；docker compose: <proj>-<svc>-1）
@@ -501,15 +502,18 @@ cmd_check() {
   python3 -c "import yaml;yaml.safe_load(open('docker-compose.yml'))" || die "compose YAML 错误"
   sh -n docker/entrypoint.sh || die "docker/entrypoint.sh 语法错误"
   bash -n scripts/blog.sh || die "scripts/blog.sh 语法错误"
-  # 引擎是“可选”的：没有容器工具链时不应阻断 lint
-  if probe_engine && image_exists docker.io/library/nginx:1.27; then
+  # nginx -t 是必检项，但依赖「容器工具链 + nginx 镜像」。区分两种情况：
+  #  - 有工具链但缺镜像 → 先尝试拉取一次（离线环境拉不到再降级 warn，不阻断 lint）；
+  #  - 完全没有工具链 → 属环境限制，降级 warn（可选增强）。
+  # 能跑起来时，nginx.conf 语法错误一律阻断。
+  if ! probe_engine; then
+    warn "未检测到容器工具链，跳过 nginx -t（可选增强）"
+  elif image_exists "$NGINX_IMAGE" || "$ENGINE" pull "$NGINX_IMAGE" >/dev/null 2>&1; then
     "$ENGINE" run --rm --add-host app:127.0.0.1 --add-host front:127.0.0.1 \
       -v "$ROOT_DIR/docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro,z" \
-      docker.io/library/nginx:1.27 nginx -t >/dev/null 2>&1 || die "nginx.conf 语法错误"
-  elif [ -z "$ENGINE" ]; then
-    warn "未检测到容器工具链，跳过 nginx -t"
+      "$NGINX_IMAGE" nginx -t >/dev/null 2>&1 || die "nginx.conf 语法错误"
   else
-    warn "未找到 nginx 镜像，跳过 nginx -t"
+    warn "无法获取 nginx 镜像（$NGINX_IMAGE），跳过 nginx -t（可选增强）"
   fi
   ok
 

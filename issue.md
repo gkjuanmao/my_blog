@@ -84,7 +84,7 @@
 - [x] **TEST-05 · P2（新增 `tests/test_purge_archives.py`：11 用例覆盖过期暂存/票据清理、活动租约保护、1h 孤儿宽限、有行引用的旧文件不误删、命令输出）** `purge_archives` 管理命令零测试，而 `entrypoint.sh` 每次启动与 `blog.sh purge` 都会执行它（`recompress_covers`/`purge_inline_images` 都有 command 级测试，唯独它没有）。**建议**：补 dry-run/`--delete`/边界（过期未消费 staging）用例。
 - [x] **TEST-06 · P2（新增 `tests/test_exception_handlers.py`：7 用例覆盖 HttpError 透传、ValidationError 恒拍平成字符串、500 兜底不泄露内部信息 + TestClient 集成验证；`common/pagination.py` 已随 BE-12 删除，不再涉及）** `common/exceptions` 的 500 兜底分支无测试（TEST_REPORT 自标 70%），`common/pagination.py` 长期 0%（未引用，与 BE-12 同源）。**建议**：补 500 信封断言（含"不泄露内部信息"这条设计意图）。
 - [ ] **TEST-07 · P2** `blog.sh`（802 行）仅 `bash -n` 语法检查，未接 **shellcheck**（脚本内已有 `# shellcheck disable` 注释说明本地用过，但门禁没跑）。**建议**：`check` 加 `shellcheck scripts/blog.sh`。
-- [ ] **TEST-08 · P2** `check` 中的 `nginx -t` 依赖本地已有 `nginx:1.27` 镜像，缺失时**静默降级为 warn 不阻断**（`scripts/blog.sh` check 段）。**建议**：区分"可选增强"与"必检项"，或缺镜像时拉取。
+- [x] **TEST-08 · P2（`check` 区分三态：无工具链→warn 跳过；缺镜像→先 `pull` 一次，拿到就 `nginx -t` 必检、失败即阻断；仍拿不到→warn 跳过；`NGINX_IMAGE` 常量化）** `check` 中的 `nginx -t` 依赖本地已有 `nginx:1.27` 镜像，缺失时**静默降级为 warn 不阻断**（`scripts/blog.sh` check 段）。**建议**：区分"可选增强"与"必检项"，或缺镜像时拉取。
 - [ ] **TEST-09 · P2** 无端到端/冒烟自动化：唯一运行时检查是 `blog.sh up` 时的 3 条 `HEALTH_PATHS` 轮询，nginx→gunicorn→SQLite 真实链路无自动化覆盖。**建议**：`check --e2e` 起容器后跑登录+建文章+导出冒烟。
 - [ ] **TEST-10 · P2** prod 启动路径未测：`check_env_file` 的 prod 分支（缺 `DJANGO_SECRET_KEY` 报错）、`DJANGO_USE_TLS=true` 下 `SECURE_PROXY_SSL_HEADER`、`.env.example` 自动生成逻辑。**建议**：shell 级 bats/手工脚本用例或最小化 Python 测试。
 - [ ] **TEST-11 · P3** `scripts/seed_demo.py`（约 24KB 生成器）无任何测试。**建议**：至少测其产物可被 `import stage/commit` 接受（`blog.sh seed-demo` 已走真实链路，可抽成断言）。
