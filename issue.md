@@ -6,6 +6,13 @@
 > 级别图例：**P0** 阻断性缺陷 · **P1** 高优先（功能/安全矛盾） · **P2** 中优先（质量/稳定性） · **P3** 低优先（整洁度/细节）
 > 用法：修复一条勾一条；每条含证据（文件:行）与修复建议。行号基于 2026-10-06 的 master（`2aa2bf3`）。
 
+## 修正说明（2026-10-06 核验后）
+
+- **原基线有 3 处需修正**：①「`ruff check` ✅」在核验时为假——未跟踪的 `shrink_images.py` 触发 1 个 E501；②「`pytest` 336 passed ✅」在 Windows 上实为 335 passed + 1 failed（归档 zip 的 Content-Type 平台差异）；③ `TEST-03` 的前提（`.coverage` 陈旧产物）当前不可复现——`.coverage` 与 `tests/reports/` 均不在磁盘/版本库。①②已在 `a7e15a2` 修正，现基线为真。
+- **定级修正**：`FE-01`、`TEST-01` 由 **P0 降为 P1**（按本文件图例 P0=阻断性缺陷，二者均不阻断功能、不丢数据）。修正后本清单 **P0 = 0 条**。
+- `TEST-03` 的前提已随 `TEST-02` 消失（`.coverage` 已 gitignore 且不存在，`tests/reports/` 已移出版本库）。
+- **进度以本文件复选框为准**（已勾选 = 已修复且通过回归：ruff + mypy + pytest）。
+
 ## 汇总
 
 | 类别 | 数量 | P0 | P1 | P2 | P3 |
@@ -41,7 +48,7 @@
 
 ## FE 前端
 
-- [ ] **FE-01 · P0** **refresh_token 写入后全项目从未被读取**：`login.vue:16-17` 写入 `localStorage`，`useApi.ts:59,118` 与 `layouts/admin.vue:10` 只清 `access_token`；access 生命周期仅 2h（`config/settings/base.py:85`）→ 后台每 2 小时被踢回登录页，后端整套 refresh 轮换 + 黑名单机制形同虚设；401 时 `refresh_token` 残留。**建议**：实现 401 → `POST /token/refresh/` 重试队列（利用后端已有的轮换+黑名单），成功后写回新对，失败清空两个 token。
+- [ ] **FE-01 · P0→P1** **refresh_token 写入后全项目从未被读取**：`login.vue:16-17` 写入 `localStorage`，`useApi.ts:59,118` 与 `layouts/admin.vue:10` 只清 `access_token`；access 生命周期仅 2h（`config/settings/base.py:85`）→ 后台每 2 小时被踢回登录页，后端整套 refresh 轮换 + 黑名单机制形同虚设；401 时 `refresh_token` 残留。**建议**：实现 401 → `POST /token/refresh/` 重试队列（利用后端已有的轮换+黑名单），成功后写回新对，失败清空两个 token。
 - [ ] **FE-02 · P1** 无路由中间件（`front/middleware/` 不存在）：未登录直接访问 `/administrator/*` 会先渲染后台外壳，等首个 API 401 才被重定向（闪后台 UI）。**建议**：加 `middleware/auth.ts`，client 侧检查 token 存在性 + `definePageMeta` 挂到所有后台页。
 - [ ] **FE-03 · P1** **零 SEO**：全仓 `useHead` 仅用于挂皮肤类（`front/layouts/default.vue:13`），文章页无 `title`/`description`/Open Graph/结构化数据——对博客是流量硬伤。**建议**：`useSeoMeta` 按文章 title/summary/cover 填充，列表页/分类页补默认 title 与 `titleTemplate`。
 - [ ] **FE-04 · P2** 安全组合风险：JWT 存 `localStorage`（`useApi.ts:41`）+ 多处 `v-html`（`article/[slug].vue:56`、`ArticleForm.vue:293`）+ 无 CSP 头（nginx 未加 `Content-Security-Policy`）——安全性完全外包给后端 nh3 消毒。**建议**：nginx 加基础 CSP；中期考虑 httpOnly cookie 或至少 `Authorization` 内存化。
@@ -70,9 +77,9 @@
 
 ## TEST 测试与门禁
 
-- [ ] **TEST-01 · P0** **完全无 CI**：无 `.github/`、`.gitea/`、`.forgejo/`、pre-commit、git hook（`.git/hooks` 仅默认 sample），唯一门禁是手动 `scripts/blog.sh check`；而仓库约定"提交后直接 push"，坏代码可直达远端。**建议**：最小 Gitea webhook/act runner 或本地 pre-push hook 跑 `blog.sh check`。
-- [ ] **TEST-02 · P1** **陈旧报告入 git**：`tests/reports/junit.xml` + `TEST_REPORT.md`（git 追踪中）停在 2026-09-30、141 用例/88%，实况 **336** 用例，落后 195 个。**建议**：从版本库移除改为门禁产物，或在 `check` 中自动刷新后强制提交。
-- [ ] **TEST-03 · P1** `.coverage` 同为 2026-09-30 陈旧产物且**行号已错位**（记录 `articles/api.py` 最大 506 行，实际 1111 行），现在跑 `coverage report` 读出的 45% 是假象；`htmlcov/` 已被清理但 TEST_REPORT.md 仍引用。**建议**：重跑一次 `pytest --cov` 生成真数据，或停止在文档里引用固定覆盖率。
+- [x] **TEST-01 · P0→P1** **完全无 CI**：无 `.github/`、`.gitea/`、`.forgejo/`、pre-commit、git hook（`.git/hooks` 仅默认 sample），唯一门禁是手动 `scripts/blog.sh check`；而仓库约定"提交后直接 push"，坏代码可直达远端。**建议**：最小 Gitea webhook/act runner 或本地 pre-push hook 跑 `blog.sh check`。
+- [x] **TEST-02 · P1** **陈旧报告入 git**：`tests/reports/junit.xml` + `TEST_REPORT.md`（git 追踪中）停在 2026-09-30、141 用例/88%，实况 **336** 用例，落后 195 个。**建议**：从版本库移除改为门禁产物，或在 `check` 中自动刷新后强制提交。
+- [x] **TEST-03 · P1（随 TEST-02 解决）** `.coverage` 同为 2026-09-30 陈旧产物且**行号已错位**（记录 `articles/api.py` 最大 506 行，实际 1111 行），现在跑 `coverage report` 读出的 45% 是假象；`htmlcov/` 已被清理但 TEST_REPORT.md 仍引用。**建议**：重跑一次 `pytest --cov` 生成真数据，或停止在文档里引用固定覆盖率。
 - [ ] **TEST-04 · P2** `config/` 完全零覆盖：`prod.py`（TLS 开关、ALLOWED_HOSTS 回落、Redis/LocMem 分支、缺 SECRET_KEY 的 RuntimeError）、`config/urls.py` 路由顺序（仅归档导出有回归）、`wsgi/asgi`——测试恒走 `config.settings.dev`（`pyproject.toml` 直指）。**建议**：补 prod 配置单测（`override_settings`/monkeypatch env）。
 - [ ] **TEST-05 · P2** `purge_archives` 管理命令零测试，而 `entrypoint.sh` 每次启动与 `blog.sh purge` 都会执行它（`recompress_covers`/`purge_inline_images` 都有 command 级测试，唯独它没有）。**建议**：补 dry-run/`--delete`/边界（过期未消费 staging）用例。
 - [ ] **TEST-06 · P2** `common/exceptions` 的 500 兜底分支无测试（TEST_REPORT 自标 70%），`common/pagination.py` 长期 0%（未引用，与 BE-12 同源）。**建议**：补 500 信封断言（含"不泄露内部信息"这条设计意图）。
@@ -100,12 +107,12 @@
 
 ## DOC 文档漂移
 
-- [ ] **DOC-01 · P1** `AGENTS.md:16` 称"共 **281** 个用例"，实测 **336**（AI 主要上下文，漂移会直接误导后续开发）。**建议**：改为动态表述（"以 `pytest --collect-only` 为准"）或更新数字。
+- [x] **DOC-01 · P1** `AGENTS.md:16` 称"共 **281** 个用例"，实测 **336**（AI 主要上下文，漂移会直接误导后续开发）。**建议**：改为动态表述（"以 `pytest --collect-only` 为准"）或更新数字。
 - [ ] **DOC-02 · P1** `AGENTS.md:80` 称"`docker-compose.yml` 仅含 app+nginx（redis 已移除）"，实况是 **4 服务（app/redis/nginx/front）**且 app 已注入 `REDIS_URL`；`prod.py:51` 注释"当前 docker-compose 未含 redis"同样过时——两处都还会引导读者"去配置已有东西"。**建议**：同步改写。
 - [ ] **DOC-03 · P2** `AGENTS.md` 称"`templates/` 和 `static/` 存在但为空"，实况**两目录都不存在**（并触发 staticfiles.W004，见 BE-06）。**建议**：改描述 + 修 W004。
 - [ ] **DOC-04 · P2** `TEST.md`（1023 行，2026-09-29）**实质失效**：仍写 `rest_framework_simplejwt`（实为 `ninja_jwt`）、旧"返回数组"断言，完全未覆盖归档导入导出/Markdown 正文/内联图/HTML 导入 4 大特性与近 200 个用例；其定位是"供 AI 生成测试的规范"，会产出过期代码。**建议**：顶部加显著"已过期，以 `tests/` 为准"横幅，或重写为索引式文档。
 - [ ] **DOC-05 · P2** `front/README.md` 仍是 Nuxt 官方 starter 模板，与项目无关。**建议**：替换为前端实际开发/构建说明（或删除指向根 README）。
-- [ ] **DOC-06 · P2** `tests/reports/` 入 git 且陈旧（见 TEST-02/03）——文档与产物双重漂移。**建议**：与 TEST-02 一并处理。
+- [x] **DOC-06 · P2（随 TEST-02 解决）** `tests/reports/` 入 git 且陈旧（见 TEST-02/03）——文档与产物双重漂移。**建议**：与 TEST-02 一并处理。
 - [ ] **DOC-07 · P3** 文档体系整体缺少"漂移自查"机制：`DESIGN.md`（SSOT）自 9 月底后经历归档 v2/WebP/HTML 导入等大改，未逐条核验是否同步（本次仅抽查发现上述各处）。**建议**：`blog.sh check` 增加轻量文档断言（如从 `pytest --collect-only` 提取用例数与 AGENTS.md 声明比对）。
 
 ---
