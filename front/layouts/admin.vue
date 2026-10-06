@@ -7,7 +7,7 @@ const navItems = [
 ]
 
 function handleLogout() {
-  if (import.meta.client) localStorage.removeItem('access_token')
+  clearAuthTokens()
   navigateTo('/administrator/login')
 }
 

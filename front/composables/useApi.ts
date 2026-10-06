@@ -1,10 +1,22 @@
-import type { ApiResponse } from '~/types/api'
+import type { ApiResponse, RefreshResponse } from '~/types/api'
 
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: Record<string, unknown> | BodyInit | null
   params?: Record<string, unknown>
 }
+
+const ACCESS_TOKEN_KEY = 'access_token'
+const REFRESH_TOKEN_KEY = 'refresh_token'
+
+export function clearAuthTokens(): void {
+  if (!import.meta.client) return
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+}
+
+/** 同一时刻只保留一个刷新请求：并发的多个 401 共享同一次刷新，避免轮换互相踢下线 */
+let refreshInFlight: Promise<boolean> | null = null
 
 export interface UploadProgress {
   loaded: number
@@ -33,12 +45,39 @@ export function useApi() {
     return `${apiBase}${url.replace(/^\//, '')}`
   }
 
-  async function request<T>(url: string, options: ApiOptions = {}): Promise<T> {
+  /**
+   * 用 refresh_token 换新令牌（后端会轮换 refresh + 旧 token 进黑名单）。
+   * 并发 401 共享同一次刷新；刷新失败则清空两个 token，返回 false。
+   */
+  function refreshTokens(): Promise<boolean> {
+    if (refreshInFlight) return refreshInFlight
+    refreshInFlight = (async () => {
+      try {
+        const refresh = localStorage.getItem(REFRESH_TOKEN_KEY)
+        if (!refresh) return false
+        const result = await $fetch<ApiResponse<RefreshResponse>>(`${apiBase}token/refresh/`, {
+          method: 'POST',
+          body: { refresh },
+        })
+        localStorage.setItem(ACCESS_TOKEN_KEY, result.data.access)
+        localStorage.setItem(REFRESH_TOKEN_KEY, result.data.refresh)
+        return true
+      } catch {
+        clearAuthTokens()
+        return false
+      } finally {
+        refreshInFlight = null
+      }
+    })()
+    return refreshInFlight
+  }
+
+  async function request<T>(url: string, options: ApiOptions = {}, allowRetry = true): Promise<T> {
     const headers: Record<string, string> = {}
     const isFormData = options.body instanceof FormData
     if (!isFormData) headers['Content-Type'] = 'application/json'
     if (import.meta.client) {
-      const token = localStorage.getItem('access_token')
+      const token = localStorage.getItem(ACCESS_TOKEN_KEY)
       if (token) headers.Authorization = `Bearer ${token}`
     }
     try {
@@ -56,7 +95,12 @@ export function useApi() {
     } catch (error: any) {
       if (error?.response?.status === 401) {
         if (import.meta.client) {
-          localStorage.removeItem('access_token')
+          // access 过期时先尝试用 refresh 续期并重放本次请求（仅重试一次）
+          if (allowRetry && localStorage.getItem(REFRESH_TOKEN_KEY)) {
+            const ok = await refreshTokens()
+            if (ok) return request<T>(url, options, false)
+          }
+          clearAuthTokens()
           await navigateTo('/administrator/login')
         } else {
           // SSR 阶段调用 navigateTo 不合法，抛 Nuxt 错误交给 useAsyncData/错误页处理
@@ -87,7 +131,7 @@ export function useApi() {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', target)
       if (import.meta.client) {
-        const token = localStorage.getItem('access_token')
+        const token = localStorage.getItem(ACCESS_TOKEN_KEY)
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       }
       xhr.upload.onprogress = (event) => {
@@ -115,7 +159,7 @@ export function useApi() {
           data: { message: (payload as any)?.message }, // 后端信封里的中文提示
         }
         if (xhr.status === 401 && import.meta.client) {
-          localStorage.removeItem('access_token')
+          clearAuthTokens()
           navigateTo('/administrator/login')
         }
         reject(failure)
