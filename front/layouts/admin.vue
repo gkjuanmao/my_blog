@@ -43,6 +43,7 @@ watch(
         <Icon name="lucide:menu" class="h-5 w-5" />
       </button>
       <span class="text-lg font-serif font-bold text-brand-600 dark:text-amber-500">{{ site.name }} · 管理</span>
+      <ThemeToggle :hoverable="false" class="ml-auto" />
     </header>
 
     <div v-if="sidebarOpen" class="fixed inset-0 z-30 bg-black/40 md:hidden" @click="sidebarOpen = false" />
@@ -74,8 +75,9 @@ watch(
     </aside>
 
     <main class="flex-1 px-4 pb-6 pt-20 sm:px-6 md:ml-64 md:px-8 md:py-6">
-      <header class="mb-6 border-b border-stone-200 pb-4 dark:border-stone-800">
-        <slot name="title" />
+      <header class="mb-6 flex items-center justify-between gap-3 border-b border-stone-200 pb-4 dark:border-stone-800">
+        <div class="min-w-0 flex-1"><slot name="title" /></div>
+        <div class="hidden md:block"><ThemeToggle /></div>
       </header>
       <slot />
     </main>
