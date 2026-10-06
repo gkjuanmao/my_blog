@@ -113,7 +113,7 @@
 - [x] **DOC-04 · P2** `TEST.md`（1023 行，2026-09-29）**实质失效**：仍写 `rest_framework_simplejwt`（实为 `ninja_jwt`）、旧"返回数组"断言，完全未覆盖归档导入导出/Markdown 正文/内联图/HTML 导入 4 大特性与近 200 个用例；其定位是"供 AI 生成测试的规范"，会产出过期代码。**建议**：顶部加显著"已过期，以 `tests/` 为准"横幅，或重写为索引式文档。
 - [x] **DOC-05 · P2** `front/README.md` 仍是 Nuxt 官方 starter 模板，与项目无关。**建议**：替换为前端实际开发/构建说明（或删除指向根 README）。
 - [x] **DOC-06 · P2（随 TEST-02 解决）** `tests/reports/` 入 git 且陈旧（见 TEST-02/03）——文档与产物双重漂移。**建议**：与 TEST-02 一并处理。
-- [ ] **DOC-07 · P3** 文档体系整体缺少"漂移自查"机制：`DESIGN.md`（SSOT）自 9 月底后经历归档 v2/WebP/HTML 导入等大改，未逐条核验是否同步（本次仅抽查发现上述各处）。**建议**：`blog.sh check` 增加轻量文档断言（如从 `pytest --collect-only` 提取用例数与 AGENTS.md 声明比对）。
+- [x] **DOC-07 · P3（`blog.sh check` 新增「文档漂移自查」步骤：① 实际 `pytest --collect-only` 用例数必须等于 AGENTS.md 声明的「当前 N 个」，否则 `die` 阻断并提示同步；② AGENTS.md 引用的 `docs/*.md` 必须都存在（改名漏改即报错）。两处提取都刻意避开「下游提前退出的管道」（脚本开 pipefail，`grep | head -1` 会因 SIGPIPE 静默中断整个 check——实测踩到））** 文档体系整体缺少"漂移自查"机制：`DESIGN.md`（SSOT）自 9 月底后经历归档 v2/WebP/HTML 导入等大改，未逐条核验是否同步（本次仅抽查发现上述各处）。**建议**：`blog.sh check` 增加轻量文档断言（如从 `pytest --collect-only` 提取用例数与 AGENTS.md 声明比对）。
 
 ---
 

@@ -12,7 +12,7 @@
 #   status               容器 / 镜像 / 端口 / 健康 / 归档产物 / 磁盘 一览
 #   logs [服务] [-f]     查看日志（app|nginx|front|redis，默认 app）
 #   check [--no-front] [--e2e]
-#                        质量门禁（ruff/mypy/pytest/迁移检查/配置语法/前端 vue-tsc；--no-front 跳过前端，
+#                        质量门禁（ruff/mypy/pytest/迁移检查/配置语法/文档漂移自查/前端 vue-tsc；--no-front 跳过前端，
 #                        --e2e 追加真实链路冒烟）
 #   e2e                  端到端冒烟（对已运行的容器跑登录 → 建文章 → 导出）
 #   install-hooks        启用仓库 git 钩子（pre-push 跑上面的 check，防坏代码直达远端）
@@ -504,6 +504,28 @@ cmd_check() {
   run_show "ruff" uv run --frozen ruff check .
   run_show "mypy" uv run --frozen mypy config articles common users
   run_show_tail "pytest" 3 uv run --frozen pytest -q
+
+  # DOC-07：文档漂移自查 —— ① AGENTS.md 声明的用例数必须等于实际 collection（迭代新增
+  # 用例后文档会静默过期）；② AGENTS.md 引用的 docs/*.md 必须存在（文件改名后易漏改）。
+  # 用 --collect-only（不执行用例，秒级），失败即阻断。
+  # 注意管道写法：脚本开了 pipefail，`grep | head -1` 这类**下游提前退出**的命令会因
+  # SIGPIPE 让管道非零、被 set -e 直接中断（实测）。这里改为「先整体取回再处理」。
+  step "文档漂移自查"
+  local declared actual missing docs_ref collect_out
+  declared="$(sed -nE '/当前 [0-9]+ 个/{s/.*当前 ([0-9]+) 个.*/\1/p; q;}' AGENTS.md)"
+  collect_out="$(uv run --frozen pytest --collect-only -q 2>/dev/null || true)"
+  actual="$(printf '%s\n' "$collect_out" | grep -oE '[0-9]+ tests? collected' | tr -dc '0-9')"
+  if [ -z "$declared" ] || [ -z "$actual" ]; then
+    warn "无法提取用例数（声明=${declared:-无}，实际=${actual:-无}），跳过该项"
+  elif [ "$declared" != "$actual" ]; then
+    die "AGENTS.md 声明 ${declared} 个用例，实际 ${actual} 个" "把 AGENTS.md 的「当前 N 个」同步为 ${actual}"
+  fi
+  missing=""
+  while IFS= read -r docs_ref; do
+    [ -f "$docs_ref" ] || missing="$missing $docs_ref"
+  done < <(grep -oE 'docs/[A-Za-z0-9_]+\.md' AGENTS.md | sort -u)
+  [ -z "$missing" ] || die "AGENTS.md 引用了不存在的文档：$missing"
+  ok "${actual:-?} 个用例 · docs 引用齐全"
   step "迁移一致性"; uv run --frozen python manage.py makemigrations --check --dry-run >/dev/null 2>&1 \
                        || die "存在未生成的迁移" "uv run python manage.py makemigrations"; ok
   block_step "配置语法"
@@ -1023,7 +1045,7 @@ usage() {
   status                 容器/镜像/端口/健康/归档产物/磁盘 一览
   logs [服务] [-f]       查看日志（app|nginx|front|redis，默认 app）
   check [--no-front] [--e2e]
-                         质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc；--no-front 跳过前端；
+                         质量门禁（ruff/mypy/pytest/迁移/配置语法/文档漂移自查/vue-tsc；--no-front 跳过前端；
                          --e2e 追加真实链路冒烟，需先 up）
   e2e                    端到端冒烟：对**已运行**的容器跑登录 → 建文章 → 导出（临时数据自动清理）
   install-hooks          启用仓库 git 钩子（pre-push 会跑上面这条 check）
