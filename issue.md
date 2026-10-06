@@ -36,7 +36,7 @@
 - [ ] **BE-04 · P2** 搜索仅 `title__icontains`（`articles/api.py:230`），正文 Markdown 已入库却不可搜；SQLite `LIKE` 无法利用索引，标题大时全表扫。**建议**：至少把 `summary`/`content` 纳入，或引入 FTS5/简单倒排；同时给 keyword 加长度下限防滥用。
 - [ ] **BE-05 · P2** 阅读量每次请求无条件 +1（`articles/api.py:248` 的 `F('views')+1`），刷新即计数，无 IP/时间窗去重。`F()` 用法本身正确。**建议**：缓存做"每 IP 每文章 N 小时计一次"的去重键。
 - [x] **BE-06 · P3** `manage.py check` 报 `staticfiles.W004`：`STATICFILES_DIRS` 指向不存在的 `static/`（`config/settings/base.py:111`）。**建议**：目录不存在时从设置中剔除，或建空目录并入库（注意 gitignore 不要误伤）。
-- [ ] **BE-07 · P3** `ArticlesConfig.ready()` 启动即查库触发 Django 6 RuntimeWarning（`articles/apps.py:27` 调 `ensure_defaults()`，本次实测输出）。已有 `DatabaseError` 兜底但告警仍在。**建议**：挪到 `post_migrate` 信号或首次实际访问时惰性创建。
+- [x] **BE-07 · P3** `ArticlesConfig.ready()` 启动即查库触发 Django 6 RuntimeWarning（`articles/apps.py:27` 调 `ensure_defaults()`，本次实测输出）。已有 `DatabaseError` 兜底但告警仍在。**建议**：挪到 `post_migrate` 信号或首次实际访问时惰性创建。
 - [x] **BE-08 · P3** 异常信封 `message` 字段类型不一致：`handle_validation_error` 会返回 `message_dict`/`messages`（dict/list），其余分支是 str（`common/exceptions.py:25,27,29`）。前端一律按字符串 `e.data.message` 展开，遇到 dict 会显示 `[object Object]`。**建议**：统一拍平成单行字符串（或前端做类型分支）。
 - [x] **BE-09 · P3** 外键用 `prefetch_related` 而非 `select_related`：`_published_articles()` 中 `prefetch_related('tags', 'category')`（`articles/api.py:182`，另 `:267` 同样写法）——FK 走 prefetch 会多发一条查询。**建议**：`select_related('category')` + `prefetch_related('tags')`。
 - [x] **BE-10 · P3** `cover_image_sha256`/`file_sha256` 的 `verbose_name` 仍写"**源文件** SHA-256"（`articles/models.py:75,83`），而实际语义（AGENTS.md 与归档实现）是"**当前落盘文件**的字节哈希"——语义文档与字段名矛盾，易误导后续开发按源字节比对（AGENTS.md 明确警告过这是实测教训）。**建议**：改 verbose_name/字段注释与实现对齐。

@@ -29,16 +29,9 @@ from datetime import timedelta
 # 允许以 `python scripts/seed_demo.py` 直接在容器内运行
 sys.path.insert(0, os.getcwd())
 
-import warnings  # noqa: E402
-
 import django  # noqa: E402
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-# AppConfig.ready() 里的 ensure_defaults() 会在应用初始化阶段查库，Django 会因此
-# 打一条 RuntimeWarning。这是已知且可接受的噪音（见 AGENTS.md），此处只静音本脚本输出。
-warnings.filterwarnings(
-    'ignore', category=RuntimeWarning, message='Accessing the database.*'
-)
 django.setup()
 
 from django.utils import timezone  # noqa: E402
