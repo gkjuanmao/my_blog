@@ -15,6 +15,9 @@ export function clearAuthTokens(): void {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
+/** 单次请求超时（毫秒）：SSR 公开页在 setup 顶层 await，后端失联时不能无限白屏（FE-22） */
+const REQUEST_TIMEOUT_MS = 15000
+
 /** 同一时刻只保留一个刷新请求：并发的多个 401 共享同一次刷新，避免轮换互相踢下线 */
 let refreshInFlight: Promise<boolean> | null = null
 
@@ -118,6 +121,7 @@ export function useApi() {
         body: options.body,
         query: options.params,
         headers,
+        timeout: REQUEST_TIMEOUT_MS,
       })
       return data
     } catch (caught) {
