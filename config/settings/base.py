@@ -38,6 +38,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 给公开列表接口补 Cache-Control（放在最后，便于修改已生成的响应）
+    'common.middleware.PublicCacheControlMiddleware',
 ]
 
 # 跨域配置：默认仅允许前端开发服务器访问（Vite 默认端口）。

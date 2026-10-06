@@ -35,6 +35,7 @@ from common.schemas import ApiResponse, PageData
 from users.authentication import StaffJWTAuth
 from users.models import User
 
+from .caching import cached_public
 from .convert import ConvertError, html_to_markdown
 from .covers import CoverError, ProcessedCover
 from .covers import process_cover as process_cover_image
@@ -191,19 +192,25 @@ def _published_articles() -> QuerySet[Article]:
 
 @router.get('/categories/', response=ApiResponse[list[CategoryOut]])
 def list_categories(request: HttpRequest) -> dict:
-    """获取所有分类。"""
-    categories = [
-        CategoryOut(id=c.id, name=c.name, slug=c.slug, description=c.description)
-        for c in Category.objects.all()
-    ]
-    return success_response(categories)
+    """获取所有分类（短 TTL 缓存，写操作时失效）。"""
+
+    def build() -> list[dict]:
+        return [
+            CategoryOut(id=c.id, name=c.name, slug=c.slug, description=c.description).model_dump()
+            for c in Category.objects.all()
+        ]
+
+    return success_response(cached_public('categories', build))
 
 
 @router.get('/tags/', response=ApiResponse[list[TagOut]])
 def list_tags(request: HttpRequest) -> dict:
-    """获取所有标签。"""
-    tags = [TagOut(id=t.id, name=t.name, slug=t.slug) for t in Tag.objects.all()]
-    return success_response(tags)
+    """获取所有标签（短 TTL 缓存，写操作时失效）。"""
+
+    def build() -> list[dict]:
+        return [TagOut(id=t.id, name=t.name, slug=t.slug).model_dump() for t in Tag.objects.all()]
+
+    return success_response(cached_public('tags', build))
 
 
 @router.get('/articles/', response=ApiResponse[PageData[ArticleOut]])
@@ -215,15 +222,23 @@ def list_articles(
     tag_slug: str = Query('', description='按标签别名过滤'),
 ) -> dict:
     """文章列表（分页），可按 category_slug / tag_slug 过滤，仅返回已发布文章。"""
-    qs = _published_articles()
-    if category_slug:
-        qs = qs.filter(category__slug=category_slug)
-    if tag_slug:
-        qs = qs.filter(tags__slug=tag_slug)
-    total = qs.count()
-    start = (page - 1) * page_size
-    items = [article_to_out(request, article) for article in qs[start:start + page_size]]
-    return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
+
+    def build() -> dict:
+        qs = _published_articles()
+        if category_slug:
+            qs = qs.filter(category__slug=category_slug)
+        if tag_slug:
+            qs = qs.filter(tags__slug=tag_slug)
+        total = qs.count()
+        start = (page - 1) * page_size
+        items = [
+            article_to_out(request, article).model_dump()
+            for article in qs[start:start + page_size]
+        ]
+        return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
+
+    key = f'articles:{category_slug}:{tag_slug}:{page}:{page_size}'
+    return success_response(cached_public(key, build))
 
 
 @router.get('/articles/search/', response=ApiResponse[PageData[ArticleOut]])
