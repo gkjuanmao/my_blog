@@ -42,7 +42,7 @@
 - [x] **BE-10 · P3** `cover_image_sha256`/`file_sha256` 的 `verbose_name` 仍写"**源文件** SHA-256"（`articles/models.py:75,83`），而实际语义（AGENTS.md 与归档实现）是"**当前落盘文件**的字节哈希"——语义文档与字段名矛盾，易误导后续开发按源字节比对（AGENTS.md 明确警告过这是实测教训）。**建议**：改 verbose_name/字段注释与实现对齐。
 - [ ] **BE-11 · P3** Swagger UI `/api/v1/docs` 在生产公开可访问（`config/urls.py:16` 的 `NinjaAPI` 无 `docs_url` 环境开关，nginx `/api/` 直通）。**建议**：`DEBUG` 或显式环境变量才开 docs。
 - [x] **BE-12 · P3** 死代码：`common/pagination.py`（`CustomPagination`，django-ninja 1.6 后已不可用且列表改为手动分页）、`common/utils.py`（空文件）。**建议**：删除或注明保留原因。
-- [ ] **BE-13 · P3** JWT 认证每请求同步查库 `User.objects.get(pk=...)`（`users/authentication.py:21`），高并发下多一次 DB 往返。**建议**：短期缓存用户（注意停用/删号失效），或接受现状并注释。
+- [x] **BE-13 · P3** JWT 认证每请求同步查库 `User.objects.get(pk=...)`（`users/authentication.py:21`），高并发下多一次 DB 往返。**建议**：短期缓存用户（注意停用/删号失效），或接受现状并注释。
 
 ---
 

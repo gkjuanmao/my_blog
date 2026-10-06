@@ -21,6 +21,9 @@ class JWTAuth(HttpBearer):
         except TokenError:
             raise HttpError(401, '令牌无效或已过期') from None
 
+        # 每次请求都同步查库取用户对象（而非只信任令牌里的 user_id）：
+        # 这样用户被停用/删除/降权后能立即失效，是安全与一次 DB 往返之间的取舍。
+        # 若将来要缓存，必须处理失效（如用户删除/改权限时清缓存），否则会放行已停用账号。
         try:
             user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
