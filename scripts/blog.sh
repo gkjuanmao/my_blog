@@ -12,7 +12,7 @@
 #   status               容器 / 镜像 / 端口 / 健康 / 归档产物 / 磁盘 一览
 #   logs [服务] [-f]     查看日志（app|nginx|front|redis，默认 app）
 #   check [--no-front] [--e2e]
-#                        质量门禁（ruff/mypy/pytest/迁移检查/配置语法/文档漂移自查/前端 vue-tsc；--no-front 跳过前端，
+#                        质量门禁（ruff/mypy/pytest/迁移检查/配置语法/文档漂移自查/前端 ESLint+vue-tsc；--no-front 跳过前端，
 #                        --e2e 追加真实链路冒烟）
 #   e2e                  端到端冒烟（对已运行的容器跑登录 → 建文章 → 导出）
 #   install-hooks        启用仓库 git 钩子（pre-push 跑上面的 check，防坏代码直达远端）
@@ -558,8 +558,12 @@ cmd_check() {
 
   if [ "$with_front" = "1" ]; then
     if [ ! -f front/node_modules/vue-tsc/bin/vue-tsc.js ]; then
-      warn "front 依赖未安装，跳过 vue-tsc 与 vitest（先 cd front && npm ci）"
+      warn "front 依赖未安装，跳过 ESLint / vue-tsc / vitest（先 cd front && npm ci）"
     else
+      # FE-14：ESLint 纳入默认门禁（配置见 front/eslint.config.mjs，复用 vue-tsc 的依赖探测）
+      step "前端 lint（ESLint）"
+      (cd front && node node_modules/eslint/bin/eslint.js .) || die "ESLint 未通过" "cd front && npm run lint"
+      ok
       step "前端类型检查（vue-tsc）"
       if containers_running; then
         warn "检测到本项目容器在运行；vue-tsc 会重写 front/.nuxt，与 nuxt dev 冲突"
@@ -1045,7 +1049,7 @@ usage() {
   status                 容器/镜像/端口/健康/归档产物/磁盘 一览
   logs [服务] [-f]       查看日志（app|nginx|front|redis，默认 app）
   check [--no-front] [--e2e]
-                         质量门禁（ruff/mypy/pytest/迁移/配置语法/文档漂移自查/vue-tsc；--no-front 跳过前端；
+                         质量门禁（ruff/mypy/pytest/迁移/配置语法/文档漂移自查/前端 ESLint+vue-tsc；--no-front 跳过前端；
                          --e2e 追加真实链路冒烟，需先 up）
   e2e                    端到端冒烟：对**已运行**的容器跑登录 → 建文章 → 导出（临时数据自动清理）
   install-hooks          启用仓库 git 钩子（pre-push 会跑上面这条 check）

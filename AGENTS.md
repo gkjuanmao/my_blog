@@ -13,6 +13,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露。Swagger UI（`/api/v1/docs`）生产默认关闭（仅 `DEBUG` 或 `ENABLE_API_DOCS=true` 才开放）
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
+- **前端质量门禁**（`front/`，三件套均已纳入 `blog.sh check` 与 Gitea CI 的 frontend job）：`npm run lint`（ESLint 10 flat config，见 `front/eslint.config.mjs` —— 用 `@nuxt/eslint-config` 预设但**关掉 stylistic/formatters/tooling**，只留正确性规则，避免未引入 Prettier 时的风格告警淹没信号；`vue/no-v-html` 只在两处经后端 nh3 消毒的渲染点用 `eslint-disable` 注释豁免，其他地方仍会报）、`npx vue-tsc --noEmit`、`npm test`（vitest，用例在 `front/tests/`）。
 - `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块）；**用例数随迭代变化，以 `uv run pytest --collect-only -q | tail -1` 为准（当前 462 个）**；`blog.sh check` 有**文档漂移自查**（DOC-07）：实际 collection 数必须等于此处声明、且 AGENTS.md 引用的 `docs/*.md` 必须存在，否则阻断——新增/删除用例后记得同步这个数字；`tests/reports/` 是本地报告产物（junit/覆盖率），已 gitignore、不入库
 - pytest 的 `DJANGO_SETTINGS_MODULE` 由 `pyproject.toml` 直接指定为 `config.settings.dev`（绕过 `config/settings/__init__.py` 的 `DJANGO_ENV` 判断），恒走 dev 配置；`testpaths = ["tests"]` 限定只在 `tests/` 收集测试，各 app 内残留的 `tests.py`（如 `articles/tests.py`，为空）不会被运行
 - `tests/conftest.py` 有 autouse 的 `media_root` fixture，把 `MEDIA_ROOT` 隔离到 `tmp_path`，所以 pytest 上传的文件不会落进真实 `media/`（早期版本会污染）；仍需清理的是手工/接口联调产生的文件

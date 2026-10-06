@@ -68,7 +68,7 @@ useHead(() => ({
         :alt="article.title"
         class="max-h-96 w-full object-cover"
         @error="coverError = true"
-      />
+      >
       <div v-else class="flex h-56 w-full items-center justify-center text-6xl text-stone-300 dark:text-stone-600">✈</div>
     </div>
 
@@ -86,7 +86,8 @@ useHead(() => ({
 
     <p v-if="article.summary" class="text-stone-600 dark:text-stone-300">{{ article.summary }}</p>
 
-    <!-- 正文：服务端渲染 + 消毒后的 HTML -->
+    <!-- 正文：服务端渲染 + 消毒后的 HTML（nh3 白名单，见 AGENTS.md） -->
+    <!-- eslint-disable-next-line vue/no-v-html -->
     <div v-if="hasContent" class="md-body" v-html="article.content_html" />
 
     <!-- 存量文章（无正文）回退：只给附件下载入口，不再做 PDF 在线预览 -->

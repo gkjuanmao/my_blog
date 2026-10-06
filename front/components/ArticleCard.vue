@@ -24,7 +24,7 @@ function handleClick() {
         class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
         loading="lazy"
         @error="coverError = true"
-      />
+      >
       <div v-else class="flex h-full w-full items-center justify-center text-4xl text-stone-300 dark:text-stone-600">✈</div>
     </div>
 

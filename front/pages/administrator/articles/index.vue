@@ -684,8 +684,8 @@ onMounted(() => {
 
       <el-upload
         ref="uploadRef"
-        drag
         v-model:file-list="fileList"
+        drag
         :auto-upload="false"
         :limit="1"
         accept=".zip"

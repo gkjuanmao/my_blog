@@ -294,10 +294,14 @@ function handleSubmit() {
     </el-form-item>
     <el-form-item v-if="previewVisible" label="预览（服务端渲染结果）">
       <!-- 限高 + 内部滚动：长正文预览不会把后面的表单字段顶到很下面 -->
+      <!-- 预览 HTML 由后端 /admin/articles/preview/ 渲染并经 nh3 消毒（跨多行，
+           故用 disable/enable 块而非 disable-next-line） -->
+      <!-- eslint-disable vue/no-v-html -->
       <div
         class="md-body max-h-[32rem] w-full overflow-y-auto overscroll-contain rounded-lg border border-stone-200 p-4 dark:border-stone-700"
         v-html="previewHtml"
       />
+      <!-- eslint-enable vue/no-v-html -->
     </el-form-item>
 
     <el-dialog v-model="htmlImportVisible" title="导入 HTML 并转为 Markdown" width="640px">

@@ -180,7 +180,7 @@ export function useApi() {
         try {
           payload = JSON.parse(xhr.responseText) as ApiResponse<T>
         } catch {
-          payload = null
+          // 非 JSON 响应（如网关错误页）：保持 null，走下面的兜底文案
         }
         if (xhr.status >= 200 && xhr.status < 300 && payload) {
           resolve(payload)

@@ -44,7 +44,7 @@ jobs:
         run: uv run pytest -q
 
   frontend:
-    name: 前端（vue-tsc / vitest）
+    name: 前端（ESLint / vue-tsc / vitest）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,6 +61,9 @@ jobs:
       # postinstall 会执行 `nuxt prepare`，生成 vue-tsc 需要的 .nuxt/tsconfig.json
       - name: 安装依赖
         run: npm ci --no-audit --no-fund
+
+      - name: Lint（ESLint）
+        run: npm run lint
 
       - name: 类型检查（vue-tsc）
         run: npx vue-tsc --noEmit

@@ -7,6 +7,7 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
+    "lint": "eslint .",
     "test": "vitest run",
     "postinstall": "nuxt prepare"
   },
@@ -20,9 +21,11 @@
   "devDependencies": {
     "@element-plus/nuxt": "^1.1.5",
     "@iconify-json/lucide": "^1.2.139",
+    "@nuxt/eslint-config": "^1.17.0",
     "@nuxt/icon": "^1.15.0",
     "@nuxtjs/color-mode": "^4.0.1",
     "@nuxtjs/tailwindcss": "^6.14.0",
+    "eslint": "^10.12.0",
     "typescript": "^5.9.3",
     "vitest": "^5.0.3",
     "vue-tsc": "^3.3.10"
