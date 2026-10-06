@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import type { InputInstance, UploadFile } from 'element-plus'
 
+import {
+  API_UPLOAD_LIMIT_BYTES,
+  ATTACHMENT_MAX_BYTES,
+  COVER_MAX_BYTES,
+  HTML_IMPORT_MAX_BYTES,
+  INLINE_IMAGE_MAX_BYTES,
+  INLINE_IMAGE_MAX_LONG_EDGE,
+  formatMB,
+} from '~/constants/uploads'
 import type { AdminArticleDetail, Category, Tag } from '~/types/api'
 
 const props = defineProps<{
@@ -48,16 +57,13 @@ const attachmentList = ref<{ name: string; url?: string }[]>(
   props.initial?.file_url ? [{ name: props.initial.file_name, url: props.initial.file_url }] : [],
 )
 
-const COVER_MAX_BYTES = 20 * 1024 * 1024
-const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
-
 // 单文件"替换"语义：不用 el-upload 的 limit/on-exceed 拦截——当列表里已有文件
 // （编辑模式预填的封面）时再选新文件会走 on-exceed 且不触发 on-change，新文件会被
 // 静默丢弃。这里改为不设 limit，在 on-change 里只保留最新选中的那个。
 function onCoverChange(file: UploadFile, files: UploadFile[]) {
   if (!file.raw) return
   if (file.raw.size > COVER_MAX_BYTES) {
-    ElMessage.error('封面不能超过 20MB')
+    ElMessage.error(`封面不能超过 ${formatMB(COVER_MAX_BYTES)}`)
     coverList.value = files.filter((item) => item.uid !== file.uid)
     return
   }
@@ -67,7 +73,7 @@ function onCoverChange(file: UploadFile, files: UploadFile[]) {
 function onAttachmentChange(file: UploadFile, files: UploadFile[]) {
   if (!file.raw) return
   if (file.raw.size > ATTACHMENT_MAX_BYTES) {
-    ElMessage.error('附件不能超过 50MB')
+    ElMessage.error(`附件不能超过 ${formatMB(ATTACHMENT_MAX_BYTES)}`)
     attachmentList.value = files.filter((item) => item.uid !== file.uid)
     return
   }
@@ -90,8 +96,6 @@ const previewVisible = ref(false)
 const previewing = ref(false)
 const uploadingImage = ref(false)
 
-const IMAGE_MAX_BYTES = 10 * 1024 * 1024
-
 // 在光标处插入文本（不监听 v-model，避免长正文输入卡顿）
 function insertAtCursor(text: string) {
   const el: HTMLTextAreaElement | undefined = contentRef.value?.textarea
@@ -111,8 +115,8 @@ function insertAtCursor(text: string) {
 async function onInlineImageChange(file: UploadFile) {
   const raw: File | undefined = file?.raw
   if (!raw) return
-  if (raw.size > IMAGE_MAX_BYTES) {
-    ElMessage.error('图片不能超过 10MB')
+  if (raw.size > INLINE_IMAGE_MAX_BYTES) {
+    ElMessage.error(`图片不能超过 ${formatMB(INLINE_IMAGE_MAX_BYTES)}`)
     return
   }
   uploadingImage.value = true
@@ -241,8 +245,8 @@ function handleSubmit() {
     return
   }
   const fd = buildFormData()
-  if ((coverFile.value?.size ?? 0) + (attachmentFile.value?.size ?? 0) > 60 * 1024 * 1024) {
-    ElMessage.error('封面与附件合计不能超过 60MB')
+  if ((coverFile.value?.size ?? 0) + (attachmentFile.value?.size ?? 0) > API_UPLOAD_LIMIT_BYTES) {
+    ElMessage.error(`封面与附件合计不能超过 ${formatMB(API_UPLOAD_LIMIT_BYTES)}`)
     return
   }
   emit('submit', fd)
@@ -285,7 +289,7 @@ function handleSubmit() {
         </el-button>
         <el-button size="small" @click="openHtmlImport">导入 HTML</el-button>
         <el-button v-if="previewVisible" size="small" text @click="previewVisible = false">收起预览</el-button>
-        <span class="text-xs text-stone-400">图片会压缩为 WebP（最长边 1920）后插入</span>
+        <span class="text-xs text-stone-400">图片会压缩为 WebP（最长边 {{ INLINE_IMAGE_MAX_LONG_EDGE }}）后插入</span>
       </div>
     </el-form-item>
     <el-form-item v-if="previewVisible" label="预览（服务端渲染结果）">
@@ -331,7 +335,7 @@ function handleSubmit() {
       </el-form-item>
       <p class="text-xs text-stone-400">
         正文里的 base64 内嵌图会压缩为 WebP 并按内容寻址落盘（同图自动去重），外链图保留原样；
-        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 100MB。
+        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 {{ formatMB(HTML_IMPORT_MAX_BYTES) }}。
       </p>
       <template #footer>
         <el-button @click="htmlImportVisible = false">关闭</el-button>
@@ -359,7 +363,7 @@ function handleSubmit() {
     <el-form-item label="是否发布">
       <el-switch v-model="form.is_published" active-text="发布" inactive-text="草稿" />
     </el-form-item>
-    <el-form-item label="封面（JPG/PNG/WebP ≤20MB）" :required="isCreateMode">
+    <el-form-item :label="`封面（JPG/PNG/WebP ≤${formatMB(COVER_MAX_BYTES)}）`" :required="isCreateMode">
       <el-upload
         v-model:file-list="coverList"
         :auto-upload="false"
@@ -370,7 +374,7 @@ function handleSubmit() {
         <el-button>选择封面</el-button>
       </el-upload>
     </el-form-item>
-    <el-form-item label="附件（可选，PDF/Word ≤50MB）">
+    <el-form-item :label="`附件（可选，PDF/Word ≤${formatMB(ATTACHMENT_MAX_BYTES)}）`">
       <el-upload
         v-model:file-list="attachmentList"
         :auto-upload="false"
