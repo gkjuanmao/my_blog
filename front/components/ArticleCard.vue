@@ -3,18 +3,7 @@ import type { Article } from '~/types/api'
 
 const props = defineProps<{ article: Article }>()
 
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-  timeZone: 'Asia/Shanghai',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-})
-
 const coverError = ref(false)
-
-function formatDate(iso: string): string {
-  return dateFormatter.format(new Date(iso))
-}
 
 function handleClick() {
   navigateTo(`/article/${props.article.slug}`)

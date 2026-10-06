@@ -8,13 +8,6 @@ const slug = computed(() => route.params.slug as string)
 
 const coverError = ref(false)
 
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-  timeZone: 'Asia/Shanghai',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-})
-
 const { data: article, pending, error: fetchError } = await useAsyncData<ArticleDetail>(
   () => `article-${slug.value}`,
   () => useApi().get<ArticleDetail>(`/articles/${slug.value}/`).then((res) => res.data),
@@ -82,7 +75,7 @@ useHead(() => ({
     <header class="space-y-2">
       <h1 class="text-2xl font-serif font-bold text-stone-900 dark:text-stone-100 sm:text-3xl">{{ article.title }}</h1>
       <div class="flex flex-wrap items-center gap-3 text-sm text-stone-500 dark:text-stone-400">
-        <time>{{ dateFormatter.format(new Date(article.publish_time)) }}</time>
+        <time>{{ formatDate(article.publish_time) }}</time>
         <span v-if="article.location">· {{ article.location }}</span>
         <el-tag v-if="article.category" type="warning" effect="light" size="small">
           {{ article.category.name }}

@@ -619,7 +619,7 @@ onMounted(() => {
             </el-table-column>
             <el-table-column prop="publish_time" label="发布时间" width="180" sortable="custom">
               <template #default="{ row }: { row: any }">
-                {{ new Date(row.publish_time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}
+                {{ formatDateTime(row.publish_time) }}
               </template>
             </el-table-column>
             <el-table-column label="操作" width="140">
@@ -651,7 +651,7 @@ onMounted(() => {
             </div>
             <div class="mt-2 space-y-1 text-xs text-stone-500 dark:text-stone-400">
               <div>分类：{{ row.category?.name ?? '—' }}</div>
-              <div>发布时间：{{ new Date(row.publish_time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</div>
+              <div>发布时间：{{ formatDateTime(row.publish_time) }}</div>
             </div>
             <div class="mt-3 flex justify-end gap-2">
               <el-button link type="primary" @click="goEdit(row.id)">编辑</el-button>
