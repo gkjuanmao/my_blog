@@ -86,7 +86,7 @@
 - [x] **TEST-07 · P2（`check` 增加 shellcheck 步骤：装了即必检、未装降级 warn；新增仓库根 `.shellcheckrc`（`severity=warning` + 放行 SC2012/SC2016）并在 Gitea CI 加 ShellCheck 步骤；顺带修掉 `import` 里给所有镜像都用 `APP_ALT` 补标签、导致 `FRONT_ALT` 未使用的隐患）** `blog.sh`（802 行）仅 `bash -n` 语法检查，未接 **shellcheck**（脚本内已有 `# shellcheck disable` 注释说明本地用过，但门禁没跑）。**建议**：`check` 加 `shellcheck scripts/blog.sh`。
 - [x] **TEST-08 · P2（`check` 区分三态：无工具链→warn 跳过；缺镜像→先 `pull` 一次，拿到就 `nginx -t` 必检、失败即阻断；仍拿不到→warn 跳过；`NGINX_IMAGE` 常量化）** `check` 中的 `nginx -t` 依赖本地已有 `nginx:1.27` 镜像，缺失时**静默降级为 warn 不阻断**（`scripts/blog.sh` check 段）。**建议**：区分"可选增强"与"必检项"，或缺镜像时拉取。
 - [ ] **TEST-09 · P2** 无端到端/冒烟自动化：唯一运行时检查是 `blog.sh up` 时的 3 条 `HEALTH_PATHS` 轮询，nginx→gunicorn→SQLite 真实链路无自动化覆盖。**建议**：`check --e2e` 起容器后跑登录+建文章+导出冒烟。
-- [ ] **TEST-10 · P2** prod 启动路径未测：`check_env_file` 的 prod 分支（缺 `DJANGO_SECRET_KEY` 报错）、`DJANGO_USE_TLS=true` 下 `SECURE_PROXY_SSL_HEADER`、`.env.example` 自动生成逻辑。**建议**：shell 级 bats/手工脚本用例或最小化 Python 测试。
+- [x] **TEST-10 · P2（新增 `tests/test_env_file_script.py`：9 用例（bash 驱动，source 去掉副作用的 blog.sh）覆盖 `.env` 自动生成/缺失报错/prod 缺密钥阻断/dev 放行/`env_value` 引号与 CR；**并据此修掉真实缺陷**：`env_value` 原先只去 `\n` 不去 `\r`，CRLF 的 `.env` 会让 `DJANGO_ENV=prod` 比较失败、prod 缺密钥漏检）** prod 启动路径未测：`check_env_file` 的 prod 分支（缺 `DJANGO_SECRET_KEY` 报错）、`DJANGO_USE_TLS=true` 下 `SECURE_PROXY_SSL_HEADER`、`.env.example` 自动生成逻辑。**建议**：shell 级 bats/手工脚本用例或最小化 Python 测试。
 - [ ] **TEST-11 · P3** `scripts/seed_demo.py`（约 24KB 生成器）无任何测试。**建议**：至少测其产物可被 `import stage/commit` 接受（`blog.sh seed-demo` 已走真实链路，可抽成断言）。
 - [ ] **TEST-12 · P3** 并发/多 worker 行为未测：LocMemCache 下导入锁 fail-open 退化场景、nginx `limit_conn 2` 与 Django 锁配合、`views` 并发 `F()` 更新。**建议**：文档化已知限制即可（P2 级修复见 BE-02）。
 

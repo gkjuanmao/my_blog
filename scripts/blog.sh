@@ -200,9 +200,10 @@ require_tools() {
 env_value() {
   [ -f .env ] || return 1
   local value
-  value="$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" .env | tail -1)"
-  value="${value%$'
-'}"                     # 去 CR（Windows 行尾）
+  # 必须一并去掉 CR：.env 可能是在 Windows 上编辑的（CRLF），残留的 \r 会让
+  # `[ "$mode" = prod ]` 之类比较静默失败（TEST-10 实测踩到），也会让下面的
+  # 引号剥离失效（" 不在行尾）。
+  value="$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" .env | tail -1 | tr -d '\r')"
   value="${value#\"}"; value="${value%\"}"    # 去双引号
   value="${value#\'}"; value="${value%\'}"    # 去单引号
   printf '%s' "$value"
