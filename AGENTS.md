@@ -42,7 +42,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
   - **HTML 导入**（2026-10 新增）：`POST /admin/articles/convert-html/`（staff；同为 `articles` 后单段路径，须早于详情路由）把手机/第三方导出的 HTML 转成 Markdown，实现在 `articles/convert.py`：bs4 先处理内联图 → nh3 预清洗 → markdownify → 空白规范化。**内联图必须在 nh3 之前处理**（nh3 按 `url_schemes` 会剥掉 `data:` 的 src，base64 图会在转换前就丢）；base64 图走 `process_inline_image`/`store_inline_image` 压成 WebP 内容寻址落盘（同图自动去重），外链图保留原样，`file://` 等不可读来源移除并告警。输入走 multipart **文件**通道（`HTML_IMPORT_MAX_BYTES=100MiB`，对应 nginx 上该路由**独立 location** 的 `client_max_body_size 110m` —— 不能只调大全局 `/api/` 的 60m，否则连带放宽封面/附件等所有普通接口）：`DATA_UPLOAD_MAX_MEMORY_SIZE`（默认 2.5MB）只约束 `request.body`/表单字段、**不含文件数据**，而手机导出的 HTML 常因内嵌图远超它（`tests/test_convert_html.py::test_large_html_goes_through_file_channel` 用 3MB 用例钉住）。上传文件时额外返回 `suggested_title`（`articles/utils.py` `suggest_title_from_filename`：去掉扩展名与尾部时间戳/序号，如 `44 上海-罗马_202610030035_06899.html` → `44 上海-罗马`），前端**仅在标题为空时**回填。
   - 封面压缩由 `articles/covers.py` 唯一负责（上传端点与归档导入共用），存量回收用 `manage.py recompress_covers`。
   - `slug` 创建时可省略：为空由 `title`/`name` 自动生成（`articles/utils.py` `generate_slug` 中文转拼音，依赖 `pypinyin`），冲突由 `unique_slug`（泛化为按 `model` 查询）自动加 `-2` 后缀，手动传入仍优先。
-- `common/` — 已实现：`responses.py`（信封 `{code,message,data}`，`code` = HTTP 状态码）、`exceptions.py`（`register_exception_handlers` 覆盖 HttpError/ValidationError/Exception）、`pagination.py`（`CustomPagination`）。`utils.py` 为空。
+- `common/` — 已实现：`responses.py`（信封 `{code,message,data}`，`code` = HTTP 状态码）、`exceptions.py`（`register_exception_handlers` 覆盖 HttpError/ValidationError/Exception）。列表接口均为手动分页，故原 `pagination.py`（`CustomPagination` 自 django-ninja 1.6 起已不可用）与空文件 `utils.py` 已删除。
 - 无 `records/`、`comments/`、`blog/` app（已移除）。
 
 ## API 路由
@@ -72,7 +72,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **「正文与附件至少填一项」有三处校验**：`create`（API 层）、`update`（API 层，且**只在请求确实提交了 `content` 或附件时才判**，否则"只改 slug/标题"会被误拒）、归档导入（**planner** 层，按包内字段 ∪ 目标既有状态判最终态；不能放 `validate_package`，它不查库会误拒合法 update）。
 - **HTML 导入的两个坑（均实测，来自真实便签导出）**：① `markdownify` 的 `newline_style` **必须是 `SPACES`** —— Python-Markdown 不支持 CommonMark 的行尾反斜杠硬换行，用 `BACKSLASH` 会让每行末尾渲染出字面量 `\`；② 便签导出习惯给段落加 4 个空格首行缩进，而 Markdown 里 4 个前导空格等于**代码块**（整段渲染成 `<pre><code>`），`_normalize` 因此只对「段落首行」（上一行为空）去缩进，并保留代码围栏内的缩进与行尾恰好两空格的硬换行。回归见 `tests/test_convert_html.py::TestNoteAppQuirks`。
 - **文件字段（`cover_image`/`file`）不能用 `QuerySet.update()` 写**：它绕过 `Model.save()` → 不触发 `FileField.pre_save()`，上传内容既不会写入 storage，字段还会被 `get_prep_value()` 存成 `str(UploadedFile)`（客户端原始文件名），于是 `cover_image_url` 变成 `/media/<原始文件名>` 指向不存在的文件（前端图片 404）。同理 `auto_now` 的 `updated_at` 也不会刷新。`update_article` 因此走 `Model.save(update_fields=...)`，且 `update_fields` 里显式加 `updated_at`（`save(update_fields=...)` 只对列出的字段调用 `pre_save`），同时避免覆盖 `views` 等未提交字段。
-- django-ninja 1.6 已移除 `ninja.pagination.Pagination`，且列表接口已改用手动分页（`common/pagination.py` 的 `CustomPagination` 当前未被引用）。
+- django-ninja 1.6 已移除 `ninja.pagination.Pagination`，且列表接口已改用手动分页（原 `common/pagination.py` 的 `CustomPagination` 已作为死代码删除）。
 - django-ninja 的 `Schema` 内部有 `model_validator(mode='wrap')`，会把输入包装成只读 `DjangoGetter` —— 在 schema 里写 `mode='before'` 的 `model_validator` 会静默失效（无法修改值），需在 API 层处理（如 slug 自动生成）。
 - Django 6 的测试 `Client.put` 默认以 `application/octet-stream` 发送且把 dict `str()` 化 —— PUT 测试须显式传 `content_type='application/x-www-form-urlencoded'` + `urlencode(data)`。
 - PUT/PATCH multipart 需要 `ninja.compatibility.files.fix_request_files_middleware`（已在 `base.py` 的 MIDDLEWARE 中）。
