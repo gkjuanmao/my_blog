@@ -110,7 +110,7 @@
 - [x] **DOC-01 · P1** `AGENTS.md:16` 称"共 **281** 个用例"，实测 **336**（AI 主要上下文，漂移会直接误导后续开发）。**建议**：改为动态表述（"以 `pytest --collect-only` 为准"）或更新数字。
 - [x] **DOC-02 · P1** `AGENTS.md:80` 称"`docker-compose.yml` 仅含 app+nginx（redis 已移除）"，实况是 **4 服务（app/redis/nginx/front）**且 app 已注入 `REDIS_URL`；`prod.py:51` 注释"当前 docker-compose 未含 redis"同样过时——两处都还会引导读者"去配置已有东西"。**建议**：同步改写。
 - [x] **DOC-03 · P2** `AGENTS.md` 称"`templates/` 和 `static/` 存在但为空"，实况**两目录都不存在**（并触发 staticfiles.W004，见 BE-06）。**建议**：改描述 + 修 W004。
-- [ ] **DOC-04 · P2** `TEST.md`（1023 行，2026-09-29）**实质失效**：仍写 `rest_framework_simplejwt`（实为 `ninja_jwt`）、旧"返回数组"断言，完全未覆盖归档导入导出/Markdown 正文/内联图/HTML 导入 4 大特性与近 200 个用例；其定位是"供 AI 生成测试的规范"，会产出过期代码。**建议**：顶部加显著"已过期，以 `tests/` 为准"横幅，或重写为索引式文档。
+- [x] **DOC-04 · P2** `TEST.md`（1023 行，2026-09-29）**实质失效**：仍写 `rest_framework_simplejwt`（实为 `ninja_jwt`）、旧"返回数组"断言，完全未覆盖归档导入导出/Markdown 正文/内联图/HTML 导入 4 大特性与近 200 个用例；其定位是"供 AI 生成测试的规范"，会产出过期代码。**建议**：顶部加显著"已过期，以 `tests/` 为准"横幅，或重写为索引式文档。
 - [ ] **DOC-05 · P2** `front/README.md` 仍是 Nuxt 官方 starter 模板，与项目无关。**建议**：替换为前端实际开发/构建说明（或删除指向根 README）。
 - [x] **DOC-06 · P2（随 TEST-02 解决）** `tests/reports/` 入 git 且陈旧（见 TEST-02/03）——文档与产物双重漂移。**建议**：与 TEST-02 一并处理。
 - [ ] **DOC-07 · P3** 文档体系整体缺少"漂移自查"机制：`DESIGN.md`（SSOT）自 9 月底后经历归档 v2/WebP/HTML 导入等大改，未逐条核验是否同步（本次仅抽查发现上述各处）。**建议**：`blog.sh check` 增加轻量文档断言（如从 `pytest --collect-only` 提取用例数与 AGENTS.md 声明比对）。
