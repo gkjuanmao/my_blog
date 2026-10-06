@@ -26,9 +26,9 @@ async function fetchArticles() {
     articles.value = data.items
     total.value = data.total
     clampPage(data.total, pageSize.value)
-  } catch (e: any) {
+  } catch (e) {
     if (!guard.isLatest(seq)) return
-    errorMsg.value = e?.message ?? '加载失败'
+    errorMsg.value = errorMessage(e, '加载失败')
   } finally {
     if (guard.isLatest(seq)) loading.value = false
   }

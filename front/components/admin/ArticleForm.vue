@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { InputInstance, UploadFile } from 'element-plus'
+
 import type { AdminArticleDetail, Category, Tag } from '~/types/api'
 
 const props = defineProps<{
@@ -52,7 +54,7 @@ const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
 // 单文件"替换"语义：不用 el-upload 的 limit/on-exceed 拦截——当列表里已有文件
 // （编辑模式预填的封面）时再选新文件会走 on-exceed 且不触发 on-change，新文件会被
 // 静默丢弃。这里改为不设 limit，在 on-change 里只保留最新选中的那个。
-function onCoverChange(file: any, files: any[]) {
+function onCoverChange(file: UploadFile, files: UploadFile[]) {
   if (!file.raw) return
   if (file.raw.size > COVER_MAX_BYTES) {
     ElMessage.error('封面不能超过 20MB')
@@ -62,7 +64,7 @@ function onCoverChange(file: any, files: any[]) {
   coverFile.value = file.raw
   coverList.value = [file]
 }
-function onAttachmentChange(file: any, files: any[]) {
+function onAttachmentChange(file: UploadFile, files: UploadFile[]) {
   if (!file.raw) return
   if (file.raw.size > ATTACHMENT_MAX_BYTES) {
     ElMessage.error('附件不能超过 50MB')
@@ -82,7 +84,7 @@ function onAttachmentRemove() {
 
 /* ---------------------------------------------------------------- Markdown 正文 */
 
-const contentRef = ref<any>(null)
+const contentRef = ref<InputInstance | null>(null)
 const previewHtml = ref('')
 const previewVisible = ref(false)
 const previewing = ref(false)
@@ -106,7 +108,7 @@ function insertAtCursor(text: string) {
   })
 }
 
-async function onInlineImageChange(file: any) {
+async function onInlineImageChange(file: UploadFile) {
   const raw: File | undefined = file?.raw
   if (!raw) return
   if (raw.size > IMAGE_MAX_BYTES) {
@@ -123,8 +125,8 @@ async function onInlineImageChange(file: any) {
     )
     insertAtCursor(`![${raw.name}](${res.data.url})`)
     ElMessage.success('图片已插入正文')
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '图片上传失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '图片上传失败'))
   } finally {
     uploadingImage.value = false
   }
@@ -139,8 +141,8 @@ async function handlePreview() {
     })
     previewHtml.value = res.data.content_html
     previewVisible.value = true
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '预览失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '预览失败'))
   } finally {
     previewing.value = false
   }
@@ -161,7 +163,7 @@ function openHtmlImport() {
   htmlImportVisible.value = true
 }
 
-function onHtmlFileChange(file: any) {
+function onHtmlFileChange(file: UploadFile) {
   htmlFile.value = file?.raw ?? null
 }
 
@@ -203,8 +205,8 @@ async function handleHtmlImport() {
       ElMessage.success(res.data.images > 0 ? `已导入正文与 ${res.data.images} 张图片` : '已导入正文')
     }
     await handlePreview()
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? 'HTML 转换失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, 'HTML 转换失败'))
   } finally {
     htmlImporting.value = false
   }

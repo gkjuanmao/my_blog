@@ -19,8 +19,8 @@ onMounted(async () => {
     totalArticles.value = all.data.total
     publishedArticles.value = published.data.total
     totalCategories.value = cats.data.length
-  } catch (e: any) {
-    errorMsg.value = e?.data?.message ?? '加载失败'
+  } catch (e) {
+    errorMsg.value = errorMessage(e, '加载失败')
   } finally {
     loading.value = false
   }

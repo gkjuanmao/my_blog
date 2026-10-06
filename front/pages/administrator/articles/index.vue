@@ -1,6 +1,17 @@
 <script setup lang="ts">
 // 文章管理：列表 + 筛选/排序 + 选择导出 + 批量删除 + 归档导入
 import type {
+  TableInstance,
+  UploadFile,
+  UploadInstance,
+  UploadProgressEvent,
+  UploadRawFile,
+  UploadRequestOptions,
+  UploadUserFile,
+} from 'element-plus'
+
+import type {
+  ApiError,
   ArchiveEstimate,
   ArchiveExportTicket,
   ArchiveLimits,
@@ -11,6 +22,9 @@ import type {
   Category,
   PaginatedResponse,
 } from '~/types/api'
+
+/** el-upload 的 onError 回调参数类型（element-plus 未从根导出该类型） */
+type UploadErrorEvent = Parameters<NonNullable<UploadRequestOptions['onError']>>[0]
 
 definePageMeta({ layout: 'admin' })
 
@@ -33,7 +47,7 @@ const errorMsg = ref('')
 
 /** 当前勾选的文章 id（切换分页时清空） */
 const selectedIds = ref<number[]>([])
-const tableRef = ref<any>(null)
+const tableRef = ref<TableInstance | null>(null)
 const guard = useRequestGuard()
 
 async function fetchArticles() {
@@ -54,9 +68,9 @@ async function fetchArticles() {
     articles.value = data.items
     total.value = data.total
     clearSelection()
-  } catch (e: any) {
+  } catch (e) {
     if (!guard.isLatest(seq)) return
-    errorMsg.value = e?.data?.message ?? '加载失败'
+    errorMsg.value = errorMessage(e, '加载失败')
   } finally {
     if (guard.isLatest(seq)) loading.value = false
   }
@@ -112,8 +126,8 @@ async function handleDelete(row: Article) {
     await useApi().del(`/admin/articles/${row.id}/`)
     ElMessage.success('删除成功')
     fetchArticles()
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '删除失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '删除失败'))
   }
 }
 
@@ -186,8 +200,8 @@ async function doBulkDelete() {
     // 当前页被删空且不在第 1 页 → 退一页（watch 会触发刷新）
     if (articles.value.length - data.deleted <= 0 && page.value > 1) page.value -= 1
     else fetchArticles()
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '批量删除失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '批量删除失败'))
   } finally {
     bulkDeleting.value = false
   }
@@ -252,9 +266,10 @@ async function doExport(scope: 'selected' | 'filtered') {
     // 票据是一次性下载链接，交给浏览器原生下载（不占前端内存）
     useApi().openUrl(ticket.download_url)
     ElMessage.success(`已开始下载 ${ticket.filename}（${formatBytes(ticket.bytes)}）`)
-  } catch (e: any) {
-    if (e === 'cancel' || e === 'close') return
-    ElMessage.error(e?.data?.message ?? '导出失败')
+  } catch (e) {
+    // ElMessageBox 取消时 reject 的是字符串 'cancel'/'close'
+    if (typeof e === 'string' && (e === 'cancel' || e === 'close')) return
+    ElMessage.error(errorMessage(e, '导出失败'))
   } finally {
     exporting.value = false
   }
@@ -263,8 +278,8 @@ async function doExport(scope: 'selected' | 'filtered') {
 /* ------------------------------------------------------------------ 导入 */
 
 const importVisible = ref(false)
-const uploadRef = ref<any>(null)
-const fileList = ref<any[]>([])
+const uploadRef = ref<UploadInstance | null>(null)
+const fileList = ref<UploadUserFile[]>([])
 const limits = ref<ArchiveLimits | null>(null)
 const strategy = ref<ArchiveStrategy>('skip')
 const autoCreateTaxonomy = ref(true)
@@ -321,7 +336,7 @@ function invalidateStaged() {
  * 的 handleSuccess/handleError）。所以这里**绝不能无条件重置**暂存状态，
  * 否则刚预检成功就会被自己清空（stagedId 为空 → “确认导入”按钮永远置灰）。
  */
-function onFileChange(file: any) {
+function onFileChange(file: UploadFile) {
   fileError.value = ''
   const raw: File | undefined = file?.raw
   if (!raw) return
@@ -348,11 +363,12 @@ function onFileRemove() {
 function onExceed(files: File[]) {
   uploadRef.value?.clearFiles?.()
   const file = files[0]
-  if (file) uploadRef.value?.handleStart?.(file)
+  // el-upload 的 on-exceed 给的是原生 File；handleStart 需要带 uid 的 UploadRawFile
+  if (file) uploadRef.value?.handleStart?.(file as UploadRawFile)
 }
 
 /** el-upload 的自定义上传：走 XHR 以便拿到上传进度 */
-async function doStageUpload(options: any) {
+async function doStageUpload(options: UploadRequestOptions) {
   staging.value = true
   uploadPercent.value = 0
   fileError.value = ''
@@ -363,7 +379,7 @@ async function doStageUpload(options: any) {
     const { data } = await useApi().uploadWithProgress<ArchiveReport>(STAGE_URL, form, {
       onProgress: (progress) => {
         uploadPercent.value = progress.percent
-        options.onProgress?.({ percent: progress.percent })
+        options.onProgress?.({ percent: progress.percent } as UploadProgressEvent)
       },
     })
     report.value = data
@@ -382,11 +398,11 @@ async function doStageUpload(options: any) {
     const failed = data.totals.failed
     if (failed) ElMessage.warning(`预检完成，${failed} 篇有问题（见下方明细）`)
     else ElMessage.success('预检完成，请确认后导入')
-  } catch (e: any) {
-    fileError.value = e?.data?.message ?? '预检失败'
+  } catch (e) {
+    fileError.value = errorMessage(e, '预检失败')
     report.value = null
     stagedId.value = ''
-    options.onError?.(e)
+    options.onError?.(e as UploadErrorEvent)
     // 允许直接重试：把文件状态复位为 ready
     if (fileList.value[0]) fileList.value[0].status = 'ready'
   } finally {
@@ -416,8 +432,8 @@ async function onStrategyChange() {
       strategy: strategy.value,
     })
     report.value = data
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '重新预检失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '重新预检失败'))
   } finally {
     replanning.value = false
   }
@@ -437,8 +453,8 @@ async function doCommit() {
     stagedId.value = '' // 已被消费
     ElMessage.success('导入完成')
     fetchArticles()
-  } catch (e: any) {
-    const status = e?.status
+  } catch (e) {
+    const status = (e as ApiError)?.status
     const hint =
       status === 429
         ? '导入过于频繁，请稍后再试'
@@ -446,7 +462,7 @@ async function doCommit() {
           ? '该暂存包已被执行或已过期，请重新上传'
           : status === 503
             ? '导入锁不可用（缓存/Redis 未就绪），请稍后重试'
-            : (e?.data?.message ?? '导入失败')
+            : errorMessage(e, '导入失败')
     ElMessage.error(hint)
   } finally {
     committing.value = false

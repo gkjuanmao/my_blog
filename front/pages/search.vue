@@ -36,9 +36,9 @@ async function doSearch() {
     results.value = data.items
     total.value = data.total
     clampPage(data.total, pageSize.value)
-  } catch (e: any) {
+  } catch (e) {
     if (!guard.isLatest(seq)) return
-    errorMsg.value = e?.message ?? '搜索失败'
+    errorMsg.value = errorMessage(e, '搜索失败')
   } finally {
     if (guard.isLatest(seq)) loading.value = false
   }

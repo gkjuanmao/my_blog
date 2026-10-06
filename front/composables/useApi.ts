@@ -1,4 +1,4 @@
-import type { ApiResponse, RefreshResponse } from '~/types/api'
+import type { ApiError, ApiResponse, RefreshResponse } from '~/types/api'
 
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -23,9 +23,10 @@ let refreshInFlight: Promise<boolean> | null = null
  * 这样公开页（`e?.message`）与后台（`e?.data?.message`）共用同一口径；
  * 后端未给 message 时回落本地化文案，而不是 ofetch 的技术串（如 `[GET] .../ 500`）。
  */
-function normalizeApiError(error: any): any {
-  const status = error?.status ?? error?.response?.status ?? 0
-  const backendMessage = error?.data?.message
+function normalizeApiError(error: unknown): ApiError {
+  const source = (error ?? {}) as ApiError
+  const status = source.status ?? source.response?.status ?? 0
+  const backendMessage = source.data?.message
   const message =
     typeof backendMessage === 'string' && backendMessage
       ? backendMessage
@@ -33,6 +34,15 @@ function normalizeApiError(error: any): any {
         ? '网络错误或服务不可用'
         : '请求失败，请稍后重试'
   return { status, response: { status }, data: { message }, message }
+}
+
+/**
+ * 从任意抛出物里取中文错误文案：优先后端 message，其次调用方给的兜底文案。
+ * 页面统一用 `catch (e) { errorMsg.value = errorMessage(e, '…') }` 即可，无需 any。
+ */
+export function errorMessage(error: unknown, fallback = '请求失败，请稍后重试'): string {
+  const source = (error ?? {}) as ApiError
+  return source.data?.message ?? source.message ?? fallback
 }
 
 export interface UploadProgress {
@@ -110,7 +120,7 @@ export function useApi() {
         headers,
       })
       return data
-    } catch (caught: any) {
+    } catch (caught) {
       const error = normalizeApiError(caught)
       if (error.status === 401) {
         if (import.meta.client) {
@@ -172,7 +182,7 @@ export function useApi() {
           resolve(payload)
           return
         }
-        const backendMessage = (payload as any)?.message
+        const backendMessage = payload?.message
         const message =
           typeof backendMessage === 'string' && backendMessage
             ? backendMessage // 后端信封里的中文提示

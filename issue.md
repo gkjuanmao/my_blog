@@ -59,7 +59,7 @@
 - [ ] **FE-09 · P2** `pages/administrator/articles/index.vue` **822 行单文件**（全项目最大），桌面表格（`:574` 起）与移动卡片（`:614` 起）模板整段重复，且内含导入三阶段流程。**建议**：拆 `components/admin/`（列表表格、移动卡片、ImportDialog、ExportBar），目标单文件 <300 行。
 - [ ] **FE-10 · P2** `pages/administrator/categories.vue`（130 行）与 `tags.vue`（125 行）结构 1:1 雷同（fetchList/openCreate/openEdit/handleSave/handleDelete + 双视图）。**建议**：抽 `useCrudTable` composable 或泛型 CRUD 组件。
 - [ ] **FE-11 · P2** 4 个公开列表页复制同一套 `articles/loading/errorMsg + grid + AppPagination` 模板（`index.vue:44-54`、`category/[slug].vue:52-62`、`tag/[slug].vue` 同构、`search.vue:94-105`）。**建议**：抽 `ArticleListSection` 组件 + `useArticleList` composable。
-- [ ] **FE-12 · P2** 48 处 `any`（`catch (e: any)`、`ref<any>`、`uploadWithProgress(options: any)`（`articles/index.vue:352`）、`file: any` 等），TS 声明完整但类型质量打折。**建议**：定义 `ApiError` 类型（`{status?, data?: {message?}}`）替换 catch 里的 any，逐步收紧。
+- [x] **FE-12 · P2（49→9 处 any：新增 `ApiError` + `errorMessage()`，catch/ref/上传回调全部收紧；剩余 9 处是 el-table 作用域插槽标注，el-table 插槽类型为 DefaultRow，无法收窄）** 48 处 `any`（`catch (e: any)`、`ref<any>`、`uploadWithProgress(options: any)`（`articles/index.vue:352`）、`file: any` 等），TS 声明完整但类型质量打折。**建议**：定义 `ApiError` 类型（`{status?, data?: {message?}}`）替换 catch 里的 any，逐步收紧。
 - [ ] **FE-13 · P2** 默认质量门禁**不含 `vue-tsc`**：`scripts/blog.sh:511-519` 需显式 `--front` 才跑，类型回归可静默进主干。**建议**：纳入 `check` 默认路径（或 CI），至少在提交约定里强制。
 - [ ] **FE-14 · P2** 前端无 ESLint/Prettier 配置、无任何测试框架（`front/package.json` 仅 build/dev/preview/postinstall）。**建议**：加 `@nuxt/eslint-config` 最小规则集 + vitest 覆盖 `useApi`/`usePageQuery` 等纯逻辑。
 - [ ] **FE-15 · P3** Pinia 死依赖：`nuxt.config.ts:9` 注册 `@pinia/nuxt` 但全仓零 `defineStore`。**建议**：移除依赖与模块注册（或落地真用）。

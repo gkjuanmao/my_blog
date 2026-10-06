@@ -10,6 +10,18 @@ export interface ErrorResponse {
   data: null
 }
 
+/**
+ * useApi 统一抛出的错误形状（见 composables/useApi.ts 的 normalizeApiError）：
+ * `message` 与 `data.message` 都是后端中文提示，二者同值，便于不同页面取用。
+ * 用它替换 `catch (e: any)` 里的 any。
+ */
+export interface ApiError {
+  status?: number
+  response?: { status: number }
+  data?: { message?: string }
+  message?: string
+}
+
 export interface PaginatedResponse<T> {
   items: T[]
   total: number

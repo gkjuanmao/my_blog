@@ -16,8 +16,8 @@ async function fetchList() {
   try {
     const { data } = await useApi().get<Tag[]>('/tags/')
     list.value = data
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '加载失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -44,8 +44,8 @@ async function handleSave() {
     ElMessage.success('保存成功')
     dialogVisible.value = false
     fetchList()
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '保存失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -60,8 +60,8 @@ async function handleDelete(row: Tag) {
     await useApi().del(`/admin/tags/${row.id}/`)
     ElMessage.success('删除成功')
     fetchList()
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '删除失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '删除失败'))
   }
 }
 

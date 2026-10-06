@@ -30,9 +30,9 @@ async function loadData() {
     article.value = artRes.data
     categories.value = catRes.data
     tags.value = tagRes.data
-  } catch (e: any) {
+  } catch (e) {
     if (!guard.isLatest(seq)) return
-    errorMsg.value = e?.data?.message ?? '文章不存在'
+    errorMsg.value = errorMessage(e, '文章不存在')
   } finally {
     if (guard.isLatest(seq)) loading.value = false
   }
@@ -47,8 +47,8 @@ async function handleSubmit(fd: FormData) {
     await useApi().put(`/admin/articles/${id.value}/`, fd)
     ElMessage.success('保存成功')
     navigateTo('/administrator/articles')
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message ?? '保存失败')
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '保存失败'))
   } finally {
     submitting.value = false
   }

@@ -10,8 +10,8 @@ useSeoMeta({ title: '分类', description: '按分类浏览全部游记' })
 try {
   const { data } = await useApi().get<Category[]>('/categories/')
   categories.value = data
-} catch (e: any) {
-  errorMsg.value = e?.message ?? '加载失败'
+} catch (e) {
+  errorMsg.value = errorMessage(e, '加载失败')
 } finally {
   loading.value = false
 }

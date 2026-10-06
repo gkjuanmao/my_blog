@@ -10,8 +10,8 @@ useSeoMeta({ title: '标签', description: '按标签浏览全部游记' })
 try {
   const { data } = await useApi().get<Tag[]>('/tags/')
   tags.value = data
-} catch (e: any) {
-  errorMsg.value = e?.message ?? '加载失败'
+} catch (e) {
+  errorMsg.value = errorMessage(e, '加载失败')
 } finally {
   loading.value = false
 }
