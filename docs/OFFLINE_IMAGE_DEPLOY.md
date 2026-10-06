@@ -88,7 +88,8 @@ podman-compose up -d
 
 # 6) 验证
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18888/api/v1/articles/   # 期望 200
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18888/api/v1/docs        # 期望 200
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18888/api/v1/categories/ # 期望 200
+# 注：/api/v1/docs（Swagger）生产默认关闭（404）；如需开放，在 .env 设 ENABLE_API_DOCS=true
 ```
 
 首次启动时 `entrypoint.sh` 会自动 `migrate` + `collectstatic` + `purge_archives`，无需手工执行。

@@ -248,8 +248,9 @@ docker compose build
 
 docker compose 部署后，入口统一为 `http://<IP>:18888/`（nginx:18888，映射宿主机 18888 端口），静态文件与所有接口均经 nginx 提供：
 
-- Swagger 文档：`http://192.168.31.96:18888/api/v1/docs`
 - Django admin：`http://192.168.31.96:18888/admin/`
+
+Swagger 文档（`/api/v1/docs`）默认仅开发环境开放；生产如需访问，在 `.env` 设 `ENABLE_API_DOCS=true` 后重启。
 
 应用容器自身的 8000 端口不再对外暴露，无法直接访问 `:8000`。
 

@@ -10,7 +10,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **脚本自动识别容器工具链**：按 `docker compose(v2)` → `docker-compose(v1)` → `podman-compose` → `podman compose` 的顺序探测（docker 要求 daemon 可达，避免只装了 CLI 就误判），也可用 `BLOG_ENGINE=docker|podman` 强制指定。差异已内部抹平：容器名（podman `_1` / docker `-1`）按 compose 标签解析、`docker save` 不带 `-m`、镜像名 `localhost/` 前缀差异会自动补标签。
 - `uv sync` — 安装依赖（runtime + dev 组：ruff/mypy/django-stubs）
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`；局域网访问需用 `runserver 0.0.0.0:8000`（dev 的 `ALLOWED_HOSTS=['*']` 且 `CORS_ALLOW_ALL_ORIGINS=True`）
-- docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`，如 `http://<IP>:18888/api/v1/docs`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露
+- docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露。Swagger UI（`/api/v1/docs`）生产默认关闭（仅 `DEBUG` 或 `ENABLE_API_DOCS=true` 才开放）
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
 - `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块）；**用例数随迭代变化，以 `uv run pytest --collect-only -q | tail -1` 为准（当前 336 个）**；`tests/reports/` 是本地报告产物（junit/覆盖率），已 gitignore、不入库
@@ -47,7 +47,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 ## API 路由
 
-- 在 `config/urls.py` 中创建一个 `NinjaAPI` 实例；挂载于 `/api/v1/`，因此真实路径为 `/api/v1/login/`、`/api/v1/me/`、`/api/v1/articles/`、`/api/v1/admin/articles/`、`/api/v1/admin/categories/`、`/api/v1/admin/tags/`。Swagger UI 在 `/api/v1/docs`。
+- 在 `config/urls.py` 中创建一个 `NinjaAPI` 实例；挂载于 `/api/v1/`，因此真实路径为 `/api/v1/login/`、`/api/v1/me/`、`/api/v1/articles/`、`/api/v1/admin/articles/`、`/api/v1/admin/categories/`、`/api/v1/admin/tags/`。Swagger UI 在 `/api/v1/docs`（仅 `DEBUG=True` 或 `ENABLE_API_DOCS=true` 时注册，生产默认 404）。
 - 响应统一使用 `success_response()` 信封；`HttpError`/`ValidationError`/500 均通过 `common.exceptions.register_exception_handlers(api)` 返回同一信封。
 - 分页：`GET /articles/` 在 view 内手动分页（`Query(page, page_size)`，`ge=1`）；输出为信封内 `{items,total,page,page_size}`。
 - **文章归档（导入/导出，仅 staff）**：`GET /admin/articles/export/` 与 `/export/estimate/`（**必须早于详情路由**，见下）、`GET /admin/archives/{ticket}/`（能力 URL、`auth=None`、单次使用、重复访问 410、可 `POST .../reissue/` 重签）、两阶段导入 `POST /admin/articles/import/stage/`（上传+校验，返回 `staged_id` 与预检报告）与 `POST /admin/articles/import/commit/`（JSON 传 `staged_id`，不重传文件）、`DELETE /admin/articles/import/stage/{id}/`、`GET /admin/articles/import/limits/`。实现见 `articles/archive/`（`export`/`validate`/`planner`/`importer`/`locks`/`staging`/`limits`/`format`/`errors`），方案与 D1–D24 决策见 `docs/ARTICLE_IMPORT_EXPORT.md`，产物清扫用 `manage.py purge_archives`。

@@ -48,6 +48,9 @@ SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
 # CSRF 信任来源：Django admin 等表单接口的对外地址，如 https://blog.example.com
 CSRF_TRUSTED_ORIGINS = _env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
 
+# API 文档（Swagger UI，/api/v1/docs）：生产默认关闭，需要时显式 ENABLE_API_DOCS=true 开放
+ENABLE_API_DOCS = _env_bool('ENABLE_API_DOCS')
+
 # 缓存：配置 REDIS_URL 时使用 Redis，否则回落到进程内缓存
 # （docker-compose 已注入 REDIS_URL=redis://redis:6379/0；仅手工跑 prod 时才可能缺配）
 REDIS_URL = os.environ.get('REDIS_URL', '')

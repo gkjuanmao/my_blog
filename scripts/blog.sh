@@ -37,7 +37,8 @@ FRONT_IMAGE=""
 APP_ALT=""
 FRONT_ALT=""
 IMAGES=()
-HEALTH_PATHS=("/" "/api/v1/articles/" "/api/v1/docs")
+# 探活路径：均为生产默认可达的 200 端点（/api/v1/docs 生产默认关闭，不能用作探活）
+HEALTH_PATHS=("/" "/api/v1/articles/" "/api/v1/categories/")
 EXPORT_DIR_DEFAULT="${HOME}/my_blog_images"
 WAIT_READY_TIMEOUT=180
 

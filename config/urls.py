@@ -13,7 +13,14 @@ from common.exceptions import register_exception_handlers
 from users.api import router as users_router
 
 # 初始化 Django Ninja API
-api = NinjaAPI(title='My Blog API', version='1.0.0', description='前后端分离博客后端接口')
+# Swagger UI 默认仅开发环境开放；生产（DEBUG=False）需显式置 ENABLE_API_DOCS=true 才开放
+_docs_enabled = settings.DEBUG or getattr(settings, 'ENABLE_API_DOCS', False)
+api = NinjaAPI(
+    title='My Blog API',
+    version='1.0.0',
+    description='前后端分离博客后端接口',
+    docs_url='/docs' if _docs_enabled else None,
+)
 
 # 注册全局异常处理器
 register_exception_handlers(api)
