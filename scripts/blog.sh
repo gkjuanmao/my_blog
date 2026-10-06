@@ -11,7 +11,7 @@
 #   restart [--build]    等价于 down + up
 #   status               容器 / 镜像 / 端口 / 健康 / 归档产物 / 磁盘 一览
 #   logs [服务] [-f]     查看日志（app|nginx|front|redis，默认 app）
-#   check [--front]      质量门禁（ruff/mypy/pytest/迁移检查/配置语法；--front 加前端类型检查）
+#   check [--no-front]   质量门禁（ruff/mypy/pytest/迁移检查/配置语法/前端 vue-tsc；--no-front 跳过前端）
 #   install-hooks        启用仓库 git 钩子（pre-push 跑上面的 check，防坏代码直达远端）
 #   export [--out 文件]  导出离线镜像包（4 镜像 → tar + .sha256；省略 --out 用默认名）
 #   import [--in 文件]   目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
@@ -484,8 +484,9 @@ cmd_logs() {
 
 # --------------------------------------------------------------------------- check
 cmd_check() {
-  local with_front=0
-  for arg in "$@"; do [ "$arg" = "--front" ] && with_front=1; done
+  # 前端类型检查默认纳入门禁（FE-13）；无前端依赖时降级为 warn。用 --no-front 显式跳过。
+  local with_front=1
+  for arg in "$@"; do [ "$arg" = "--no-front" ] && with_front=0; done
   command -v uv >/dev/null 2>&1 || die "未找到 uv" "https://docs.astral.sh/uv/"
   mkdir -p db_data
   title "质量门禁"
@@ -511,15 +512,18 @@ cmd_check() {
   ok
 
   if [ "$with_front" = "1" ]; then
-    step "前端类型检查（vue-tsc）"
-    if containers_running; then
-      warn "检测到本项目容器在运行；vue-tsc 会重写 front/.nuxt，与 nuxt dev 冲突"
+    if [ ! -f front/node_modules/vue-tsc/bin/vue-tsc.js ]; then
+      warn "front 依赖未安装，跳过 vue-tsc（先 cd front && npm ci）"
+    else
+      step "前端类型检查（vue-tsc）"
+      if containers_running; then
+        warn "检测到本项目容器在运行；vue-tsc 会重写 front/.nuxt，与 nuxt dev 冲突"
+      fi
+      (cd front && node node_modules/vue-tsc/bin/vue-tsc.js --noEmit) || die "vue-tsc 未通过"
+      ok
     fi
-    (cd front && npx --no-install vue-tsc --noEmit -p .nuxt/tsconfig.json 2>/dev/null \
-      || npx vue-tsc --noEmit -p .nuxt/tsconfig.json) || die "vue-tsc 未通过"
-    ok
   else
-    hint "（前端类型检查默认跳过；需要时用 scripts/blog.sh check --front）"
+    hint "（已用 --no-front 跳过前端类型检查）"
   fi
 }
 
@@ -773,7 +777,7 @@ usage() {
   restart [--build]      等价于 down + up
   status                 容器/镜像/端口/健康/归档产物/磁盘 一览
   logs [服务] [-f]       查看日志（app|nginx|front|redis，默认 app）
-  check [--front]        质量门禁（ruff/mypy/pytest/迁移/配置语法；--front 加前端类型检查）
+  check [--no-front]     质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc；--no-front 跳过前端）
   install-hooks          启用仓库 git 钩子（pre-push 会跑上面这条 check）
   export [--out 文件]    导出离线镜像包（4 镜像 → tar + .sha256）
                          省略 --out 时用 ~/my_blog_images/my_blog_images_<架构>_<时间戳>.tar

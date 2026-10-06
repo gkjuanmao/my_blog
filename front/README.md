@@ -36,7 +36,7 @@ npm run dev
 
 ## 类型检查
 
-提交前请运行（与仓库质量门禁一致，`blog.sh check --front` 也会跑）：
+提交前请运行（`blog.sh check` 默认也会跑，需先装好 front 依赖）：
 
 ```bash
 node node_modules/vue-tsc/bin/vue-tsc.js --noEmit

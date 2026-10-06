@@ -169,7 +169,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/token/refresh/ \
 scripts/blog.sh preflight           # 环境体检（podman/compose/架构/SELinux/端口/磁盘/配置语法）
 scripts/blog.sh up --build          # 构建 → 重建容器 → 等待就绪 → 健康检查
 scripts/blog.sh status              # 容器/镜像/端口/健康/归档产物/磁盘 一览
-scripts/blog.sh check --front       # 质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc）
+scripts/blog.sh check             # 质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc；--no-front 跳过前端）
 scripts/blog.sh logs app -f         # 看日志（app|nginx|front|redis）
 scripts/blog.sh down                # 停止（保留数据卷与 db_data/）
 
