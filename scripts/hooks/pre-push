@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# pre-push 门禁：推送前跑 `scripts/blog.sh check`（ruff / mypy / pytest / 迁移一致性 / 配置语法）。
+#
+# 启用（每个克隆各执行一次，钩子无法随 clone 自动生效）：
+#     scripts/blog.sh install-hooks
+# 临时跳过：
+#     git push --no-verify
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root"
+
+if [ ! -f scripts/blog.sh ]; then
+  echo "[pre-push] 未找到 scripts/blog.sh，跳过门禁" >&2
+  exit 0
+fi
+
+echo "[pre-push] 运行 scripts/blog.sh check（临时跳过：git push --no-verify）..."
+# 故意不吞掉 check 的失败：门禁不通过就阻断推送（fail-closed）
+exec bash scripts/blog.sh check
