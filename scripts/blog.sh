@@ -517,6 +517,15 @@ cmd_check() {
   fi
   ok
 
+  # ShellCheck：装了就跑（必检），未装降级 warn（可选增强）。规则见仓库根 .shellcheckrc。
+  step "shellcheck"
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck scripts/blog.sh 2>&1 | sed 's/^/    /' || { fail "shellcheck 未通过"; exit 1; }
+    ok
+  else
+    warn "未安装 shellcheck，跳过（可选增强；Fedora: sudo dnf install -y ShellCheck）"
+  fi
+
   if [ "$with_front" = "1" ]; then
     if [ ! -f front/node_modules/vue-tsc/bin/vue-tsc.js ]; then
       warn "front 依赖未安装，跳过 vue-tsc 与 vitest（先 cd front && npm ci）"
@@ -644,9 +653,18 @@ cmd_import() {
 
   step "加载镜像"
   "$ENGINE" load -i "$in" >/dev/null 2>&1 || die "$ENGINE load 失败"
-  local img
+  local img alt
   for img in "${IMAGES[@]}"; do
-    image_exists "$img" || ensure_image_alias "$img" "$APP_ALT"
+    # 跨引擎导入时按镜像各自的目标名补标签（前端不能借用 app 的别名，否则会给
+    # nginx/redis 也乱打 app 标签）
+    case "$img" in
+      "$APP_IMAGE"|"$APP_ALT")     alt="$APP_ALT" ;;
+      "$FRONT_IMAGE"|"$FRONT_ALT") alt="$FRONT_ALT" ;;
+      *)                           alt="" ;;
+    esac
+    if ! image_exists "$img" && [ -n "$alt" ]; then
+      ensure_image_alias "$img" "$alt"
+    fi
     image_exists "$img" || die "加载后仍缺镜像：$img"
   done
   ok "${#IMAGES[@]} 个镜像已就绪"

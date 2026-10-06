@@ -1,0 +1,12 @@
+# ShellCheck 配置（scripts/blog.sh check 与 Gitea CI 共用；shellcheck 会从脚本所在
+# 目录向上逐级查找本文件，故放在仓库根目录即可被 scripts/blog.sh 命中）。
+#
+# 只把 warning 及以上视为失败：info 级建议太多，会把门禁淹没。
+severity=warning
+#
+# 本项目有意为之的两类写法，显式放行：
+#   SC2012 —— 用 `ls -A <dir> | wc -l` 统计文件数：这些目录名受控，不会含换行，
+#             改用 find 反而更长且要处理 -maxdepth/-mindepth。
+#   SC2016 —— `sh -c '... $(...) ...'` 里的 $ 需要交给**容器内** shell 展开，
+#             不能在宿主机展开（展开会让宿主机变量泄漏进容器命令）。
+disable=SC2012,SC2016
