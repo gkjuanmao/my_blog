@@ -100,7 +100,7 @@
 - [ ] **OPS-04 · P2** `.env.example` 中 `REDIS_URL` 处于**注释状态**，而 prod 无 Redis 时会回落 LocMemCache 并触发 RuntimeWarning（`prod.py:51-73`）—— 手工 `DJANGO_ENV=prod` 本地跑极易漏配，导致导入锁/登录限流在 3 worker 下各自为政。**建议**：`.env.example` 默认启用该行并加醒目注释（compose 已注入，风险主要在手工路径）。
 - [ ] **OPS-05 · P2** 纯 HTTP + nginx 端口绑 `0.0.0.0`（`docker-compose.yml` `18888:18888`），`DJANGO_USE_TLS` 默认关 —— 内网取舍可接受，但 TLS 启用路径（`DJANGO_USE_TLS` + `SECURE_PROXY_SSL_HEADER` + HSTS）从未实测验证。**建议**：至少做一次 TLS 演练并把步骤写入 `docs/`。
 - [ ] **OPS-06 · P2** `media/`（64 文件/1.9MB，不入 git）数据迁移只靠 `blog.sh seed-media`，`import` 结尾仅一行 hint，易被忽略 → 新机器导入文章后封面 404。**建议**：`import` 结束时检测 media 卷为空并显式警告/自动执行 seed-media。
-- [ ] **OPS-07 · P3** `scripts/blog.sh` 头部注释（L7-19）的子命令清单**漏列 `seed-media`**（`usage()` 与 `main()` 分发里都有）。**建议**：补齐注释。
+- [x] **OPS-07 · P3** `scripts/blog.sh` 头部注释（L7-19）的子命令清单**漏列 `seed-media`**（`usage()` 与 `main()` 分发里都有）。**建议**：补齐注释。
 - [ ] **OPS-08 · P3** 无数据库备份/恢复机制：SQLite 单文件靠 `db_data/` bind mount，`blog.sh` 无 `backup` 子命令，`down --purge`/误删 `db_data` 即全站数据丢失。**建议**：加 `blog.sh backup`（`sqlite3 .backup` 或复制 + 校验）并文档化恢复步骤。
 
 ---

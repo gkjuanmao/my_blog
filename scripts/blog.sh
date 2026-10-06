@@ -15,6 +15,7 @@
 #   install-hooks        启用仓库 git 钩子（pre-push 跑上面的 check，防坏代码直达远端）
 #   export [--out 文件]  导出离线镜像包（4 镜像 → tar + .sha256；省略 --out 用默认名）
 #   import [--in 文件]   目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
+#   seed-media           把本机 media/ 同步进媒体卷（数据迁移用）
 #   seed-demo [--count N] 生成并导入演示游记（含 Markdown 正文与压缩插图，走真实导入链路）
 #   purge                清理归档过期产物 + 悬空镜像
 #   help                 显示本帮助
