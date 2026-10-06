@@ -76,6 +76,11 @@ else:
         stacklevel=2,
     )
 
+# 数据库：生产当前仍用 SQLite（继承 base.py，`db_data/db.sqlite3`，timeout=20）。
+# SQLite 同一时刻只允许一个写者，而 gunicorn 为 3 workers × 4 threads，写入密集时
+# （归档导入、批量删除）可能出现 `database is locked`；已用 timeout=20 缓解，且导入
+# 走缓存锁串行化。读多写少的博客场景足够；若并发写显著增长，再切换 PostgreSQL：
+# 取消下面注释、在 docker-compose.yml 增加 db 服务并设置 POSTGRES_* 环境变量。
 # TODO: 生产环境使用 PostgreSQL，取消注释并按需设置环境变量
 # DATABASES = {
 #     'default': {
