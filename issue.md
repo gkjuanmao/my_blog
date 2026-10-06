@@ -99,7 +99,7 @@
 - [x] **OPS-03 · P1（新增 `auth` zone 5r/s burst=10，覆盖 `location = /api/v1/login/` 与 `/admin/`）** nginx 对 **`/admin/`（Django admin 登录页）与 `/api/v1/login/` 无 `limit_req`**：现有 zone 只覆盖 archive(1r/s) 与 preview(5r/s)（`docker/nginx/nginx.conf:5,9`）；API 层只有应用内缓存限流，admin session 登录完全无限流。**建议**：新增 `limit_req_zone` 覆盖这两个 location（如 5r/s burst=10）。
 - [x] **OPS-04 · P2（`.env.example` 默认启用 `REDIS_URL` 并加醒目注释）** `.env.example` 中 `REDIS_URL` 处于**注释状态**，而 prod 无 Redis 时会回落 LocMemCache 并触发 RuntimeWarning（`prod.py:51-73`）—— 手工 `DJANGO_ENV=prod` 本地跑极易漏配，导致导入锁/登录限流在 3 worker 下各自为政。**建议**：`.env.example` 默认启用该行并加醒目注释（compose 已注入，风险主要在手工路径）。
 - [x] **OPS-05 · P2（新增 `docs/TLS_DRILL.md`：演练步骤 + 8 项验证清单 + 回滚；配置层实测通过，容器层待部署机执行）** 纯 HTTP + nginx 端口绑 `0.0.0.0`（`docker-compose.yml` `18888:18888`），`DJANGO_USE_TLS` 默认关 —— 内网取舍可接受，但 TLS 启用路径（`DJANGO_USE_TLS` + `SECURE_PROXY_SSL_HEADER` + HSTS）从未实测验证。**建议**：至少做一次 TLS 演练并把步骤写入 `docs/`。
-- [ ] **OPS-06 · P2** `media/`（64 文件/1.9MB，不入 git）数据迁移只靠 `blog.sh seed-media`，`import` 结尾仅一行 hint，易被忽略 → 新机器导入文章后封面 404。**建议**：`import` 结束时检测 media 卷为空并显式警告/自动执行 seed-media。
+- [x] **OPS-06 · P2（`import` 结束时读容器内媒体卷文件数：为空则告警，`--yes` 时自动 seed-media，非空则打印计数）** `media/`（64 文件/1.9MB，不入 git）数据迁移只靠 `blog.sh seed-media`，`import` 结尾仅一行 hint，易被忽略 → 新机器导入文章后封面 404。**建议**：`import` 结束时检测 media 卷为空并显式警告/自动执行 seed-media。
 - [x] **OPS-07 · P3** `scripts/blog.sh` 头部注释（L7-19）的子命令清单**漏列 `seed-media`**（`usage()` 与 `main()` 分发里都有）。**建议**：补齐注释。
 - [ ] **OPS-08 · P3** 无数据库备份/恢复机制：SQLite 单文件靠 `db_data/` bind mount，`blog.sh` 无 `backup` 子命令，`down --purge`/误删 `db_data` 即全站数据丢失。**建议**：加 `blog.sh backup`（`sqlite3 .backup` 或复制 + 校验）并文档化恢复步骤。
 

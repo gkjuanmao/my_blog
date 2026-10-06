@@ -662,8 +662,28 @@ cmd_import() {
   step "等待就绪"; wait_ready
   step "健康检查"; health_check || die "健康检查未通过" "$ENGINE logs $(app_container) | tail -30"
   printf '\n%s部署完成%s → %s%s/%s\n' "$C_OK" "$C_END" "$C_BOLD" "$BASE_URL" "$C_END"
-  if [ "$yes" != "1" ] && [ -d media ] && [ "$(ls -A media/covers 2>/dev/null | wc -l)" -gt 0 ]; then
-    hint "提示：若要让文章封面/附件可见，需把 media/ 同步进媒体卷：scripts/blog.sh seed-media"
+
+  # OPS-06：媒体卷是命名卷，不随镜像带入。若本机有 media 数据而容器内为空，
+  # 文章封面/附件会 404 —— 这里显式自检（此前只有一行易被忽略的 hint）。
+  # 容器不可达时 exec 失败 → 拿到空串 → 两个分支都不进，不会误告警。
+  if [ -d media ] && [ "$(ls -A media/covers 2>/dev/null | wc -l)" -gt 0 ]; then
+    local c_app c_counts c_covers c_files
+    c_app="$(app_container)"
+    c_counts="$("$ENGINE" exec "$c_app" sh -c \
+      'printf "%s %s" "$(ls -A /app/media/covers 2>/dev/null | wc -l)" "$(ls -A /app/media/files 2>/dev/null | wc -l)"' \
+      2>/dev/null || true)"
+    c_covers="${c_counts%% *}"; c_files="${c_counts##* }"
+    if [ "$c_covers" = "0" ] && [ "$c_files" = "0" ]; then
+      if [ "$yes" = "1" ]; then
+        warn "媒体卷为空，自动执行 seed-media（本机 media/ → 容器）"
+        cmd_seed_media
+      else
+        warn "媒体卷为空：文章封面/附件会 404"
+        hint "请执行 scripts/blog.sh seed-media（或 import 加 --yes 自动同步）"
+      fi
+    else
+      ok "媒体卷：covers ${c_covers} / files ${c_files}"
+    fi
   fi
 }
 
