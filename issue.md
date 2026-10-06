@@ -101,7 +101,7 @@
 - [x] **OPS-05 · P2（新增 `docs/TLS_DRILL.md`：演练步骤 + 8 项验证清单 + 回滚；配置层实测通过，容器层待部署机执行）** 纯 HTTP + nginx 端口绑 `0.0.0.0`（`docker-compose.yml` `18888:18888`），`DJANGO_USE_TLS` 默认关 —— 内网取舍可接受，但 TLS 启用路径（`DJANGO_USE_TLS` + `SECURE_PROXY_SSL_HEADER` + HSTS）从未实测验证。**建议**：至少做一次 TLS 演练并把步骤写入 `docs/`。
 - [x] **OPS-06 · P2（`import` 结束时读容器内媒体卷文件数：为空则告警，`--yes` 时自动 seed-media，非空则打印计数）** `media/`（64 文件/1.9MB，不入 git）数据迁移只靠 `blog.sh seed-media`，`import` 结尾仅一行 hint，易被忽略 → 新机器导入文章后封面 404。**建议**：`import` 结束时检测 media 卷为空并显式警告/自动执行 seed-media。
 - [x] **OPS-07 · P3** `scripts/blog.sh` 头部注释（L7-19）的子命令清单**漏列 `seed-media`**（`usage()` 与 `main()` 分发里都有）。**建议**：补齐注释。
-- [ ] **OPS-08 · P3** 无数据库备份/恢复机制：SQLite 单文件靠 `db_data/` bind mount，`blog.sh` 无 `backup` 子命令，`down --purge`/误删 `db_data` 即全站数据丢失。**建议**：加 `blog.sh backup`（`sqlite3 .backup` 或复制 + 校验）并文档化恢复步骤。
+- [x] **OPS-08 · P3（新增 `blog.sh backup`：优先宿主/容器 `sqlite3 .backup` 热备，退回 `cp` 会告警；`PRAGMA integrity_check` 校验 + `.sha256`；恢复步骤见 `docs/BACKUP_RESTORE.md`）** 无数据库备份/恢复机制：SQLite 单文件靠 `db_data/` bind mount，`blog.sh` 无 `backup` 子命令，`down --purge`/误删 `db_data` 即全站数据丢失。**建议**：加 `blog.sh backup`（`sqlite3 .backup` 或复制 + 校验）并文档化恢复步骤。
 
 ---
 

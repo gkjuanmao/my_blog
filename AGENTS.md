@@ -6,7 +6,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 ## 常用命令
 
-- **部署运维统一入口：`scripts/blog.sh <子命令>`**（预检/启动/停止/状态/日志/质量门禁/导出/导入/演示数据/清理，见 `scripts/blog.sh help`）—— 它把“podman-compose 不会因镜像变更重建容器”、“SELinux 需 `:z`”、“`.env` 必填校验”、“轮询等就绪”等实测坑点固化成了代码，优先用它而不是手敲步骤。
+- **部署运维统一入口：`scripts/blog.sh <子命令>`**（预检/启动/停止/状态/日志/质量门禁/导出/导入/演示数据/备份/清理，见 `scripts/blog.sh help`）—— 它把“podman-compose 不会因镜像变更重建容器”、“SELinux 需 `:z`”、“`.env` 必填校验”、“轮询等就绪”等实测坑点固化成了代码，优先用它而不是手敲步骤。数据库备份/恢复见 `docs/BACKUP_RESTORE.md`（`blog.sh backup` 热备 + `integrity_check`）。
 - **脚本自动识别容器工具链**：按 `docker compose(v2)` → `docker-compose(v1)` → `podman-compose` → `podman compose` 的顺序探测（docker 要求 daemon 可达，避免只装了 CLI 就误判），也可用 `BLOG_ENGINE=docker|podman` 强制指定。差异已内部抹平：容器名（podman `_1` / docker `-1`）按 compose 标签解析、`docker save` 不带 `-m`、镜像名 `localhost/` 前缀差异会自动补标签。
 - `uv sync` — 安装依赖（runtime + dev 组：ruff/mypy/django-stubs）
 - `uv run python manage.py migrate` / `runserver` / `createsuperuser`；局域网访问需用 `runserver 0.0.0.0:8000`（dev 的 `ALLOWED_HOSTS=['*']` 且 `CORS_ALLOW_ALL_ORIGINS=True`）

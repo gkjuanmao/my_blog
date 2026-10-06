@@ -17,6 +17,7 @@
 #   import [--in 文件]   目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
 #   seed-media           把本机 media/ 同步进媒体卷（数据迁移用）
 #   seed-demo [--count N] 生成并导入演示游记（含 Markdown 正文与压缩插图，走真实导入链路）
+#   backup [--out 文件]  备份 SQLite 数据库（热备 + integrity_check；省略 --out 用默认名）
 #   purge                清理归档过期产物 + 悬空镜像
 #   help                 显示本帮助
 #
@@ -40,6 +41,7 @@ IMAGES=()
 # 探活路径：均为生产默认可达的 200 端点（/api/v1/docs 生产默认关闭，不能用作探活）
 HEALTH_PATHS=("/" "/api/v1/articles/" "/api/v1/categories/")
 EXPORT_DIR_DEFAULT="${HOME}/my_blog_images"
+BACKUP_DIR_DEFAULT="${HOME}/my_blog_backups"
 WAIT_READY_TIMEOUT=180
 
 # --------------------------------------------------------------------------- 输出
@@ -778,6 +780,82 @@ cmd_purge() {
   ok "当前悬空镜像 $("$ENGINE" images --filter dangling=true -q | wc -l) 个"
 }
 
+# --------------------------------------------------------------------------- backup
+# 备份 SQLite（db_data/db.sqlite3，宿主机 bind mount）。恢复步骤见 docs/BACKUP_RESTORE.md。
+cmd_backup() {
+  local out=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out)
+        # 与 export/import 一致：值可选（不以 - 开头才当值），省略时用默认名
+        if [ $# -ge 2 ] && [ "${2#-}" = "${2:-}" ]; then
+          out="$2"; shift 2
+        else
+          shift
+        fi
+        ;;
+      *) die "未知参数：$1" ;;
+    esac
+  done
+
+  local db="db_data/db.sqlite3"
+  [ -f "$db" ] || die "未找到 $db" "容器首次 migrate 前无此文件，先 scripts/blog.sh up"
+  if [ -z "$out" ]; then
+    mkdir -p "$BACKUP_DIR_DEFAULT"
+    out="${BACKUP_DIR_DEFAULT}/my_blog_db_$(date +%Y%m%d-%H%M%S).sqlite3"
+  fi
+  mkdir -p "$(dirname "$out")"
+
+  require_tools
+  title "备份 SQLite 数据库"
+  local app tmp
+  app="$(app_container)"
+  # 临时文件放 db_data/ 内（bind mount）：这样容器与宿主机都能访问同一份，便于用容器内
+  # python 做一致性备份与校验；最后再 mv 到目标路径（可能在另一文件系统）。
+  tmp="db_data/.backup.$$.sqlite3"
+  trap 'rm -f "$tmp"' EXIT
+
+  # 优先宿主 sqlite3（.backup 是热备，有并发写也一致）；否则借运行中容器的 python
+  # sqlite3.backup()（同样安全）；两者都没有才退回 cp，并明确提示一致性风险。
+  if command -v sqlite3 >/dev/null 2>&1; then
+    step "sqlite3 .backup（热备）"; sqlite3 "$db" ".backup '$tmp'" || die "sqlite3 .backup 失败"; ok
+  elif [ -n "$app" ]; then
+    step "容器内 python sqlite3.backup（热备）"
+    "$ENGINE" exec "$app" python -c \
+      "import sqlite3;s=sqlite3.connect('/app/$db');d=sqlite3.connect('/app/$tmp');s.backup(d);d.close();s.close()" \
+      || die "容器内备份失败"; ok
+  else
+    warn "宿主无 sqlite3 且 app 容器未运行，退回 cp —— 若有写入可能拿到不一致快照"
+    step "cp（冷备，非事务安全）"; cp "$db" "$tmp" || die "cp 失败"; ok
+  fi
+
+  step "校验完整性"
+  local integrity=""
+  if command -v sqlite3 >/dev/null 2>&1; then
+    integrity="$(sqlite3 "$tmp" 'PRAGMA integrity_check;' 2>/dev/null | head -1 || true)"
+  elif [ -n "$app" ]; then
+    integrity="$("$ENGINE" exec "$app" python -c \
+      "import sqlite3;print(sqlite3.connect('/app/$tmp').execute('PRAGMA integrity_check').fetchone()[0])" \
+      2>/dev/null || true)"
+  fi
+  if [ "$integrity" = "ok" ]; then
+    ok "integrity_check = ok"
+  elif [ -z "$integrity" ]; then
+    warn "无法校验（缺 sqlite3 工具），已跳过 integrity_check"
+  else
+    die "备份校验失败：$integrity"
+  fi
+
+  mv "$tmp" "$out"
+  if ( cd "$(dirname "$out")" && sha256sum "$(basename "$out")" ) > "${out}.sha256" 2>/dev/null; then
+    ok "校验和 → ${out}.sha256"
+  else
+    warn "sha256sum 不可用，未生成校验和"
+  fi
+  printf '\n%s备份完成%s → %s%s%s（%s）\n' "$C_OK" "$C_END" "$C_BOLD" "$out" "$C_END" "$(human_size "$(stat -c%s "$out")")"
+  hint "恢复步骤见 docs/BACKUP_RESTORE.md"
+}
+
 # --------------------------------------------------------------------------- 入口
 cmd_install_hooks() {
   [ -d .git ] || die "当前目录不是 git 仓库" "在仓库根目录执行"
@@ -805,6 +883,9 @@ usage() {
   import [--in 文件]     目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
   seed-media             把本机 media/ 同步进媒体卷（数据迁移用）
   seed-demo [--count N]  生成并导入演示游记（含 Markdown 正文与压缩插图，默认 30 篇）
+  backup [--out 文件]    备份 SQLite 数据库（热备 + 完整性校验）
+                         省略 --out 时用 ~/my_blog_backups/my_blog_db_<时间戳>.sqlite3
+                         恢复步骤见 docs/BACKUP_RESTORE.md
   purge                  清理归档过期产物 + 悬空镜像
   help                   显示本帮助
 
@@ -832,6 +913,7 @@ main() {
     import)      cmd_import "$@" ;;
     seed-media)  cmd_seed_media "$@" ;;
     seed-demo)   cmd_seed_demo "$@" ;;
+    backup)      cmd_backup "$@" ;;
     purge)       cmd_purge "$@" ;;
     help|-h|--help) usage ;;
     *) fail "未知子命令：$cmd"; echo; usage; exit 1 ;;
