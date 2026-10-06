@@ -178,8 +178,12 @@ def _resolve_category_and_tags(
 
 
 def _published_articles() -> QuerySet[Article]:
-    """仅已发布且预取分类/标签的文章查询集。"""
-    return Article.objects.filter(is_published=True).prefetch_related('tags', 'category')
+    """仅已发布文章；分类走 select_related、标签走 prefetch_related。"""
+    return (
+        Article.objects.filter(is_published=True)
+        .select_related('category')
+        .prefetch_related('tags')
+    )
 
 
 @router.get('/categories/', response=ApiResponse[list[CategoryOut]])
@@ -264,7 +268,7 @@ def list_admin_articles(
     ),
 ) -> dict:
     """管理文章列表：返回全部文章（含未发布草稿），供后台管理与定位。"""
-    qs = Article.objects.prefetch_related('tags', 'category')
+    qs = Article.objects.select_related('category').prefetch_related('tags')
     if is_published is not None:
         qs = qs.filter(is_published=is_published)
     if keyword:
