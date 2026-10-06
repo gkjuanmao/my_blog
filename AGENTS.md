@@ -13,7 +13,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - docker compose 部署（prod）后仅经 nginx（`:18888`）访问：入口 `http://<IP>:18888/`、`http://<IP>:18888/admin/`；应用 8000 端口不对宿主机暴露。Swagger UI（`/api/v1/docs`）生产默认关闭（仅 `DEBUG` 或 `ENABLE_API_DOCS=true` 才开放）
 - `uv run ruff check .` — 仅 lint；未配置格式化
 - `uv run mypy config articles common users` — 类型检查（django-stubs 插件已在 `pyproject.toml` 配置）
-- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块）；**用例数随迭代变化，以 `uv run pytest --collect-only -q | tail -1` 为准（当前 456 个）**；`tests/reports/` 是本地报告产物（junit/覆盖率），已 gitignore、不入库
+- `uv run pytest` — 运行测试（pytest + pytest-django，`tests/` 独立模块）；**用例数随迭代变化，以 `uv run pytest --collect-only -q | tail -1` 为准（当前 462 个）**；`tests/reports/` 是本地报告产物（junit/覆盖率），已 gitignore、不入库
 - pytest 的 `DJANGO_SETTINGS_MODULE` 由 `pyproject.toml` 直接指定为 `config.settings.dev`（绕过 `config/settings/__init__.py` 的 `DJANGO_ENV` 判断），恒走 dev 配置；`testpaths = ["tests"]` 限定只在 `tests/` 收集测试，各 app 内残留的 `tests.py`（如 `articles/tests.py`，为空）不会被运行
 - `tests/conftest.py` 有 autouse 的 `media_root` fixture，把 `MEDIA_ROOT` 隔离到 `tmp_path`，所以 pytest 上传的文件不会落进真实 `media/`（早期版本会污染）；仍需清理的是手工/接口联调产生的文件
 - **手工测试后必须清理上传产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）

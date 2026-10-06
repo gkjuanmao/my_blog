@@ -87,7 +87,7 @@
 - [x] **TEST-08 · P2（`check` 区分三态：无工具链→warn 跳过；缺镜像→先 `pull` 一次，拿到就 `nginx -t` 必检、失败即阻断；仍拿不到→warn 跳过；`NGINX_IMAGE` 常量化）** `check` 中的 `nginx -t` 依赖本地已有 `nginx:1.27` 镜像，缺失时**静默降级为 warn 不阻断**（`scripts/blog.sh` check 段）。**建议**：区分"可选增强"与"必检项"，或缺镜像时拉取。
 - [x] **TEST-09 · P2（新增 `check --e2e` 与独立 `e2e` 子命令：对已运行容器跑「健康探活 → 真实 `POST /login/` → `POST /admin/articles/` 建文（容器内 Pillow 生成封面）→ `GET /admin/articles/export/` + 下载并校验 zip 头」，临时管理员/文章经 EXIT trap 自动清理；本机无容器工具链，容器层待部署机执行）** 无端到端/冒烟自动化：唯一运行时检查是 `blog.sh up` 时的 3 条 `HEALTH_PATHS` 轮询，nginx→gunicorn→SQLite 真实链路无自动化覆盖。**建议**：`check --e2e` 起容器后跑登录+建文章+导出冒烟。
 - [x] **TEST-10 · P2（新增 `tests/test_env_file_script.py`：9 用例（bash 驱动，source 去掉副作用的 blog.sh）覆盖 `.env` 自动生成/缺失报错/prod 缺密钥阻断/dev 放行/`env_value` 引号与 CR；**并据此修掉真实缺陷**：`env_value` 原先只去 `\n` 不去 `\r`，CRLF 的 `.env` 会让 `DJANGO_ENV=prod` 比较失败、prod 缺密钥漏检）** prod 启动路径未测：`check_env_file` 的 prod 分支（缺 `DJANGO_SECRET_KEY` 报错）、`DJANGO_USE_TLS=true` 下 `SECURE_PROXY_SSL_HEADER`、`.env.example` 自动生成逻辑。**建议**：shell 级 bats/手工脚本用例或最小化 Python 测试。
-- [ ] **TEST-11 · P3** `scripts/seed_demo.py`（约 24KB 生成器）无任何测试。**建议**：至少测其产物可被 `import stage/commit` 接受（`blog.sh seed-demo` 已走真实链路，可抽成断言）。
+- [x] **TEST-11 · P3（新增 `tests/test_seed_demo.py`：6 用例——按路径加载生成器，断言包结构完整 + `validate_package` 零错误 + 非 zip 被拒 + `stage` 预检全 create + `commit` 后正文 Markdown 逐字保留/分类标签重建/封面落 WebP/正文插图真实落盘 + 二次导入幂等 skip）** `scripts/seed_demo.py`（约 24KB 生成器）无任何测试。**建议**：至少测其产物可被 `import stage/commit` 接受（`blog.sh seed-demo` 已走真实链路，可抽成断言）。
 - [ ] **TEST-12 · P3** 并发/多 worker 行为未测：LocMemCache 下导入锁 fail-open 退化场景、nginx `limit_conn 2` 与 Django 锁配合、`views` 并发 `F()` 更新。**建议**：文档化已知限制即可（P2 级修复见 BE-02）。
 
 ---
