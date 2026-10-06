@@ -18,6 +18,23 @@ export function clearAuthTokens(): void {
 /** 同一时刻只保留一个刷新请求：并发的多个 401 共享同一次刷新，避免轮换互相踢下线 */
 let refreshInFlight: Promise<boolean> | null = null
 
+/**
+ * 统一错误形状：同时提供 `message` 与 `data.message`，值优先取后端信封里的中文提示。
+ * 这样公开页（`e?.message`）与后台（`e?.data?.message`）共用同一口径；
+ * 后端未给 message 时回落本地化文案，而不是 ofetch 的技术串（如 `[GET] .../ 500`）。
+ */
+function normalizeApiError(error: any): any {
+  const status = error?.status ?? error?.response?.status ?? 0
+  const backendMessage = error?.data?.message
+  const message =
+    typeof backendMessage === 'string' && backendMessage
+      ? backendMessage
+      : status === 0
+        ? '网络错误或服务不可用'
+        : '请求失败，请稍后重试'
+  return { status, response: { status }, data: { message }, message }
+}
+
 export interface UploadProgress {
   loaded: number
   total: number
@@ -29,11 +46,12 @@ interface UploadOptions {
   signal?: AbortSignal
 }
 
-/** 与 `$fetch` 抛出的错误形状对齐，便于调用方统一用 `e?.data?.message` */
+/** 与 `$fetch` 抛出的错误形状对齐，便于调用方统一用 `e?.data?.message` / `e?.message` */
 interface UploadError {
   status: number
   response: { status: number }
   data: { message?: string }
+  message?: string
 }
 
 export function useApi() {
@@ -92,8 +110,9 @@ export function useApi() {
         headers,
       })
       return data
-    } catch (error: any) {
-      if (error?.response?.status === 401) {
+    } catch (caught: any) {
+      const error = normalizeApiError(caught)
+      if (error.status === 401) {
         if (import.meta.client) {
           // access 过期时先尝试用 refresh 续期并重放本次请求（仅重试一次）
           if (allowRetry && localStorage.getItem(REFRESH_TOKEN_KEY)) {
@@ -153,10 +172,16 @@ export function useApi() {
           resolve(payload)
           return
         }
+        const backendMessage = (payload as any)?.message
+        const message =
+          typeof backendMessage === 'string' && backendMessage
+            ? backendMessage // 后端信封里的中文提示
+            : '请求失败，请稍后重试'
         const failure: UploadError = {
           status: xhr.status,
           response: { status: xhr.status },
-          data: { message: (payload as any)?.message }, // 后端信封里的中文提示
+          data: { message },
+          message,
         }
         if (xhr.status === 401 && import.meta.client) {
           clearAuthTokens()
