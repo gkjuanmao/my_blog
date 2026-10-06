@@ -1,12 +1,13 @@
 /**
- * 公开文章列表页共用的加载逻辑（FE-11）。
+ * 文章列表页共用的加载逻辑（FE-11）。
  *
- * 4 个公开列表页（首页 / 分类 / 标签 / 搜索）原本各自复制了同一套：
+ * 公开列表页（首页 / 分类 / 标签 / 搜索）与后台文章列表原本各自复制了同一套：
  * 分页状态、竞态守卫、越界页码收敛、错误文案。这里收敛成一处，页面只提供
  * 「怎么取这一页数据」的 loader（各自带过滤参数，或顺带请求分类/标签实体）。
  *
  * 渲染侧见 `components/ArticleListSection.vue`（首页/分类/标签三页的三态与分页）
- * 与 `components/ArticleGrid.vue`（四页共用的卡片网格）。
+ * 与 `components/ArticleGrid.vue`（公开页共用的卡片网格）；后台列表用
+ * `components/admin/ArticleListTable.vue` / `ArticleMobileCards.vue`。
  */
 import type { Article, PaginatedResponse } from '~/types/api'
 
