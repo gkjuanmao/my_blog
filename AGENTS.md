@@ -27,7 +27,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 
 - 环境由 `config/settings/__init__.py` 中的 `DJANGO_ENV` 选择（默认 `dev`）；`DJANGO_SETTINGS_MODULE` 恒为 `config.settings`。
 - `dev`：SQLite `db_data/db.sqlite3`（bind mount 持久化，已 gitignore）+ 内存缓存，`DEBUG=True`，硬编码 SECRET_KEY。
-- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。TLS/CSRF/缓存均已环境化：`DJANGO_USE_TLS=true` 才开启 `SECURE_SSL_REDIRECT`/安全 Cookie/`SECURE_PROXY_SSL_HEADER`，`DJANGO_SECURE_HSTS_SECONDS`（默认 0）控制 HSTS，`DJANGO_CSRF_TRUSTED_ORIGINS` 配置信任来源，设置 `REDIS_URL` 则用 Redis 缓存（否则回落 LocMemCache）；`ALLOWED_HOSTS` 空值回落 `localhost,127.0.0.1`。`prod.py` 中的 PostgreSQL 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db/redis 服务）。
+- `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。TLS/CSRF/缓存均已环境化：`DJANGO_USE_TLS=true` 才开启 `SECURE_SSL_REDIRECT`/安全 Cookie/`SECURE_PROXY_SSL_HEADER`，`DJANGO_SECURE_HSTS_SECONDS`（默认 0）控制 HSTS，`DJANGO_CSRF_TRUSTED_ORIGINS` 配置信任来源，设置 `REDIS_URL` 则用 Redis 缓存（否则回落 LocMemCache）；`ALLOWED_HOSTS` 空值回落 `localhost,127.0.0.1`。`prod.py` 中的 PostgreSQL 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db 服务，但保留 redis 服务）。
 - `.env` 仅被 docker-compose 的 `env_file` 消费；Django 不会自动加载。本地跑 prod 需手动 export，例如 `DJANGO_ENV=prod DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=127.0.0.1 uv run python manage.py runserver`。
 
 ## 应用结构
@@ -77,7 +77,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - Django 6 的测试 `Client.put` 默认以 `application/octet-stream` 发送且把 dict `str()` 化 —— PUT 测试须显式传 `content_type='application/x-www-form-urlencoded'` + `urlencode(data)`。
 - PUT/PATCH multipart 需要 `ninja.compatibility.files.fix_request_files_middleware`（已在 `base.py` 的 MIDDLEWARE 中）。
 - `templates/` 和 `static/` 存在但为空 —— 新增模板/静态文件时创建文件即可。
-- `docker-compose.yml` 仅含 app+nginx 服务（postgres/redis 已移除）；`prod.py` 中仍有 PostgreSQL/Redis 注释 TODO（预留，未启用）。
+- `docker-compose.yml` 含 4 个服务（app/redis/nginx/front），app 已通过 compose 环境注入 `REDIS_URL=redis://redis:6379/0`（redis 仅作缓存/锁，不持久化）；`prod.py` 中 PostgreSQL 仍是注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - **`uv.lock` 的源是清华 TUNA 镜像**（仓库内已固化）：因此 Dockerfile **不再需要**构建期 `sed` 换源；也与本机 `~/.config/uv/uv.toml` 的默认源一致，所以 plain `uv run` 不会再重写 lock（若把 lock 换回 pypi.org，这个坑会重新出现）。
 - **本机用 podman 验证部署（无 docker）；脚本同样支持 docker compose**：`podman` 5.x + `podman-compose`（`podman compose` 会转发到 `/usr/bin/podman-compose`）。流程：`scripts/blog.sh up --build`（或 `podman-compose up -d --build`）→ 访问 `http://<IP>:18888/`。`.env` 是 compose 的 `env_file` 必需项、且含机器本地密钥，因此**被 gitignore、不入库**；首次 `up` 时 `check_env_file` 会**自动从 `.env.example` 生成**一份并提示按需修改（也可提前手动 `cp .env.example .env`），`DJANGO_ENV=prod` 时必须有非空 `DJANGO_SECRET_KEY`。**不要把 `.env` 提交进仓库**（密钥/内网地址会进 git 历史，很难清干净）。
