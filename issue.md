@@ -67,7 +67,7 @@
 - [x] **FE-17 · P3** 后台列表分页用裸 `ref`（`pages/administrator/articles/index.vue:27-28`），未接 `usePageQuery` → 刷新丢页码，与公开页"分页写 URL、后退可回"（`f621d16`）的既定特性不一致。**建议**：后台列表也走 `usePageQuery`。
 - [x] **FE-18 · P3（新增 `front/constants/uploads.ts` 单一来源 + `formatMB()`，提示语不再硬编码 MB 数字）** 上传上限/尺寸文案散落 7 处硬编码（`ArticleForm.vue:49-50,91,242,286,332,360,371`：20MB/50MB/10MB/60MB/1920/100MB），与后端 `covers.py`/`images.py`/`nginx.conf` 阈值靠人肉同步。**建议**：后端出一个 `GET /admin/limits/`（已有 `import/limits/` 可扩展）或前端单一 `constants/uploads.ts`。
 - [x] **FE-19 · P3（新增 `app.config.ts` 的 `site.name/tagline` 单一来源；nuxt.config 的静态 head 默认值需手工同步，已在文件内注明）** 品牌名「旅行游记」硬编码于 `layouts/default.vue:50,121`、`layouts/admin.vue:35,44`、`login.vue:32`、`index.vue:38` 等多处。**建议**：收敛到 `app.config.ts`。
-- [ ] **FE-20 · P3** `useSkinMotion.ts:12-14` 用 Tailwind 类名（`article.group`、`a.rounded-2xl`、`a.bg-brand-600`）当动效选择器锚点——改一个工具类动效就静默失效。**建议**：改语义 `data-*` 属性锚点。
+- [x] **FE-20 · P3（改用 `data-skin` 语义锚点，JS 选择器与两套皮肤 CSS 同步替换，元素集合与旧选择器一致）** `useSkinMotion.ts:12-14` 用 Tailwind 类名（`article.group`、`a.rounded-2xl`、`a.bg-brand-600`）当动效选择器锚点——改一个工具类动效就静默失效。**建议**：改语义 `data-*` 属性锚点。
 - [ ] **FE-21 · P3** 皮肤动效在非默认皮肤下常驻 2 个 rAF 循环（粒子 + 光晕）+ 全子树 `MutationObserver`（`useSkinMotion.ts:143-278,281-321,333-337`），低端设备滚动掉帧风险；已做 reduced-motion/`pointer:fine` 降级但无 FPS/长任务保护。**建议**：离屏暂停 rAF、Observer 只观察新增节点。
 - [ ] **FE-22 · P3** SSR 公开页在 setup 顶层 `await` 且回源要再经一跳 nginx（`useApi.ts:48`），后端慢则整页白屏，无超时/降级。**建议**：`useAsyncData` 加 `lazy` 或超时 + 骨架屏。
 - [ ] **FE-23 · P3** 日期格式化三处各写各的：`components/ArticleCard.vue:6-11`、`pages/article/[slug].vue:11-16`、`articles/index.vue:602,634`（后者直接 `toLocaleString`）。**建议**：抽 `utils/date.ts` 统一格式与 `Asia/Shanghai` 口径。

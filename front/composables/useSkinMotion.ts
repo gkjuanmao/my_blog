@@ -9,9 +9,13 @@
  * - 用 MutationObserver 兜住异步渲染出来/路由切换后的列表与新节点
  * - 皮肤切回默认 / 离开公开页时自动清理，不残留 class / 画布 / 监听器
  */
-const REVEAL_SELECTOR = 'article.group, a.rounded-2xl, h1, h2, h3, .md-body > *'
-const TILT_SELECTOR = 'article.group, a.rounded-2xl'
-const MAGNETIC_SELECTOR = '.el-button:not(.is-text):not(.is-link), a.bg-brand-600'
+// 动效锚点用语义 data-skin 属性（见 components/ArticleCard.vue、pages/categories.vue、
+// pages/article/[slug].vue），避免改了 Tailwind 工具类（如 rounded-2xl / bg-brand-600）
+// 后动效静默失效（FE-20）。
+const CARD_SELECTOR = '[data-skin="card"], [data-skin="card-link"]'
+const REVEAL_SELECTOR = `${CARD_SELECTOR}, h1, h2, h3, .md-body > *`
+const TILT_SELECTOR = CARD_SELECTOR
+const MAGNETIC_SELECTOR = '.el-button:not(.is-text):not(.is-link), [data-skin="button"]'
 const ALL_SELECTOR = [REVEAL_SELECTOR, TILT_SELECTOR, MAGNETIC_SELECTOR].join(',')
 const REVEAL_MS = 900
 

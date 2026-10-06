@@ -173,22 +173,25 @@ html.skin-neon .public-shell .hover\:border-brand-500:hover {
   border-color: var(--skin-primary);
 }
 
-html.skin-neon .public-shell .rounded-2xl {
+/* 用语义 data-skin 锚点（而非 rounded-2xl 工具类），避免改工具类后皮肤静默失效 */
+html.skin-neon .public-shell [data-skin='surface'],
+html.skin-neon .public-shell [data-skin='card'],
+html.skin-neon .public-shell [data-skin='card-link'] {
   border-radius: 12px;
 }
 
 /* 卡片：玻璃拟态 + 悬停霓虹发光 */
-html.skin-neon .public-shell article.group {
+html.skin-neon .public-shell [data-skin='card'] {
   border-color: var(--skin-border);
   box-shadow: var(--skin-shadow);
 }
 
-html.skin-neon .public-shell article.group:hover {
+html.skin-neon .public-shell [data-skin='card']:hover {
   border-color: rgba(0, 255, 136, 0.5);
   box-shadow: var(--skin-shadow-lg);
 }
 
-html.skin-neon .public-shell a.rounded-2xl:hover {
+html.skin-neon .public-shell [data-skin='card-link']:hover {
   border-color: rgba(0, 255, 136, 0.5);
   box-shadow: var(--skin-shadow-lg);
 }
@@ -224,7 +227,7 @@ html.skin-neon .el-button--warning:not(.is-plain):not(.is-text):not(.is-link) {
   box-shadow: var(--skin-glow);
 }
 
-html.skin-neon .public-shell a.bg-brand-600 {
+html.skin-neon .public-shell [data-skin='button'] {
   background-color: #00ff88;
   border-radius: 999px;
   color: #04120b;

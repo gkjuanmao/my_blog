@@ -29,6 +29,7 @@ try {
         v-for="category in categories"
         :key="category.id"
         :to="`/category/${category.slug}`"
+        data-skin="card-link"
         class="rounded-2xl border border-stone-200 bg-white p-5 transition-all hover:-translate-y-1 hover:shadow-md dark:border-stone-700 dark:bg-stone-900"
       >
         <h2 class="mb-1 text-lg font-semibold text-brand-600 dark:text-amber-400">{{ category.name }}</h2>

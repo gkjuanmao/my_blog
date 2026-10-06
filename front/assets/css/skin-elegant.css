@@ -165,22 +165,25 @@ html.skin-elegant .public-shell .hover\:border-brand-500:hover {
 }
 
 /* 圆角统一收成 8px（0627 的观感），药丸元素单独保留 */
-html.skin-elegant .public-shell .rounded-2xl {
+/* 用语义 data-skin 锚点（而非 rounded-2xl 工具类），避免改工具类后皮肤静默失效 */
+html.skin-elegant .public-shell [data-skin='surface'],
+html.skin-elegant .public-shell [data-skin='card'],
+html.skin-elegant .public-shell [data-skin='card-link'] {
   border-radius: 8px;
 }
 
 /* 卡片：柔和阴影 + 悬停金边、加重阴影 */
-html.skin-elegant .public-shell article.group {
+html.skin-elegant .public-shell [data-skin='card'] {
   border-color: var(--skin-border);
   box-shadow: var(--skin-shadow);
 }
 
-html.skin-elegant .public-shell article.group:hover {
+html.skin-elegant .public-shell [data-skin='card']:hover {
   border-color: rgba(201, 164, 106, 0.42);
   box-shadow: var(--skin-shadow-lg);
 }
 
-html.skin-elegant .public-shell a.rounded-2xl:hover {
+html.skin-elegant .public-shell [data-skin='card-link']:hover {
   border-color: rgba(201, 164, 106, 0.42);
   box-shadow: var(--skin-shadow-lg);
 }
@@ -216,7 +219,7 @@ html.skin-elegant .el-button--warning:not(.is-plain):not(.is-text):not(.is-link)
 }
 
 /* 附件下载等自定义链接按钮 */
-html.skin-elegant .public-shell a.bg-brand-600 {
+html.skin-elegant .public-shell [data-skin='button'] {
   background-color: #211f1a;
   border-radius: 999px;
   color: #fffaf0;

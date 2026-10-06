@@ -68,7 +68,7 @@ useHead(() => ({
 
 <template>
   <article v-if="article" class="space-y-6">
-    <div class="overflow-hidden rounded-2xl bg-stone-100 dark:bg-stone-800">
+    <div data-skin="surface" class="overflow-hidden rounded-2xl bg-stone-100 dark:bg-stone-800">
       <img
         v-if="article.cover_image_url && !coverError"
         :src="article.cover_image_url"
@@ -116,6 +116,7 @@ useHead(() => ({
         :download="article.file_name"
         target="_blank"
         rel="noopener"
+        data-skin="button"
         class="rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 dark:bg-amber-600 dark:hover:bg-amber-500"
       >
         下载附件（{{ article.file_name }}）

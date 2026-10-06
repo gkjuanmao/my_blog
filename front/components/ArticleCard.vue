@@ -23,6 +23,7 @@ function handleClick() {
 
 <template>
   <article
+    data-skin="card"
     class="group cursor-pointer overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-stone-700 dark:bg-stone-900"
     @click="handleClick"
   >
