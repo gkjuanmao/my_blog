@@ -22,6 +22,18 @@ services:
       - ./db_data:/app/db_data:z
       - archives:/app/private_archives
       - apptmp:/app/tmp
+    # 就绪探活：容器内无 curl，用 Python 直接打公开接口（OPS-02）
+    # start_period 留足首次启动 migrate/collectstatic 的时间
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/articles/', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       - redis
 
@@ -31,6 +43,11 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     # 容器崩溃或宿主重启后自愈（OPS-01）
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   nginx:
     image: nginx:1.27
@@ -45,9 +62,12 @@ services:
       - "18888:18888"
     # 容器崩溃或宿主重启后自愈（OPS-01）
     restart: unless-stopped
+    # 等 app 真正就绪再起 nginx，避免 app 未起时报 502（OPS-02）
     depends_on:
-      - app
-      - front
+      app:
+        condition: service_healthy
+      front:
+        condition: service_started
 
   front:
     build:
@@ -59,7 +79,8 @@ services:
     # 容器崩溃或宿主重启后自愈（OPS-01）
     restart: unless-stopped
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
 volumes:
   staticfiles:

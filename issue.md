@@ -95,7 +95,7 @@
 ## OPS 运维部署
 
 - [x] **OPS-01 · P1** `docker-compose.yml` 服务全部**无 `restart:` 策略** —— 容器崩溃或宿主重启后不会自愈。**建议**：app/front/nginx/redis 统一 `restart: unless-stopped`。
-- [ ] **OPS-02 · P1** **无 healthcheck**：compose 无 `healthcheck:`、Dockerfile 无 `HEALTHCHECK` 指令 —— 绕开 `blog.sh` 直接 `docker compose up` 时无就绪判定，nginx 会在 app 未起时 502。**建议**：app 加 `curl /api/v1/articles/` 探活，nginx `depends_on: condition: service_healthy`。
+- [x] **OPS-02 · P1（app/redis 加 healthcheck，nginx/front 用 `condition: service_healthy`；注意 podman-compose 对 condition 支持有限，已在 AGENTS.md 注明）** **无 healthcheck**：compose 无 `healthcheck:`、Dockerfile 无 `HEALTHCHECK` 指令 —— 绕开 `blog.sh` 直接 `docker compose up` 时无就绪判定，nginx 会在 app 未起时 502。**建议**：app 加 `curl /api/v1/articles/` 探活，nginx `depends_on: condition: service_healthy`。
 - [ ] **OPS-03 · P1** nginx 对 **`/admin/`（Django admin 登录页）与 `/api/v1/login/` 无 `limit_req`**：现有 zone 只覆盖 archive(1r/s) 与 preview(5r/s)（`docker/nginx/nginx.conf:5,9`）；API 层只有应用内缓存限流，admin session 登录完全无限流。**建议**：新增 `limit_req_zone` 覆盖这两个 location（如 5r/s burst=10）。
 - [ ] **OPS-04 · P2** `.env.example` 中 `REDIS_URL` 处于**注释状态**，而 prod 无 Redis 时会回落 LocMemCache 并触发 RuntimeWarning（`prod.py:51-73`）—— 手工 `DJANGO_ENV=prod` 本地跑极易漏配，导致导入锁/登录限流在 3 worker 下各自为政。**建议**：`.env.example` 默认启用该行并加醒目注释（compose 已注入，风险主要在手工路径）。
 - [ ] **OPS-05 · P2** 纯 HTTP + nginx 端口绑 `0.0.0.0`（`docker-compose.yml` `18888:18888`），`DJANGO_USE_TLS` 默认关 —— 内网取舍可接受，但 TLS 启用路径（`DJANGO_USE_TLS` + `SECURE_PROXY_SSL_HEADER` + HSTS）从未实测验证。**建议**：至少做一次 TLS 演练并把步骤写入 `docs/`。
