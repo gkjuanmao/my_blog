@@ -1,75 +1,51 @@
-# Nuxt Minimal Starter
+# 个人博客前端（Nuxt 3）
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+本目录是博客的前端应用，通过 `/api/v1/` 调用同仓的 Django 后端。整体部署方式见仓库根目录的 `AGENTS.md` 与 `DESIGN.md`（设计 SSOT）。
 
-## Setup
+## 技术栈
 
-Make sure to install dependencies:
+- Nuxt 3（Vue 3 + TypeScript，SSR）
+- Tailwind CSS + Element Plus（`@element-plus/nuxt`，中文 locale）
+- `@nuxtjs/color-mode`（亮/暗模式）、`@nuxt/icon`（构建期内联 lucide 图标，离线可用）
+
+## 目录速览
+
+- `pages/` — 前台页面（首页/搜索/分类/标签/文章详情）+ `pages/administrator/` 后台（登录、文章、分类、标签）
+- `layouts/` — `default`（前台外壳）与 `admin`（后台外壳）
+- `components/` — 公共组件，`components/admin/` 为后台专用
+- `composables/` — `useApi`（统一请求与鉴权）、`usePageQuery`（分页写 URL）、`useSkinMotion` 等
+- `types/api.ts` — 后端响应类型声明
+
+## 本地开发
+
+前端需配合后端一起跑。先启动后端（默认 `http://127.0.0.1:8000`）：
 
 ```bash
-# npm
+# 仓库根目录
+uv run python manage.py runserver 0.0.0.0:8000
+```
+
+再启动前端 dev server（默认 `http://localhost:5173`）：
+
+```bash
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
 npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+`nuxt.config.ts` 的 `nitro.devProxy` 已把 `/api/`、`/media/` 反代到 `127.0.0.1:8000`，无需额外配置 CORS。
 
-Build the application for production:
+## 类型检查
+
+提交前请运行（与仓库质量门禁一致，`blog.sh check --front` 也会跑）：
 
 ```bash
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
 ```
 
-Locally preview production build:
+## 构建与部署
 
 ```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+npm run build     # 产出 .output（自包含，无需 node_modules）
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+生产由 `front/Dockerfile` 多阶段构建，容器内以 `.output` 运行；对外仅经 nginx（`:18888`）访问，前端运行时通过 `NUXT_PUBLIC_API_BASE=/api/v1/` 调用后端。完整部署/离线镜像流程见 `docs/OFFLINE_IMAGE_DEPLOY.md`。
