@@ -26,5 +26,8 @@ private_archives/
 .obsidian/
 .omo/
 
+# 本地个人脚本（不属项目代码；Ruff 默认尊重 .gitignore，忽略后 Lint 门禁才干净）
+shrink_images.py
+
 # SQLite 数据目录（bind mount 持久化）
 db_data/

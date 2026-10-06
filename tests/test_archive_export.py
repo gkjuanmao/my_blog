@@ -90,7 +90,9 @@ class TestExportFlow:
         download = api_client.get(data['download_url'])
         assert download.status_code == 200
         assert download['Content-Disposition'].startswith('attachment')
-        assert download['Content-Type'] == 'application/zip'
+        # mimetypes 对 .zip 的判定依赖操作系统：Linux 为 application/zip，
+        # Windows 注册表给出 application/x-zip-compressed。两者都算正确，不做平台绑定。
+        assert download['Content-Type'] in ('application/zip', 'application/x-zip-compressed')
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes(download))) as zf:
             names = zf.namelist()
