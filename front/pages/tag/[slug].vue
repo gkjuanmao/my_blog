@@ -15,8 +15,10 @@ const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(true)
 const errorMsg = ref('')
+const guard = useRequestGuard()
 
 async function fetchData() {
+  const seq = guard.begin()
   loading.value = true
   errorMsg.value = ''
   try {
@@ -28,14 +30,16 @@ async function fetchData() {
         tag_slug: slug.value,
       }),
     ])
+    if (!guard.isLatest(seq)) return
     tag.value = tagRes.data.find((t) => t.slug === slug.value) ?? null
     articles.value = artRes.data.items
     total.value = artRes.data.total
     clampPage(artRes.data.total, pageSize.value)
   } catch (e: any) {
+    if (!guard.isLatest(seq)) return
     errorMsg.value = e?.message ?? '加载失败'
   } finally {
-    loading.value = false
+    if (guard.isLatest(seq)) loading.value = false
   }
 }
 

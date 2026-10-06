@@ -34,8 +34,10 @@ const errorMsg = ref('')
 /** 当前勾选的文章 id（切换分页时清空） */
 const selectedIds = ref<number[]>([])
 const tableRef = ref<any>(null)
+const guard = useRequestGuard()
 
 async function fetchArticles() {
+  const seq = guard.begin()
   loading.value = true
   errorMsg.value = ''
   try {
@@ -48,13 +50,15 @@ async function fetchArticles() {
     if (categorySlug.value) params.category_slug = categorySlug.value
     if (status.value) params.is_published = status.value
     const { data } = await useApi().get<PaginatedResponse<Article>>('/admin/articles/', params)
+    if (!guard.isLatest(seq)) return
     articles.value = data.items
     total.value = data.total
     clearSelection()
   } catch (e: any) {
+    if (!guard.isLatest(seq)) return
     errorMsg.value = e?.data?.message ?? '加载失败'
   } finally {
-    loading.value = false
+    if (guard.isLatest(seq)) loading.value = false
   }
 }
 

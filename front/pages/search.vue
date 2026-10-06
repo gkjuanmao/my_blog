@@ -19,9 +19,11 @@ const results = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(false)
 const errorMsg = ref('')
+const guard = useRequestGuard()
 
 async function doSearch() {
   if (!searched.value) return
+  const seq = guard.begin()
   loading.value = true
   errorMsg.value = ''
   try {
@@ -30,13 +32,15 @@ async function doSearch() {
       page: page.value,
       page_size: pageSize.value,
     })
+    if (!guard.isLatest(seq)) return
     results.value = data.items
     total.value = data.total
     clampPage(data.total, pageSize.value)
   } catch (e: any) {
+    if (!guard.isLatest(seq)) return
     errorMsg.value = e?.message ?? '搜索失败'
   } finally {
-    loading.value = false
+    if (guard.isLatest(seq)) loading.value = false
   }
 }
 

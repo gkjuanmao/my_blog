@@ -11,8 +11,10 @@ const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(true)
 const errorMsg = ref('')
+const guard = useRequestGuard()
 
 async function fetchArticles() {
+  const seq = guard.begin()
   loading.value = true
   errorMsg.value = ''
   try {
@@ -20,13 +22,15 @@ async function fetchArticles() {
       page: page.value,
       page_size: pageSize.value,
     })
+    if (!guard.isLatest(seq)) return
     articles.value = data.items
     total.value = data.total
     clampPage(data.total, pageSize.value)
   } catch (e: any) {
+    if (!guard.isLatest(seq)) return
     errorMsg.value = e?.message ?? '加载失败'
   } finally {
-    loading.value = false
+    if (guard.isLatest(seq)) loading.value = false
   }
 }
 
