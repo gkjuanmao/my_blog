@@ -107,8 +107,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-# 全局静态文件目录（按需创建）
-STATICFILES_DIRS = [BASE_DIR / 'static']
+# 全局静态文件目录：目录不存在时不加入，避免 manage.py check 报 staticfiles.W004
+STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').is_dir() else []
 
 # 生产环境 collectstatic 的输出目录
 STATIC_ROOT = BASE_DIR / 'staticfiles'

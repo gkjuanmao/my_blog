@@ -76,7 +76,7 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - django-ninja 的 `Schema` 内部有 `model_validator(mode='wrap')`，会把输入包装成只读 `DjangoGetter` —— 在 schema 里写 `mode='before'` 的 `model_validator` 会静默失效（无法修改值），需在 API 层处理（如 slug 自动生成）。
 - Django 6 的测试 `Client.put` 默认以 `application/octet-stream` 发送且把 dict `str()` 化 —— PUT 测试须显式传 `content_type='application/x-www-form-urlencoded'` + `urlencode(data)`。
 - PUT/PATCH multipart 需要 `ninja.compatibility.files.fix_request_files_middleware`（已在 `base.py` 的 MIDDLEWARE 中）。
-- `templates/` 和 `static/` 存在但为空 —— 新增模板/静态文件时创建文件即可。
+- `templates/`、`static/` 目录当前**均不存在**（`TEMPLATES['DIRS']` 仍指向 `templates/`，仅作占位、Django 不会告警；`STATICFILES_DIRS` 已改为「目录存在才加入」以避免 `staticfiles.W004`）—— 新增模板/静态文件时创建对应目录即可。
 - `docker-compose.yml` 含 4 个服务（app/redis/nginx/front），app 已通过 compose 环境注入 `REDIS_URL=redis://redis:6379/0`（redis 仅作缓存/锁，不持久化）；`prod.py` 中 PostgreSQL 仍是注释 TODO（预留，未启用）。
 - **Dockerfile 的 `uv sync --frozen` 必须与 `uv.lock` 一起 `COPY`**（`COPY pyproject.toml uv.lock ./`）：只 `COPY pyproject.toml` 会导致容器内缺 lockfile，`uv sync --frozen` 直接退出码 2 构建失败；`.dockerignore` 不应排除 `uv.lock`。
 - **`uv.lock` 的源是清华 TUNA 镜像**（仓库内已固化）：因此 Dockerfile **不再需要**构建期 `sed` 换源；也与本机 `~/.config/uv/uv.toml` 的默认源一致，所以 plain `uv run` 不会再重写 lock（若把 lock 换回 pypi.org，这个坑会重新出现）。
