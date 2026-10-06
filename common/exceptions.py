@@ -14,18 +14,31 @@ def _error_response(code: int, message) -> JsonResponse:
     return JsonResponse({'code': code, 'message': message, 'data': None}, status=code)
 
 
+def _flatten_validation_message(exc: ValidationError) -> str:
+    """把 ValidationError 拍平成单行字符串。
+
+    前端统一按字符串展示 ``message``，直接返回 ``message_dict``/``messages``
+    会被渲染成 ``[object Object]``，故在此收敛为 ``字段: 文案`` 以 ``; `` 连接。
+    """
+    if hasattr(exc, 'message_dict') and exc.message_dict:
+        parts = []
+        for field, messages in exc.message_dict.items():
+            for message in messages:
+                parts.append(str(message) if field == '__all__' else f'{field}: {message}')
+        return '; '.join(parts)
+    if exc.messages:
+        return '; '.join(str(message) for message in exc.messages)
+    return str(exc)
+
+
 def handle_http_error(request: HttpRequest, exc: HttpError) -> JsonResponse:
     """处理业务抛出的 HttpError（如 400/401/404），返回统一信封。"""
     return _error_response(exc.status_code, exc.message)
 
 
 def handle_validation_error(request: HttpRequest, exc: ValidationError) -> JsonResponse:
-    """处理 Django 模型 / 表单校验错误，返回 400。"""
-    if hasattr(exc, 'message_dict') and exc.message_dict:
-        return _error_response(400, exc.message_dict)
-    if exc.messages:
-        return _error_response(400, exc.messages)
-    return _error_response(400, str(exc))
+    """处理 Django 模型 / 表单校验错误，返回 400（message 恒为单行字符串）。"""
+    return _error_response(400, _flatten_validation_message(exc))
 
 
 def handle_exception(request: HttpRequest, exc: Exception) -> JsonResponse:
