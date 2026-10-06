@@ -30,6 +30,10 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - `prod`：`DEBUG=False`，缺 `DJANGO_SECRET_KEY` 会抛 `RuntimeError`。TLS/CSRF/缓存均已环境化：`DJANGO_USE_TLS=true` 才开启 `SECURE_SSL_REDIRECT`/安全 Cookie/`SECURE_PROXY_SSL_HEADER`，`DJANGO_SECURE_HSTS_SECONDS`（默认 0）控制 HSTS，`DJANGO_CSRF_TRUSTED_ORIGINS` 配置信任来源，设置 `REDIS_URL` 则用 Redis 缓存（否则回落 LocMemCache）；`ALLOWED_HOSTS` 空值回落 `localhost,127.0.0.1`。`prod.py` 中的 PostgreSQL 配置仍是注释 TODO —— prod 目前实际仍用 SQLite（docker-compose 已不含 db 服务，但保留 redis 服务）。
 - `.env` 仅被 docker-compose 的 `env_file` 消费；Django 不会自动加载。本地跑 prod 需手动 export，例如 `DJANGO_ENV=prod DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=127.0.0.1 uv run python manage.py runserver`。
 - **SQLite 并发上限与备份（prod 取舍）**：prod 实际用 SQLite（`db_data/db.sqlite3`，`OPTIONS.timeout=20`）。SQLite 同一时刻只允许**一个写者**，而 gunicorn 是 `3 workers × 4 threads`：写入密集时（归档导入/批量删除）可能出现 `database is locked`，已用 `timeout=20` + 导入缓存锁串行化缓解；读多写少的博客场景足够。**备份/恢复**：SQLite 是单文件，备份用 `sqlite3 db_data/db.sqlite3 ".backup '<目标文件>'"`（在线、一致快照，优于直接 `cp`），恢复即停容器后替换文件；**误删 `db_data/` 或 `down --purge` 会丢失全站数据**。若并发写显著增长，再启用 PostgreSQL（`prod.py` 的 `DATABASES` 已预留、compose 需加 db 服务）。
+- **并发 / 多 worker 的已知限制（TEST-12：不做自动化覆盖 —— pytest 跑 LocMemCache 单进程，复现不了跨进程语义；这些行为只能在部署机验证）**：
+  1. **缓存后端决定锁的语义**：prod 经 compose 注入 `REDIS_URL` → 导入锁、导入最小间隔、登录限流都是**跨 worker 全局**的；若手工跑 prod 未设 `REDIS_URL`（`prod.py` 会发 `RuntimeWarning`）则回落 LocMemCache，每个 gunicorn worker 各持一份缓存 → `archive/import` 的单写者锁退化为**每 worker 一把**、登录限流被放大到 N 倍。**生产必须配 Redis**。
+  2. **nginx 与 Django 的导入限流分工**：`limit_conn archive_conn 2`（`docker/nginx/nginx.conf`）挡的是同 IP 并发**连接**（连接层）；Django 的 `archive/locks.py` 全局 `import_lock`（cache `SET NX`，缓存不可用 fail-closed 503）挡的是**业务单写者**（并发的第二个请求 409）。两者互补：缺前者时同 IP 可开多条连接把 worker 占满。
+  3. **`views` 用 `F('views') + 1` 原子自增**（`articles/api.py:294`），计数在 SQL 层完成，并发阅读**不会丢更新**；但归档 `update` 走 `save(update_fields=…)` 且**不读不写 `views`**（整篇 `save()` 会用旧快照把计数写回去，已实测复现），`auto_now` 的 `updated_at` 也必须显式列入 `update_fields`。
 
 ## 应用结构
 
