@@ -25,7 +25,7 @@ const { data: article, pending, error: fetchError } = await useAsyncData<Article
 const hasContent = computed(() => Boolean(article.value?.content_html?.trim()))
 
 // ------------------------------------------------------------------ SEO
-const SITE_NAME = '旅行游记'
+const { site: siteConfig } = useAppConfig()
 const origin = useRequestURL().origin
 const ogImage = computed(() =>
   article.value?.cover_image_url
@@ -36,8 +36,9 @@ const ogImage = computed(() =>
 useSeoMeta({
   title: () => article.value?.title ?? '文章',
   description: () =>
-    article.value?.summary || `「${article.value?.title ?? SITE_NAME}」— ${SITE_NAME}`,
-  ogTitle: () => article.value?.title ?? SITE_NAME,
+    article.value?.summary ||
+    `「${article.value?.title ?? siteConfig.name}」— ${siteConfig.name}`,
+  ogTitle: () => article.value?.title ?? siteConfig.name,
   ogDescription: () => article.value?.summary || undefined,
   ogType: 'article',
   ogImage: () => ogImage.value,

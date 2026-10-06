@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { LoginResponse } from '~/types/api'
 
+const { site } = useAppConfig()
+
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
 const rules = {
@@ -29,7 +31,7 @@ async function handleLogin() {
   <div class="flex min-h-[80vh] items-center justify-center px-4">
     <el-card class="w-full max-w-md">
       <template #header>
-        <div class="text-center text-xl font-serif font-bold text-brand-600 dark:text-amber-500">旅行游记 · 管理登录</div>
+        <div class="text-center text-xl font-serif font-bold text-brand-600 dark:text-amber-500">{{ site.name }} · 管理登录</div>
       </template>
       <el-form :model="form" :rules="rules" label-position="top" @submit.prevent="handleLogin">
         <el-form-item label="用户名" prop="username">

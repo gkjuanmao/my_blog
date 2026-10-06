@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { site } = useAppConfig()
+
 const navItems = [
   { label: '仪表盘', to: '/administrator' },
   { label: '文章管理', to: '/administrator/articles' },
@@ -40,7 +42,7 @@ watch(
       >
         <Icon name="lucide:menu" class="h-5 w-5" />
       </button>
-      <span class="text-lg font-serif font-bold text-brand-600 dark:text-amber-500">旅行游记 · 管理</span>
+      <span class="text-lg font-serif font-bold text-brand-600 dark:text-amber-500">{{ site.name }} · 管理</span>
     </header>
 
     <div v-if="sidebarOpen" class="fixed inset-0 z-30 bg-black/40 md:hidden" @click="sidebarOpen = false" />
@@ -49,7 +51,7 @@ watch(
       class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-stone-200 bg-stone-100 transition-transform duration-200 dark:border-stone-800 dark:bg-stone-950 md:translate-x-0"
       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
-      <div class="px-6 py-5 text-xl font-serif font-bold text-brand-600 dark:text-amber-500">旅行游记 · 管理</div>
+      <div class="px-6 py-5 text-xl font-serif font-bold text-brand-600 dark:text-amber-500">{{ site.name }} · 管理</div>
       <nav class="flex-1 space-y-1 px-3 py-2">
         <NuxtLink
           v-for="item in navItems"

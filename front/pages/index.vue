@@ -2,10 +2,11 @@
 import type { Article, PaginatedResponse } from '~/types/api'
 
 const { page, pageSize, clampPage } = usePageQuery()
+const { site } = useAppConfig()
 
 useSeoMeta({
-  title: '旅行游记',
-  description: '记录山川湖海，也收藏人间烟火。',
+  title: () => site.name,
+  description: site.tagline,
 })
 const articles = ref<Article[]>([])
 const total = ref(0)
@@ -44,8 +45,8 @@ await fetchArticles()
       <div class="flex items-center gap-4">
         <div class="flex h-16 w-16 items-center justify-center rounded-full bg-brand-100 text-2xl text-brand-600 dark:bg-brand-900/40 dark:text-amber-400">旅</div>
         <div>
-          <h1 class="text-2xl font-serif font-bold text-stone-900 dark:text-stone-100">旅行游记</h1>
-          <p class="text-sm text-stone-500 dark:text-stone-400">记录山川湖海，也收藏人间烟火。</p>
+          <h1 class="text-2xl font-serif font-bold text-stone-900 dark:text-stone-100">{{ site.name }}</h1>
+          <p class="text-sm text-stone-500 dark:text-stone-400">{{ site.tagline }}</p>
         </div>
       </div>
     </section>

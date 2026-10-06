@@ -2,6 +2,7 @@
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
+const { site } = useAppConfig()
 const { skin, skinClass, isSkinActive } = useAppTheme()
 
 // 皮肤动效（滚动揭示/卡片倾斜/按钮磁场），仅在非默认皮肤且非 reduced-motion 时生效
@@ -47,7 +48,7 @@ watch(
     <header class="sticky top-0 z-10 border-b border-stone-200 bg-paper-light/80 backdrop-blur dark:border-stone-800 dark:bg-stone-900/80">
       <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <NuxtLink to="/" class="text-xl font-serif font-bold tracking-wide text-brand-600 dark:text-amber-500 sm:text-2xl">
-          旅行游记
+          {{ site.name }}
         </NuxtLink>
 
         <nav class="hidden items-center gap-6 md:flex">
@@ -118,7 +119,7 @@ watch(
     </main>
 
     <footer class="border-t border-stone-200 py-6 text-center text-sm text-stone-500 dark:border-stone-800 dark:text-stone-400">
-      © 2026 旅行游记 · 文艺 · 极简
+      © 2026 {{ site.name }} · 文艺 · 极简
     </footer>
   </div>
 </template>
