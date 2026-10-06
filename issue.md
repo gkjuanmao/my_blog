@@ -71,7 +71,7 @@
 - [x] **FE-21 · P3（两个 rAF 循环改为「离屏 / 后台标签页暂停」，hero 画布加 IntersectionObserver；MutationObserver 仅在有新增节点时重扫）** 皮肤动效在非默认皮肤下常驻 2 个 rAF 循环（粒子 + 光晕）+ 全子树 `MutationObserver`（`useSkinMotion.ts:143-278,281-321,333-337`），低端设备滚动掉帧风险；已做 reduced-motion/`pointer:fine` 降级但无 FPS/长任务保护。**建议**：离屏暂停 rAF、Observer 只观察新增节点。
 - [x] **FE-22 · P3（请求统一 15s 超时：后端失联时 SSR 不再无限白屏，转为页面内错误提示；骨架屏属视觉增强未做）** SSR 公开页在 setup 顶层 `await` 且回源要再经一跳 nginx（`useApi.ts:48`），后端慢则整页白屏，无超时/降级。**建议**：`useAsyncData` 加 `lazy` 或超时 + 骨架屏。
 - [x] **FE-23 · P3（新增 `utils/date.ts`：`formatDate`/`formatDateTime` 统一 Asia/Shanghai 口径，并补 2 个 vitest 用例）** 日期格式化三处各写各的：`components/ArticleCard.vue:6-11`、`pages/article/[slug].vue:11-16`、`articles/index.vue:602,634`（后者直接 `toLocaleString`）。**建议**：抽 `utils/date.ts` 统一格式与 `Asia/Shanghai` 口径。
-- [ ] **FE-24 · P3** 亮/暗切换按钮在 `layouts/default.vue` 写了两遍（`:63-75` 桌面 vs `:80-91` 移动，仅 class 细微差异）。**建议**：抽子组件传入 class 差异。
+- [x] **FE-24 · P3（抽出 `components/ThemeToggle.vue`，`hoverable` 控制桌面/移动 class 差异）** 亮/暗切换按钮在 `layouts/default.vue` 写了两遍（`:63-75` 桌面 vs `:80-91` 移动，仅 class 细微差异）。**建议**：抽子组件传入 class 差异。
 
 ---
 

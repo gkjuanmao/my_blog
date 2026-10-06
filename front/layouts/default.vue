@@ -1,9 +1,6 @@
 <script setup lang="ts">
-const colorMode = useColorMode()
-const isDark = computed(() => colorMode.value === 'dark')
-
 const { site } = useAppConfig()
-const { skin, skinClass, isSkinActive } = useAppTheme()
+const { skin, skinClass } = useAppTheme()
 
 // 皮肤动效（滚动揭示/卡片倾斜/按钮磁场），仅在非默认皮肤且非 reduced-motion 时生效
 useSkinMotion()
@@ -19,11 +16,6 @@ if (import.meta.server) {
     el.classList.toggle('skin-neon', skin.value === 'neon')
   })
   onBeforeUnmount(() => document.documentElement.classList.remove('skin-elegant', 'skin-neon'))
-}
-
-function toggleColorMode() {
-  if (isSkinActive.value) return
-  colorMode.preference = isDark.value ? 'light' : 'dark'
 }
 
 const navLinks = [
@@ -61,35 +53,12 @@ watch(
             {{ link.label }}
           </NuxtLink>
           <SkinSwitcher />
-          <button
-            type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-full border transition-colors"
-            :class="isSkinActive
-              ? 'cursor-not-allowed border-stone-200 text-stone-300 dark:border-stone-800 dark:text-stone-600'
-              : 'border-stone-300 text-stone-600 hover:border-brand-500 hover:text-brand-600 dark:border-stone-700 dark:text-stone-300 dark:hover:border-amber-500 dark:hover:text-amber-400'"
-            :disabled="isSkinActive"
-            :aria-label="isSkinActive ? '当前风格下不可切换亮/暗' : (isDark ? '切换到亮色模式' : '切换到暗色模式')"
-            :title="isSkinActive ? '当前风格下不可切换亮/暗' : '切换亮/暗'"
-            @click="toggleColorMode"
-          >
-            <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="h-5 w-5" />
-          </button>
+          <ThemeToggle />
         </nav>
 
         <div class="flex items-center gap-2 md:hidden">
           <SkinSwitcher />
-          <button
-            type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-full border transition-colors"
-            :class="isSkinActive
-              ? 'cursor-not-allowed border-stone-200 text-stone-300 dark:border-stone-800 dark:text-stone-600'
-              : 'border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300'"
-            :disabled="isSkinActive"
-            :aria-label="isSkinActive ? '当前风格下不可切换亮/暗' : (isDark ? '切换到亮色模式' : '切换到暗色模式')"
-            @click="toggleColorMode"
-          >
-            <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="h-5 w-5" />
-          </button>
+          <ThemeToggle :hoverable="false" />
           <button
             type="button"
             class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300"
