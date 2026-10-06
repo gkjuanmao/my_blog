@@ -13,6 +13,14 @@ function handleLogout() {
 
 const sidebarOpen = ref(false)
 const route = useRoute()
+
+// 客户端确认存在 token 后再渲染后台外壳：SSR/首帧不渲染，避免硬刷新时先闪出后台 UI
+// （真正的跳转由 middleware/auth.global.ts 完成）
+const authed = ref(false)
+onMounted(() => {
+  authed.value = !!localStorage.getItem('access_token')
+})
+
 watch(
   () => route.fullPath,
   () => {
@@ -22,7 +30,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-paper-light text-ink-light dark:bg-stone-900 dark:text-stone-100">
+  <div v-if="authed" class="flex min-h-screen bg-paper-light text-ink-light dark:bg-stone-900 dark:text-stone-100">
     <header class="fixed inset-x-0 top-0 z-30 flex items-center gap-3 border-b border-stone-200 bg-paper-light/90 px-4 py-3 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90 md:hidden">
       <button
         type="button"
