@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { Article, Category, PaginatedResponse } from '~/types/api'
+import { useArticleList } from '~/composables/useArticleList'
 
 const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 
-const { page, pageSize, clampPage } = usePageQuery()
+const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleList()
 const category = ref<Category | null>(null)
 
 useSeoMeta({
@@ -12,36 +13,27 @@ useSeoMeta({
   description: () =>
     category.value?.description || `「${category.value?.name ?? '分类'}」下的全部文章`,
 })
-const articles = ref<Article[]>([])
-const total = ref(0)
-const loading = ref(true)
-const errorMsg = ref('')
-const guard = useRequestGuard()
 
 async function fetchData() {
-  const seq = guard.begin()
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const [catRes, artRes] = await Promise.all([
-      useApi().get<Category[]>('/categories/'),
-      useApi().get<PaginatedResponse<Article>>('/articles/', {
-        page: page.value,
-        page_size: pageSize.value,
-        category_slug: slug.value,
-      }),
-    ])
-    if (!guard.isLatest(seq)) return
-    category.value = catRes.data.find((c) => c.slug === slug.value) ?? null
-    articles.value = artRes.data.items
-    total.value = artRes.data.total
-    clampPage(artRes.data.total, pageSize.value)
-  } catch (e) {
-    if (!guard.isLatest(seq)) return
-    errorMsg.value = errorMessage(e, '加载失败')
-  } finally {
-    if (guard.isLatest(seq)) loading.value = false
-  }
+  // 分类实体与列表必须同一版本：实体在 loader 内取好，但只在「本次响应仍是最新」时应用
+  let resolved: Category | null = null
+  await load(
+    async (pageNum, size) => {
+      const [catRes, artRes] = await Promise.all([
+        useApi().get<Category[]>('/categories/'),
+        useApi().get<PaginatedResponse<Article>>('/articles/', {
+          page: pageNum,
+          page_size: size,
+          category_slug: slug.value,
+        }),
+      ])
+      resolved = catRes.data.find(c => c.slug === slug.value) ?? null
+      return artRes.data
+    },
+    () => {
+      category.value = resolved
+    },
+  )
 }
 
 watch([page, pageSize], fetchData)
@@ -59,16 +51,14 @@ await fetchData()
       {{ category ? category.name : '分类不存在' }}
     </h1>
 
-    <div v-if="loading && articles.length === 0" class="py-16 text-center text-sm text-stone-400">加载中…</div>
-    <div v-else-if="errorMsg" class="py-16 text-center text-sm text-red-500">{{ errorMsg }}</div>
-    <template v-else>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <ArticleCard v-for="article in articles" :key="article.id" :article="article" />
-      </div>
-      <div v-if="articles.length === 0" class="py-16 text-center text-sm text-stone-400">该分类下暂无文章</div>
-      <div v-if="total > 0" class="mt-8 flex justify-center">
-        <AppPagination v-model:page="page" v-model:page-size="pageSize" :total="total" :reset-page-on-size-change="false" />
-      </div>
-    </template>
+    <ArticleListSection
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :articles="articles"
+      :total="total"
+      :loading="loading"
+      :error-msg="errorMsg"
+      empty-text="该分类下暂无文章"
+    />
   </div>
 </template>

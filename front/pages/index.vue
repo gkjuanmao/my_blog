@@ -1,38 +1,23 @@
 <script setup lang="ts">
 import type { Article, PaginatedResponse } from '~/types/api'
+import { useArticleList } from '~/composables/useArticleList'
 
-const { page, pageSize, clampPage } = usePageQuery()
 const { site } = useAppConfig()
+const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleList()
 
 useSeoMeta({
   title: () => site.name,
   description: site.tagline,
 })
-const articles = ref<Article[]>([])
-const total = ref(0)
-const loading = ref(true)
-const errorMsg = ref('')
-const guard = useRequestGuard()
 
-async function fetchArticles() {
-  const seq = guard.begin()
-  loading.value = true
-  errorMsg.value = ''
-  try {
+function fetchArticles() {
+  return load(async (pageNum, size) => {
     const { data } = await useApi().get<PaginatedResponse<Article>>('/articles/', {
-      page: page.value,
-      page_size: pageSize.value,
+      page: pageNum,
+      page_size: size,
     })
-    if (!guard.isLatest(seq)) return
-    articles.value = data.items
-    total.value = data.total
-    clampPage(data.total, pageSize.value)
-  } catch (e) {
-    if (!guard.isLatest(seq)) return
-    errorMsg.value = errorMessage(e, '加载失败')
-  } finally {
-    if (guard.isLatest(seq)) loading.value = false
-  }
+    return data
+  })
 }
 
 watch([page, pageSize], fetchArticles)
@@ -51,16 +36,14 @@ await fetchArticles()
       </div>
     </section>
 
-    <div v-if="loading && articles.length === 0" class="py-16 text-center text-sm text-stone-400">加载中…</div>
-    <div v-else-if="errorMsg" class="py-16 text-center text-sm text-red-500">{{ errorMsg }}</div>
-    <template v-else>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <ArticleCard v-for="article in articles" :key="article.id" :article="article" />
-      </div>
-      <div v-if="articles.length === 0" class="py-16 text-center text-sm text-stone-400">暂无文章</div>
-      <div v-if="total > 0" class="mt-8 flex justify-center">
-        <AppPagination v-model:page="page" v-model:page-size="pageSize" :total="total" :reset-page-on-size-change="false" />
-      </div>
-    </template>
+    <ArticleListSection
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :articles="articles"
+      :total="total"
+      :loading="loading"
+      :error-msg="errorMsg"
+      empty-text="暂无文章"
+    />
   </div>
 </template>
