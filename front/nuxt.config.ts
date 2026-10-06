@@ -1,6 +1,18 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-01',
   devtools: { enabled: true },
+  // 站点级 SEO 默认值（页面只需 useSeoMeta({ title }) 提供页面名；
+  // 标题模板在 app.vue 用函数形式设置：站点名不重复拼接）
+  app: {
+    head: {
+      title: '旅行游记',
+      htmlAttrs: { lang: 'zh-CN' },
+      meta: [
+        { name: 'description', content: '记录山川湖海，也收藏人间烟火。' },
+        { property: 'og:site_name', content: '旅行游记' },
+      ],
+    },
+  },
   modules: [
     '@nuxtjs/tailwindcss',
     '@nuxtjs/color-mode',

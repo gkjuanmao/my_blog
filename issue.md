@@ -50,7 +50,7 @@
 
 - [x] **FE-01 · P0→P1** **refresh_token 写入后全项目从未被读取**：`login.vue:16-17` 写入 `localStorage`，`useApi.ts:59,118` 与 `layouts/admin.vue:10` 只清 `access_token`；access 生命周期仅 2h（`config/settings/base.py:85`）→ 后台每 2 小时被踢回登录页，后端整套 refresh 轮换 + 黑名单机制形同虚设；401 时 `refresh_token` 残留。**建议**：实现 401 → `POST /token/refresh/` 重试队列（利用后端已有的轮换+黑名单），成功后写回新对，失败清空两个 token。
 - [x] **FE-02 · P1** 无路由中间件（`front/middleware/` 不存在）：未登录直接访问 `/administrator/*` 会先渲染后台外壳，等首个 API 401 才被重定向（闪后台 UI）。**建议**：加 `middleware/auth.ts`，client 侧检查 token 存在性 + `definePageMeta` 挂到所有后台页。
-- [ ] **FE-03 · P1** **零 SEO**：全仓 `useHead` 仅用于挂皮肤类（`front/layouts/default.vue:13`），文章页无 `title`/`description`/Open Graph/结构化数据——对博客是流量硬伤。**建议**：`useSeoMeta` 按文章 title/summary/cover 填充，列表页/分类页补默认 title 与 `titleTemplate`。
+- [x] **FE-03 · P1** **零 SEO**：全仓 `useHead` 仅用于挂皮肤类（`front/layouts/default.vue:13`），文章页无 `title`/`description`/Open Graph/结构化数据——对博客是流量硬伤。**建议**：`useSeoMeta` 按文章 title/summary/cover 填充，列表页/分类页补默认 title 与 `titleTemplate`。
 - [ ] **FE-04 · P2** 安全组合风险：JWT 存 `localStorage`（`useApi.ts:41`）+ 多处 `v-html`（`article/[slug].vue:56`、`ArticleForm.vue:293`）+ 无 CSP 头（nginx 未加 `Content-Security-Policy`）——安全性完全外包给后端 nh3 消毒。**建议**：nginx 加基础 CSP；中期考虑 httpOnly cookie 或至少 `Authorization` 内存化。
 - [ ] **FE-05 · P2** 错误提示口径不一致：公开页取 `e?.message`（ofetch 技术串如 `[GET] .../ 500`，`pages/index.vue:22`、`search.vue:32`、`tags.vue:12`、`categories.vue:12`、`category/[slug].vue:31`、`tag/[slug].vue:31`），后台取 `e?.data?.message`。**建议**：`useApi` 统一抛出后端中文 `message`，公开页兜底文案本地化。
 - [ ] **FE-06 · P2** 列表请求无竞态守卫（无 AbortController/请求序号）：公开列表 `pages/index.vue:10-29`、后台 `pages/administrator/articles/index.vue:38-59,477` 快速翻页时旧响应可能覆盖新数据。**建议**：`useApi` 加 signal 透传 + 单调序号丢弃过期响应。

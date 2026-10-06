@@ -5,6 +5,8 @@ const categories = ref<Category[]>([])
 const loading = ref(true)
 const errorMsg = ref('')
 
+useSeoMeta({ title: '分类', description: '按分类浏览全部游记' })
+
 try {
   const { data } = await useApi().get<Category[]>('/categories/')
   categories.value = data

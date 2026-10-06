@@ -5,6 +5,8 @@ const tags = ref<Tag[]>([])
 const loading = ref(true)
 const errorMsg = ref('')
 
+useSeoMeta({ title: '标签', description: '按标签浏览全部游记' })
+
 try {
   const { data } = await useApi().get<Tag[]>('/tags/')
   tags.value = data

@@ -10,6 +10,11 @@ const keyword = computed(() => ((route.query.keyword as string) ?? '').trim())
 const keywordInput = ref(keyword.value)
 const searched = computed(() => keyword.value !== '')
 
+useSeoMeta({
+  title: () => (keyword.value ? `搜索：${keyword.value}` : '搜索'),
+  description: () => (keyword.value ? `与「${keyword.value}」相关的文章` : '搜索文章'),
+})
+
 const results = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(false)

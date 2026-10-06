@@ -23,6 +23,46 @@ const { data: article, pending, error: fetchError } = await useAsyncData<Article
 
 // 正文由服务端渲染并消毒（content_html），前端只做展示，不再引入 markdown 依赖
 const hasContent = computed(() => Boolean(article.value?.content_html?.trim()))
+
+// ------------------------------------------------------------------ SEO
+const SITE_NAME = '旅行游记'
+const origin = useRequestURL().origin
+const ogImage = computed(() =>
+  article.value?.cover_image_url
+    ? new URL(article.value.cover_image_url, origin).toString()
+    : undefined,
+)
+
+useSeoMeta({
+  title: () => article.value?.title ?? '文章',
+  description: () =>
+    article.value?.summary || `「${article.value?.title ?? SITE_NAME}」— ${SITE_NAME}`,
+  ogTitle: () => article.value?.title ?? SITE_NAME,
+  ogDescription: () => article.value?.summary || undefined,
+  ogType: 'article',
+  ogImage: () => ogImage.value,
+  articlePublishedTime: () => article.value?.publish_time ?? undefined,
+  twitterCard: 'summary_large_image',
+})
+
+useHead(() => ({
+  script: article.value
+    ? [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BlogPosting',
+            headline: article.value.title,
+            description: article.value.summary || undefined,
+            image: ogImage.value,
+            datePublished: article.value.publish_time,
+            author: { '@type': 'Person', name: article.value.author },
+          }),
+        },
+      ]
+    : [],
+}))
 </script>
 
 <template>

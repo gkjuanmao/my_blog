@@ -6,6 +6,11 @@ const slug = computed(() => route.params.slug as string)
 
 const { page, pageSize, clampPage } = usePageQuery()
 const tag = ref<Tag | null>(null)
+
+useSeoMeta({
+  title: () => (tag.value ? `标签：${tag.value.name}` : '标签'),
+  description: () => `标签「${tag.value?.name ?? '标签'}」下的全部文章`,
+})
 const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(true)

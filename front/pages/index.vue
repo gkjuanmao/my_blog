@@ -2,6 +2,11 @@
 import type { Article, PaginatedResponse } from '~/types/api'
 
 const { page, pageSize, clampPage } = usePageQuery()
+
+useSeoMeta({
+  title: '旅行游记',
+  description: '记录山川湖海，也收藏人间烟火。',
+})
 const articles = ref<Article[]>([])
 const total = ref(0)
 const loading = ref(true)
