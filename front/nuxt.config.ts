@@ -18,7 +18,6 @@ export default defineNuxtConfig({
     '@nuxtjs/color-mode',
     '@element-plus/nuxt',
     '@nuxt/icon',
-    '@pinia/nuxt',
   ],
   components: [{ path: '~/components', pathPrefix: false }],
   // 图标改为构建期打包进产物。@nuxt/icon 默认在运行时向 api.iconify.design 取图标，
