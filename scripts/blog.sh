@@ -11,7 +11,10 @@
 #   restart [--build]    等价于 down + up
 #   status               容器 / 镜像 / 端口 / 健康 / 归档产物 / 磁盘 一览
 #   logs [服务] [-f]     查看日志（app|nginx|front|redis，默认 app）
-#   check [--no-front]   质量门禁（ruff/mypy/pytest/迁移检查/配置语法/前端 vue-tsc；--no-front 跳过前端）
+#   check [--no-front] [--e2e]
+#                        质量门禁（ruff/mypy/pytest/迁移检查/配置语法/前端 vue-tsc；--no-front 跳过前端，
+#                        --e2e 追加真实链路冒烟）
+#   e2e                  端到端冒烟（对已运行的容器跑登录 → 建文章 → 导出）
 #   install-hooks        启用仓库 git 钩子（pre-push 跑上面的 check，防坏代码直达远端）
 #   export [--out 文件]  导出离线镜像包（4 镜像 → tar + .sha256；省略 --out 用默认名）
 #   import [--in 文件]   目标机：校验 → 加载镜像 → 重建容器 → 健康检查（绝不 --build）
@@ -489,8 +492,12 @@ cmd_logs() {
 # --------------------------------------------------------------------------- check
 cmd_check() {
   # 前端类型检查默认纳入门禁（FE-13）；无前端依赖时降级为 warn。用 --no-front 显式跳过。
-  local with_front=1
-  for arg in "$@"; do [ "$arg" = "--no-front" ] && with_front=0; done
+  # --e2e 额外在**正在运行的容器**上打真实链路冒烟（TEST-09），需先 up。
+  local with_front=1 with_e2e=0
+  for arg in "$@"; do
+    [ "$arg" = "--no-front" ] && with_front=0
+    [ "$arg" = "--e2e" ] && with_e2e=1
+  done
   command -v uv >/dev/null 2>&1 || die "未找到 uv" "https://docs.astral.sh/uv/"
   mkdir -p db_data
   title "质量门禁"
@@ -542,6 +549,122 @@ cmd_check() {
   else
     hint "（已用 --no-front 跳过前端类型检查）"
   fi
+
+  if [ "$with_e2e" = "1" ]; then
+    cmd_e2e
+  fi
+}
+
+# --------------------------------------------------------------------------- e2e 冒烟
+# TEST-09：在**已运行的容器**上打真实链路（nginx → gunicorn → SQLite），
+# 覆盖 issue 建议的三步：登录 → 建文章 → 导出。仅部署机（有容器引擎）可跑。
+# 用随机用户名 + 随机密码建临时管理员，全程走公开 HTTP 接口，结束时清理临时数据。
+E2E_USER=""
+E2E_ARTICLE_ID=""
+E2E_TOKEN=""
+E2E_TMPDIR=""
+
+e2e_cleanup() {
+  # 清理是尽力而为：即使某步失败也不应改变脚本退出码（它常作为 EXIT trap 运行）
+  set +e
+  local app
+  app="$(app_container)"
+  if [ -n "$app" ]; then
+    if [ -n "$E2E_ARTICLE_ID" ] && [ -n "$E2E_TOKEN" ]; then
+      # 删除文章会经 post_delete 信号同步清理封面文件
+      curl --noproxy '*' -s -o /dev/null -X DELETE \
+        -H "Authorization: Bearer $E2E_TOKEN" \
+        "${BASE_URL}/api/v1/admin/articles/${E2E_ARTICLE_ID}/"
+    fi
+    if [ -n "$E2E_USER" ]; then
+      "$ENGINE" exec "$app" python -c "
+import os, django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+from django.contrib.auth import get_user_model
+get_user_model().objects.filter(username='$E2E_USER').delete()
+" >/dev/null 2>&1
+    fi
+  fi
+  [ -n "$E2E_TMPDIR" ] && rm -rf "$E2E_TMPDIR"
+  E2E_USER=""; E2E_ARTICLE_ID=""; E2E_TOKEN=""; E2E_TMPDIR=""
+  set -e
+}
+
+cmd_e2e() {
+  require_tools
+  if ! containers_running; then
+    die "端到端冒烟需要容器在运行" "先执行 scripts/blog.sh up；本机无容器工具链时请在部署机执行"
+  fi
+  local app
+  app="$(app_container)"
+  E2E_TMPDIR="$(mktemp -d)"
+  trap e2e_cleanup EXIT
+
+  title "端到端冒烟（nginx → gunicorn → SQLite）"
+  step "健康探活"
+  health_check || die "健康检查未通过" "$ENGINE logs $app | tail -30"
+  ok
+
+  # 1) 登录：容器内惰性建一个随机密码的临时管理员，走真实 POST /login/
+  #    （随机用户名可避开登录失败限流的按 IP+用户名 计数）
+  step "登录（POST /api/v1/login/）"
+  E2E_USER="e2e_smoke_$(date +%s)_$$"
+  local pass resp
+  pass="$("$ENGINE" exec "$app" python -c 'import secrets;print(secrets.token_urlsafe(12))' | tail -1)"
+  "$ENGINE" exec "$app" python -c "
+import os, django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+from django.contrib.auth import get_user_model
+U = get_user_model()
+u, _ = U.objects.get_or_create(username='$E2E_USER', defaults={'is_staff': True, 'is_superuser': True})
+u.is_staff = True; u.is_superuser = True
+u.set_password('$pass'); u.save()
+" || die "创建临时管理员失败"
+  resp="$(curl --noproxy '*' -s --max-time 30 -H 'Content-Type: application/json' \
+        -d "{\"username\":\"$E2E_USER\",\"password\":\"$pass\"}" \
+        "${BASE_URL}/api/v1/login/")"
+  E2E_TOKEN="$(printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["access"])' 2>/dev/null || true)"
+  [ -n "$E2E_TOKEN" ] || die "登录失败：$(printf '%s' "$resp" | head -c 200)"
+  ok "已签发 access"
+
+  # 2) 建文章：multipart（临时封面 + 正文），封面由容器内 Pillow 生成
+  step "创建文章（POST /api/v1/admin/articles/）"
+  local cover="$E2E_TMPDIR/cover.png"
+  "$ENGINE" exec "$app" python -c "
+from PIL import Image
+Image.new('RGB', (64, 48), (60, 120, 200)).save('/tmp/e2e_cover.png')
+" || die "生成测试封面失败"
+  "$ENGINE" cp "$app:/tmp/e2e_cover.png" "$cover" >/dev/null
+  resp="$(curl --noproxy '*' -s --max-time 60 -H "Authorization: Bearer $E2E_TOKEN" \
+        -F "title=E2E 冒烟 $(date +%s)" \
+        -F "publish_time=$(date -Iseconds)" \
+        -F "content=E2E smoke test，由 scripts/blog.sh check --e2e 创建，随后删除。" \
+        -F "is_published=false" \
+        -F "cover=@$cover;type=image/png" \
+        "${BASE_URL}/api/v1/admin/articles/")"
+  E2E_ARTICLE_ID="$(printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["id"])' 2>/dev/null || true)"
+  [ -n "$E2E_ARTICLE_ID" ] || die "创建文章失败：$(printf '%s' "$resp" | head -c 200)"
+  ok "id=${E2E_ARTICLE_ID}"
+
+  # 3) 导出 + 下载：导出返回一次性能力 URL，下载走 nginx 直链，校验 zip 头
+  step "导出文章（GET /api/v1/admin/articles/export/）"
+  resp="$(curl --noproxy '*' -s --max-time 120 -H "Authorization: Bearer $E2E_TOKEN" \
+        "${BASE_URL}/api/v1/admin/articles/export/?ids=${E2E_ARTICLE_ID}")"
+  local dl
+  dl="$(printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["download_url"])' 2>/dev/null || true)"
+  [ -n "$dl" ] || die "导出失败：$(printf '%s' "$resp" | head -c 200)"
+  step "下载导出包"
+  curl --noproxy '*' -s --max-time 120 -o "$E2E_TMPDIR/export.zip" "${BASE_URL}${dl}"
+  local magic
+  magic="$(head -c 2 "$E2E_TMPDIR/export.zip" 2>/dev/null || true)"
+  [ "$magic" = "PK" ] || die "导出包不是合法 zip（magic=${magic}）"
+  ok "$(human_size "$(stat -c%s "$E2E_TMPDIR/export.zip")")"
+
+  printf '\n%s端到端冒烟通过%s（临时文章/管理员已清理）\n' "$C_OK" "$C_END"
+  e2e_cleanup
+  trap - EXIT
 }
 
 # --------------------------------------------------------------------------- export / import
@@ -899,7 +1022,10 @@ usage() {
   restart [--build]      等价于 down + up
   status                 容器/镜像/端口/健康/归档产物/磁盘 一览
   logs [服务] [-f]       查看日志（app|nginx|front|redis，默认 app）
-  check [--no-front]     质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc；--no-front 跳过前端）
+  check [--no-front] [--e2e]
+                         质量门禁（ruff/mypy/pytest/迁移/配置语法/vue-tsc；--no-front 跳过前端；
+                         --e2e 追加真实链路冒烟，需先 up）
+  e2e                    端到端冒烟：对**已运行**的容器跑登录 → 建文章 → 导出（临时数据自动清理）
   install-hooks          启用仓库 git 钩子（pre-push 会跑上面这条 check）
   export [--out 文件]    导出离线镜像包（4 镜像 → tar + .sha256）
                          省略 --out 时用 ~/my_blog_images/my_blog_images_<架构>_<时间戳>.tar
@@ -931,6 +1057,7 @@ main() {
     status)      cmd_status "$@" ;;
     logs)        cmd_logs "$@" ;;
     check)       cmd_check "$@" ;;
+    e2e)         cmd_e2e "$@" ;;
     install-hooks) cmd_install_hooks "$@" ;;
     export)      cmd_export "$@" ;;
     import)      cmd_import "$@" ;;
