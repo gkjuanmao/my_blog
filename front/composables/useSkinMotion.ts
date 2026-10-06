@@ -167,6 +167,9 @@ export function useSkinMotion() {
       let points: Particle[] = []
       let raf = 0
       let stopped = false
+      // 离屏 / 后台标签页时暂停 rAF，避免持续逐帧重绘（FE-21）
+      let running = false
+      let inView = true
       const pointer = { x: 0, y: 0, active: false }
 
       function resize() {
@@ -192,7 +195,7 @@ export function useSkinMotion() {
       }
 
       function frame(time: number) {
-        if (stopped) return
+        if (stopped || !running) return
         const t = time * 0.001
         ctx!.clearRect(0, 0, width, height)
         ctx!.lineWidth = 1
@@ -256,12 +259,36 @@ export function useSkinMotion() {
       hero.addEventListener('pointermove', onMove, { passive: true })
       hero.addEventListener('pointerleave', onLeave)
       window.addEventListener('resize', onResize, { passive: true })
+
+      function start() {
+        if (running || stopped || !inView || document.hidden) return
+        running = true
+        raf = requestAnimationFrame(frame)
+      }
+      function pause() {
+        running = false
+        cancelAnimationFrame(raf)
+      }
+      const onVisibility = () => {
+        if (document.hidden) pause()
+        else start()
+      }
+      const io = new IntersectionObserver((entries) => {
+        inView = entries[0]?.isIntersecting ?? true
+        if (inView) start()
+        else pause()
+      })
+
       resize()
-      raf = requestAnimationFrame(frame)
+      io.observe(hero)
+      document.addEventListener('visibilitychange', onVisibility)
+      start()
 
       heroCleanup = () => {
         stopped = true
         cancelAnimationFrame(raf)
+        io.disconnect()
+        document.removeEventListener('visibilitychange', onVisibility)
         hero.removeEventListener('pointermove', onMove)
         hero.removeEventListener('pointerleave', onLeave)
         window.removeEventListener('resize', onResize)
@@ -291,6 +318,7 @@ export function useSkinMotion() {
       let targetY = currentY
       let raf = 0
       let stopped = false
+      let running = false
 
       const onMove = (event: PointerEvent) => {
         targetX = event.clientX
@@ -299,7 +327,7 @@ export function useSkinMotion() {
       }
 
       function tick() {
-        if (stopped) return
+        if (stopped || !running) return
         currentX += (targetX - currentX) * 0.14
         currentY += (targetY - currentY) * 0.14
         // 收敛后不再写样式，避免无意义的逐帧样式重算
@@ -310,12 +338,28 @@ export function useSkinMotion() {
         raf = requestAnimationFrame(tick)
       }
 
+      function start() {
+        if (running || stopped || document.hidden) return
+        running = true
+        raf = requestAnimationFrame(tick)
+      }
+      function pause() {
+        running = false
+        cancelAnimationFrame(raf)
+      }
+      const onVisibility = () => {
+        if (document.hidden) pause()
+        else start()
+      }
+
       window.addEventListener('pointermove', onMove, { passive: true })
-      raf = requestAnimationFrame(tick)
+      document.addEventListener('visibilitychange', onVisibility)
+      start()
 
       glowCleanup = () => {
         stopped = true
         cancelAnimationFrame(raf)
+        document.removeEventListener('visibilitychange', onVisibility)
         window.removeEventListener('pointermove', onMove)
         el.classList.remove('skin-pointer')
         el.style.removeProperty('--cursor-x')
@@ -334,7 +378,9 @@ export function useSkinMotion() {
     scan()
     setupPointerGlow()
 
-    const mo = new MutationObserver(() => {
+    const mo = new MutationObserver((records) => {
+      // 只在**新增节点**时重扫：纯删除/属性变化不需要重新绑定（FE-21）
+      if (!records.some((record) => record.addedNodes.length > 0)) return
       if (scanTimer) clearTimeout(scanTimer)
       scanTimer = setTimeout(scan, 120)
     })
