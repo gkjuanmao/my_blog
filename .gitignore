@@ -13,11 +13,11 @@ media/
 *.log
 server.pid
 
-# 测试与覆盖率产物
+# 测试与覆盖率产物（报告不入库，避免陈旧数据误导；需要时本地生成）
 .pytest_cache/
 .coverage
 htmlcov/
-tests/reports/htmlcov/
+tests/reports/
 
 # 归档产物（导出包/回滚包/导入暂存）
 private_archives/
