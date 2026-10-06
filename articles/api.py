@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any, cast
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
@@ -28,6 +29,7 @@ from articles.archive import validate as archive_validate
 from articles.archive.limits import ensure_free_space
 from articles.archive.limits import limits as archive_limits
 from articles.archive.locks import enforce_min_interval, import_lock
+from common.net import client_ip
 from common.responses import success_response
 from common.schemas import ApiResponse, PageData
 from users.authentication import StaffJWTAuth
@@ -248,9 +250,23 @@ def search_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
+def _count_view_once(request: HttpRequest, article_id: int) -> bool:
+    """同一 IP 对同一文章在去重窗口内只计一次阅读。
+
+    用 ``cache.add`` 的原子语义（存在即返回 False）避免并发下重复计数；
+    缓存不可用时 fail-open 仍计数——阅读量非关键数据，不应让详情页 500。
+    """
+    key = f'article_viewed:{article_id}:{client_ip(request)}'
+    ttl = getattr(settings, 'ARTICLE_VIEW_DEDUP_SECONDS', 3600)
+    try:
+        return bool(cache.add(key, 1, ttl))
+    except Exception:  # 缓存故障时降级为「每次都计数」
+        return True
+
+
 @router.get('/articles/{slug}/', response=ApiResponse[ArticleDetailOut])
 def article_detail(request: HttpRequest, slug: str) -> dict:
-    """文章详情：阅读量 +1，仅返回已发布文章。"""
+    """文章详情：首次访问（按 IP 去重）阅读量 +1，仅返回已发布文章。"""
     try:
         article = (
             Article.objects.select_related('author', 'category')
@@ -259,8 +275,9 @@ def article_detail(request: HttpRequest, slug: str) -> dict:
         )
     except Article.DoesNotExist:
         raise HttpError(404, '文章不存在') from None
-    Article.objects.filter(pk=article.pk).update(views=F('views') + 1)
-    article.views += 1
+    if _count_view_once(request, article.pk):
+        Article.objects.filter(pk=article.pk).update(views=F('views') + 1)
+        article.views += 1
     return success_response(article_to_detail(request, article).model_dump())
 
 

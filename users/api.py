@@ -9,6 +9,7 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja_jwt.tokens import RefreshToken, TokenError
 
+from common.net import client_ip
 from common.responses import success_response
 from common.schemas import ApiResponse
 
@@ -28,21 +29,9 @@ LOGIN_MAX_ATTEMPTS = 5
 LOGIN_LOCKOUT_SECONDS = 300
 
 
-def _client_ip(request: HttpRequest) -> str:
-    """取真实客户端 IP。
-
-    nginx 以 ``$proxy_add_x_forwarded_for`` 追加真实来源，因此取 X-Forwarded-For
-    的**最后一段**（由我们的 nginx 写入）；取第一段会被客户端伪造。
-    """
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if forwarded:
-        return forwarded.split(',')[-1].strip()
-    return request.META.get('REMOTE_ADDR', '')
-
-
 def _login_throttle_key(request: HttpRequest, username: str) -> str:
     """登录失败计数的缓存键：按 IP + 小写用户名隔离。"""
-    return f'login_failed:{_client_ip(request)}:{username.strip().lower()}'
+    return f'login_failed:{client_ip(request)}:{username.strip().lower()}'
 
 
 def _throttle_hits(key: str) -> int:

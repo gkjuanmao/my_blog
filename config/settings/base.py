@@ -118,6 +118,9 @@ MEDIA_URL = '/media/'
 
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# 阅读量去重窗口（秒）：同一 IP 对同一篇文章在该窗口内只计一次阅读
+ARTICLE_VIEW_DEDUP_SECONDS = 3600
+
 # ---------------------------------------------------------------------------
 # 文章归档（导入 / 导出）
 # 说明：以下常量一律在**调用时**经 articles.archive.limits.limits() 读取，

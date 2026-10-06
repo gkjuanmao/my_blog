@@ -55,3 +55,20 @@ class TestArticleDetailAPI:
         assert response.status_code == 200
         article.refresh_from_db()
         assert article.views == 11
+
+    def test_art_019_views_dedup_same_ip(self, api_client, article):
+        """ART-019 同一 IP 在去重窗口内重复访问不重复计数。"""
+        api_client.get('/api/v1/articles/my-post/', HTTP_X_FORWARDED_FOR='10.0.0.1')
+        second = api_client.get('/api/v1/articles/my-post/', HTTP_X_FORWARDED_FOR='10.0.0.1')
+
+        assert second.status_code == 200
+        article.refresh_from_db()
+        assert article.views == 11
+
+    def test_art_020_views_counted_per_ip(self, api_client, article):
+        """ART-020 不同 IP 各自计一次。"""
+        api_client.get('/api/v1/articles/my-post/', HTTP_X_FORWARDED_FOR='10.0.0.2')
+        api_client.get('/api/v1/articles/my-post/', HTTP_X_FORWARDED_FOR='10.0.0.3')
+
+        article.refresh_from_db()
+        assert article.views == 12
