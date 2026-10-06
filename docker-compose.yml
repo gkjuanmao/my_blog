@@ -4,6 +4,8 @@ services:
     # 显式声明镜像名：podman 会规范化为 localhost/my_blog_app:latest，docker 直接用该名；
     # 离线包导出/导入依赖这个名字可预期（脚本会按引擎自动换算与补标签）
     image: my_blog_app:latest
+    # 容器崩溃或宿主重启后自愈（OPS-01）
+    restart: unless-stopped
     env_file:
       - .env
     environment:
@@ -27,6 +29,8 @@ services:
     image: redis:7-alpine
     # 仅作缓存/锁使用，不需要持久化
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # 容器崩溃或宿主重启后自愈（OPS-01）
+    restart: unless-stopped
 
   nginx:
     image: nginx:1.27
@@ -39,6 +43,8 @@ services:
       - nginxtmp:/var/cache/nginx/client_temp
     ports:
       - "18888:18888"
+    # 容器崩溃或宿主重启后自愈（OPS-01）
+    restart: unless-stopped
     depends_on:
       - app
       - front
@@ -50,6 +56,8 @@ services:
     image: my_blog_front:latest
     environment:
       - NUXT_PUBLIC_API_BASE=/api/v1/
+    # 容器崩溃或宿主重启后自愈（OPS-01）
+    restart: unless-stopped
     depends_on:
       - app
 
