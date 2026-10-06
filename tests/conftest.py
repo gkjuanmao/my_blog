@@ -49,18 +49,41 @@ def api_client() -> Client:
 
 @pytest.fixture
 def user(db) -> User:
-    """创建测试用户。"""
+    """创建测试用户（staff）。
+
+    本项目无公开注册、账号只能在 admin 创建，管理端点（文章/分类/标签 CRUD、
+    归档、传图等）统一要求 staff，故默认测试用户即 staff；需要验证「非 staff 被拒」
+    的场景请用 plain_user / plain_header。
+    """
     return User.objects.create_user(
         username='testuser',
         password='testpass123',
         email='test@example.com',
+        is_staff=True,
     )
 
 
 @pytest.fixture
 def auth_header(user) -> dict:
-    """JWT 认证请求头。"""
+    """默认（staff）用户的 JWT 认证请求头。"""
     refresh = RefreshToken.for_user(user)  # type: ignore[misc]
+    return {'HTTP_AUTHORIZATION': f'Bearer {refresh.access_token}'}
+
+
+@pytest.fixture
+def plain_user(db) -> User:
+    """非 staff 的普通登录用户（权限矩阵反例：管理端点应 403）。"""
+    return User.objects.create_user(
+        username='plainuser',
+        password='plainpass123',
+        email='plain@example.com',
+    )
+
+
+@pytest.fixture
+def plain_header(plain_user) -> dict:
+    """非 staff 用户的 JWT 认证请求头。"""
+    refresh = RefreshToken.for_user(plain_user)  # type: ignore[misc]
     return {'HTTP_AUTHORIZATION': f'Bearer {refresh.access_token}'}
 
 

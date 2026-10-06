@@ -72,11 +72,11 @@ class TestUploadEndpoint:
         with open(stored, 'rb') as handle:
             assert handle.read(4) == b'RIFF'  # WebP 容器魔数
 
-    def test_upload_requires_staff(self, api_client, auth_header):
+    def test_upload_requires_staff(self, api_client, plain_header):
         response = api_client.post(
             '/api/v1/admin/articles/images/',
             {'image': _upload('pic.png', _png_bytes(), 'image/png')},
-            **auth_header,
+            **plain_header,
         )
 
         assert response.status_code == 403

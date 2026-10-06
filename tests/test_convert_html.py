@@ -211,11 +211,11 @@ class TestRoundTrip:
 class TestConvertEndpoint:
     """端点：鉴权、输入通道与限制。"""
 
-    def test_requires_staff(self, api_client, auth_header, staff_header, jpeg_factory):
+    def test_requires_staff(self, api_client, plain_header, staff_header, jpeg_factory):
         """普通用户被拒，staff 可用。"""
         payload = {'html': '<p>正文</p>'}
         assert api_client.post(CONVERT_URL, payload).status_code in (401, 403)
-        assert api_client.post(CONVERT_URL, payload, **auth_header).status_code in (401, 403)
+        assert api_client.post(CONVERT_URL, payload, **plain_header).status_code in (401, 403)
 
         response = api_client.post(CONVERT_URL, payload, **staff_header)
         assert response.status_code == 200

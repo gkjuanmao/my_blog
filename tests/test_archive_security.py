@@ -171,8 +171,8 @@ class TestPackageLevelRejection:
         assert response.status_code == 400
         assert 'article.json' in response.json()['message']
 
-    def test_requires_staff(self, api_client, auth_header, package):
-        response = api_client.post(STAGE_URL, {'file': _upload(package)}, **auth_header)
+    def test_requires_staff(self, api_client, plain_header, package):
+        response = api_client.post(STAGE_URL, {'file': _upload(package)}, **plain_header)
         assert response.status_code == 403
 
 

@@ -65,9 +65,9 @@ class TestArchiveRouting:
 
 
 class TestExportPermissions:
-    def test_requires_staff(self, api_client, auth_header, article):
+    def test_requires_staff(self, api_client, plain_header, article):
         """非 staff 的登录用户不能导出（否则可拿走全部草稿）。"""
-        response = api_client.get(EXPORT_URL, **auth_header)
+        response = api_client.get(EXPORT_URL, **plain_header)
         assert response.status_code == 403
 
     def test_anonymous_rejected(self, api_client):
@@ -240,11 +240,11 @@ class TestTicketLifecycle:
         assert reissued.status_code == 200
         assert api_client.get(reissued.json()['data']['download_url']).status_code == 200
 
-    def test_reissue_requires_staff(self, api_client, staff_header, article, auth_header):
+    def test_reissue_requires_staff(self, api_client, staff_header, article, plain_header):
         url = self._issue(api_client, staff_header, article)
         ticket_id = url.rstrip('/').rsplit('/', 1)[-1]
         response = api_client.post(
-            f'/api/v1/admin/archives/{ticket_id}/reissue/', **auth_header
+            f'/api/v1/admin/archives/{ticket_id}/reissue/', **plain_header
         )
         assert response.status_code == 403
 

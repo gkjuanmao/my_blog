@@ -30,7 +30,7 @@
 
 ## BE 后端
 
-- [ ] **BE-01 · P1** 文章/分类/标签 CRUD 只用 `jwt_auth`，与 `staff_auth` 权限模型自相矛盾 —— 导出/导入/传图/HTML 导入要求 staff，而**破坏性更强**的创建/更新/删除/批量删除只要普通登录即可（`articles/api.py:370,498,569,680,690` 及 `:700-812` 的分类标签 CRUD）。缓解因素：无注册接口，用户只能 admin 创建。**建议**：CRUD 全部改 `staff_auth`（或明确文档化"任何登录用户皆可管理"的单一口径），并补权限矩阵测试。
+- [x] **BE-01 · P1** 文章/分类/标签 CRUD 只用 `jwt_auth`，与 `staff_auth` 权限模型自相矛盾 —— 导出/导入/传图/HTML 导入要求 staff，而**破坏性更强**的创建/更新/删除/批量删除只要普通登录即可（`articles/api.py:370,498,569,680,690` 及 `:700-812` 的分类标签 CRUD）。缓解因素：无注册接口，用户只能 admin 创建。**建议**：CRUD 全部改 `staff_auth`（或明确文档化"任何登录用户皆可管理"的单一口径），并补权限矩阵测试。
 - [ ] **BE-02 · P1** 生产是 SQLite + gunicorn `3 workers × 4 threads` 并发写，归档导入持锁期间有写放大/`database is locked` 风险；PostgreSQL 仍是注释 TODO（`config/settings/prod.py:66-77`、`Dockerfile` CMD、`config/settings/base.py:72-78`）。**建议**：要么启用 prod PostgreSQL（compose 加 db 服务），要么明确文档化 SQLite 的并发上限与备份策略。
 - [ ] **BE-03 · P2** 公开读接口零缓存 —— `/articles/`、`/categories/`、`/tags/` 每次全量查询 + `count()`（`articles/api.py:180-235`），nginx 对 `/api/` 未加任何 `Cache-Control`（`docker/nginx/nginx.conf:145` 附近）。**建议**：短 TTL 缓存（应用层 `cache` 或 nginx `proxy_cache`）+ 公开 GET 加 `Cache-Control: public, max-age=60`。
 - [ ] **BE-04 · P2** 搜索仅 `title__icontains`（`articles/api.py:230`），正文 Markdown 已入库却不可搜；SQLite `LIKE` 无法利用索引，标题大时全表扫。**建议**：至少把 `summary`/`content` 纳入，或引入 FTS5/简单倒排；同时给 keyword 加长度下限防滥用。
