@@ -33,7 +33,7 @@
 - [x] **BE-01 · P1** 文章/分类/标签 CRUD 只用 `jwt_auth`，与 `staff_auth` 权限模型自相矛盾 —— 导出/导入/传图/HTML 导入要求 staff，而**破坏性更强**的创建/更新/删除/批量删除只要普通登录即可（`articles/api.py:370,498,569,680,690` 及 `:700-812` 的分类标签 CRUD）。缓解因素：无注册接口，用户只能 admin 创建。**建议**：CRUD 全部改 `staff_auth`（或明确文档化"任何登录用户皆可管理"的单一口径），并补权限矩阵测试。
 - [ ] **BE-02 · P1** 生产是 SQLite + gunicorn `3 workers × 4 threads` 并发写，归档导入持锁期间有写放大/`database is locked` 风险；PostgreSQL 仍是注释 TODO（`config/settings/prod.py:66-77`、`Dockerfile` CMD、`config/settings/base.py:72-78`）。**建议**：要么启用 prod PostgreSQL（compose 加 db 服务），要么明确文档化 SQLite 的并发上限与备份策略。
 - [ ] **BE-03 · P2** 公开读接口零缓存 —— `/articles/`、`/categories/`、`/tags/` 每次全量查询 + `count()`（`articles/api.py:180-235`），nginx 对 `/api/` 未加任何 `Cache-Control`（`docker/nginx/nginx.conf:145` 附近）。**建议**：短 TTL 缓存（应用层 `cache` 或 nginx `proxy_cache`）+ 公开 GET 加 `Cache-Control: public, max-age=60`。
-- [ ] **BE-04 · P2** 搜索仅 `title__icontains`（`articles/api.py:230`），正文 Markdown 已入库却不可搜；SQLite `LIKE` 无法利用索引，标题大时全表扫。**建议**：至少把 `summary`/`content` 纳入，或引入 FTS5/简单倒排；同时给 keyword 加长度下限防滥用。
+- [x] **BE-04 · P2** 搜索仅 `title__icontains`（`articles/api.py:230`），正文 Markdown 已入库却不可搜；SQLite `LIKE` 无法利用索引，标题大时全表扫。**建议**：至少把 `summary`/`content` 纳入，或引入 FTS5/简单倒排；同时给 keyword 加长度下限防滥用。
 - [ ] **BE-05 · P2** 阅读量每次请求无条件 +1（`articles/api.py:248` 的 `F('views')+1`），刷新即计数，无 IP/时间窗去重。`F()` 用法本身正确。**建议**：缓存做"每 IP 每文章 N 小时计一次"的去重键。
 - [x] **BE-06 · P3** `manage.py check` 报 `staticfiles.W004`：`STATICFILES_DIRS` 指向不存在的 `static/`（`config/settings/base.py:111`）。**建议**：目录不存在时从设置中剔除，或建空目录并入库（注意 gitignore 不要误伤）。
 - [x] **BE-07 · P3** `ArticlesConfig.ready()` 启动即查库触发 Django 6 RuntimeWarning（`articles/apps.py:27` 调 `ensure_defaults()`，本次实测输出）。已有 `DatabaseError` 兜底但告警仍在。**建议**：挪到 `post_migrate` 信号或首次实际访问时惰性创建。

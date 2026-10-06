@@ -92,3 +92,38 @@ class TestArticleSearchAPI:
         response = api_client.get('/api/v1/articles/search/?keyword=博客&page_size=101')
 
         assert response.status_code == 422
+
+    def test_src_008_search_summary_and_content(self, api_client, user):
+        """SRC-008 摘要与正文同样参与搜索（不再仅限标题）。"""
+        Article.objects.create(
+            title='标题无关一',
+            slug='content-hit',
+            content='这里藏着一个独特词甲',
+            publish_time=timezone.now(),
+            author=user,
+            is_published=True,
+        )
+        Article.objects.create(
+            title='标题无关二',
+            slug='summary-hit',
+            summary='摘要含独特词乙',
+            publish_time=timezone.now(),
+            author=user,
+            is_published=True,
+        )
+
+        content_hit = api_client.get('/api/v1/articles/search/?keyword=独特词甲')
+        assert content_hit.status_code == 200
+        assert content_hit.json()['data']['total'] == 1
+        assert content_hit.json()['data']['items'][0]['slug'] == 'content-hit'
+
+        summary_hit = api_client.get('/api/v1/articles/search/?keyword=独特词乙')
+        assert summary_hit.status_code == 200
+        assert summary_hit.json()['data']['total'] == 1
+        assert summary_hit.json()['data']['items'][0]['slug'] == 'summary-hit'
+
+    def test_src_009_keyword_too_long(self, api_client, setup_articles):
+        """SRC-009 关键词超过 100 字符返回 422（长度上限防滥用）。"""
+        response = api_client.get('/api/v1/articles/search/?keyword=' + 'a' * 101)
+
+        assert response.status_code == 422

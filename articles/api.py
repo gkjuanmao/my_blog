@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.db.models.query import QuerySet
 from django.http import FileResponse, HttpRequest
 from django.utils import timezone
@@ -227,12 +227,21 @@ def list_articles(
 @router.get('/articles/search/', response=ApiResponse[PageData[ArticleOut]])
 def search_articles(
     request: HttpRequest,
-    keyword: str = Query(..., description='关键词，标题模糊搜索'),
+    keyword: str = Query(
+        ...,
+        min_length=1,
+        max_length=100,
+        description='关键词，标题/摘要/正文模糊搜索（长度 1–100）',
+    ),
     page: int = Query(1, ge=1, description='页码'),
     page_size: int = Query(10, ge=1, le=100, description='每页数量'),
 ) -> dict:
-    """按标题关键词搜索已发布文章，分页返回（信封内 items/total/page/page_size）。"""
-    qs = _published_articles().filter(title__icontains=keyword)
+    """按关键词搜索已发布文章（标题/摘要/正文），分页返回。"""
+    qs = _published_articles().filter(
+        Q(title__icontains=keyword)
+        | Q(summary__icontains=keyword)
+        | Q(content__icontains=keyword)
+    )
     total = qs.count()
     start = (page - 1) * page_size
     items = [article_to_out(request, article) for article in qs[start:start + page_size]]
