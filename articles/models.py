@@ -72,7 +72,7 @@ class Article(models.Model):
     )
     cover_image_name = models.CharField(max_length=255, verbose_name='封面原始文件名')
     cover_image_sha256 = models.CharField(
-        max_length=64, blank=True, verbose_name='封面源文件 SHA-256'
+        max_length=64, blank=True, verbose_name='封面落盘文件 SHA-256（当前文件字节哈希，非源文件）'
     )
     file = models.FileField(
         upload_to=file_upload_path, blank=True, default='', verbose_name='附件文件'
@@ -80,7 +80,9 @@ class Article(models.Model):
     file_name = models.CharField(
         max_length=255, blank=True, default='', verbose_name='附件原始文件名'
     )
-    file_sha256 = models.CharField(max_length=64, blank=True, verbose_name='附件源文件 SHA-256')
+    file_sha256 = models.CharField(
+        max_length=64, blank=True, verbose_name='附件落盘文件 SHA-256（当前文件字节哈希，非源文件）'
+    )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
