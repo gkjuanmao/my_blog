@@ -163,10 +163,9 @@ async function doBulkDelete() {
   }
   try {
     await ElMessageBox.confirm(
-      `确定删除选中的 <b>${count}</b> 篇文章吗？<br>` +
-        '其封面与附件文件会一并清除，且<b>不可恢复</b>。',
+      `确定删除选中的 ${count} 篇文章吗？其封面与附件文件会一并清除，且不可恢复。`,
       '批量删除确认',
-      { type: 'warning', dangerouslyUseHTMLString: true, confirmButtonText: '确认删除' },
+      { type: 'warning', confirmButtonText: '确认删除' },
     )
   } catch {
     return
@@ -234,17 +233,17 @@ async function doExport(scope: 'selected' | 'filtered') {
     }
     if (!estimate.importable) {
       await ElMessageBox.alert(
-        `该范围超出导入上限，导出后无法回导，已阻止：<br>${estimate.blocking_reasons.join('<br>')}`,
+        `该范围超出导入上限，导出后无法回导，已阻止：${estimate.blocking_reasons.join('；')}`,
         '无法导出',
-        { type: 'error', dangerouslyUseHTMLString: true },
+        { type: 'error' },
       )
       return
     }
     await ElMessageBox.confirm(
-      `共 <b>${estimate.count}</b> 篇，源文件约 <b>${formatBytes(estimate.source_bytes)}</b>（${estimate.entries} 个条目）。<br>` +
+      `共 ${estimate.count} 篇，源文件约 ${formatBytes(estimate.source_bytes)}（${estimate.entries} 个条目）。` +
         '包内含封面与附件，可直接再次导入，也可手工修改后导入。',
       '导出确认',
-      { type: 'info', dangerouslyUseHTMLString: true, confirmButtonText: '开始导出' },
+      { type: 'info', confirmButtonText: '开始导出' },
     )
     const { data: ticket } = await useApi().get<ArchiveExportTicket>(
       '/admin/articles/export/',
