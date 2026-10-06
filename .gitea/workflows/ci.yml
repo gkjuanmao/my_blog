@@ -37,7 +37,7 @@ jobs:
         run: uv run pytest -q
 
   frontend:
-    name: 前端类型检查（vue-tsc）
+    name: 前端（vue-tsc / vitest）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,3 +57,6 @@ jobs:
 
       - name: 类型检查（vue-tsc）
         run: npx vue-tsc --noEmit
+
+      - name: 单元测试（vitest）
+        run: npm test

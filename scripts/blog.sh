@@ -513,13 +513,14 @@ cmd_check() {
 
   if [ "$with_front" = "1" ]; then
     if [ ! -f front/node_modules/vue-tsc/bin/vue-tsc.js ]; then
-      warn "front 依赖未安装，跳过 vue-tsc（先 cd front && npm ci）"
+      warn "front 依赖未安装，跳过 vue-tsc 与 vitest（先 cd front && npm ci）"
     else
       step "前端类型检查（vue-tsc）"
       if containers_running; then
         warn "检测到本项目容器在运行；vue-tsc 会重写 front/.nuxt，与 nuxt dev 冲突"
       fi
       (cd front && node node_modules/vue-tsc/bin/vue-tsc.js --noEmit) || die "vue-tsc 未通过"
+      (cd front && node node_modules/vitest/vitest.mjs run) || die "前端单元测试未通过"
       ok
     fi
   else
