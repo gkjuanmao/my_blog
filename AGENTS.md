@@ -20,8 +20,9 @@ Django 6 个人博客。UI/admin 文案为中文（`LANGUAGE_CODE='zh-hans'`，`
 - **手工测试后必须清理上传产生的文件**（`media/covers/`、`media/files/`、`media/avatars/` 下的上传文件等），保持工作区干净；`media/` 整体被 gitignore，不应跟踪任何文件（注意：`media/` 下现有文件可能是 DB 中文章真实引用的数据，删除前先核对）
 - 测试 PUT multipart 时不能用 `api_client.put(url, dict, ...)`：Django 6 测试客户端的 `put()`/`patch()` 只做 `_encode_json`，不做 multipart 编码，dict 会被 `str()` 化成非法 body（表现为 200 但字段全未更新）。须手工 `encode_multipart(BOUNDARY, data)` 并传 `MULTIPART_CONTENT`（见 `tests/test_update_article.py`）
 - **git 提交约定**：用户说"提交代码/提交"时，默认在本地按提交规范（DESIGN.md 9.2：`feat:`/`fix:`/`docs:`/`refactor:`/`chore:` 前缀 + 中文描述）提交后**直接推送到远端**（`git push`），无需再询问。
-  - 远端走 SSH：`origin` = `ssh://git@192.168.31.96:222/gkjuanmao/my_blog.git`（Gitea 的 SSH 端口是 **222**，不是 22；scp 风格地址 `git@192.168.31.96:gkjuanmao/my_blog.git` 也能用，靠 `~/.ssh/config` 的 Host 块补端口）。
-  - 认证用公钥：`~/.ssh/id_ed25519`，公钥已在 Gitea 注册为 `zcode@PC-GKjuanmao`。Gitea 的 SSH **只开 publickey**，账号密码对 SSH 无效（密码仅用于 Gitea Web/API）。
+  - 远端：`origin` = 自建 Gitea（`ssh://git@<gitea-host>:222/gkjuanmao/my_blog.git`，SSH 端口是 **222**，不是 22；scp 风格地址 `git@<gitea-host>:gkjuanmao/my_blog.git` 也能用，靠 `~/.ssh/config` 的 Host 块补端口）；`github` = 公网镜像 `ssh://git@github.com/gkjuanmao/my_blog.git`。
+  - **两个远端的默认分支名不一致**：Gitea 是 `master`，GitHub 是 `main`；推公网必须显式映射 `git push github master:main`，否则会在 GitHub 上多出一个非默认分支。
+  - 认证用公钥：`~/.ssh/id_ed25519`（Gitea / GitHub 各自注册；GitHub 侧需在 Settings → SSH and GPG keys 添加）。Gitea 的 SSH **只开 publickey**，账号密码对 SSH 无效（密码仅用于 Gitea Web/API）。
   - 本仓库已配置仓库级提交身份（`user.name=gkjuanmao`、`user.email=gkjuanmao@example.com`），`git commit` 直接提交即可，无需再带 `-c user.name=... -c user.email=...`。
 
 ## 配置 / 环境变量

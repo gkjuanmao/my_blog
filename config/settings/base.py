@@ -43,11 +43,10 @@ MIDDLEWARE = [
 ]
 
 # 跨域配置：默认仅允许前端开发服务器访问（Vite 默认端口）。
-# dev 环境由 dev.py 的 CORS_ALLOW_ALL_ORIGINS=True 全面放开，此处为兜底默认值；
-# 生产环境如需收紧，可在此按需配置明确的允许来源。
+# dev 环境由 dev.py 的 CORS_ALLOW_ALL_ORIGINS=True 全面放开（局域网内其他设备访问无需在此登记）；
+# 生产环境经 nginx 同源访问，如需额外来源请在此按需添加——不要把内网地址提交进仓库。
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
-    'http://192.168.31.96:5173',
 ]
 
 ROOT_URLCONF = 'config.urls'
