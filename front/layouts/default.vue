@@ -20,6 +20,7 @@ if (import.meta.server) {
 
 const navLinks = [
   { label: '首页', to: '/' },
+  { label: '时间轴', to: '/timeline' },
   { label: '分类', to: '/categories' },
   { label: '标签', to: '/tags' },
   { label: '搜索', to: '/search' },
