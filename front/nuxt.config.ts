@@ -49,8 +49,8 @@ export default defineNuxtConfig({
   ],
   nitro: {
     devProxy: {
-      '/api/': { target: 'http://192.168.31.61:18888/api', changeOrigin: false },
-      '/media/': { target: 'http://192.168.31.61:18888/media', changeOrigin: false },
+      '/api/': { target: 'http://127.0.0.1:8000/api', changeOrigin: false },
+      '/media/': { target: 'http://127.0.0.1:8000/media', changeOrigin: false },
     },
   },
   devServer: {
