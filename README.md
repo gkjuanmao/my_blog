@@ -95,7 +95,7 @@ HTML 直接转 Markdown）以及面向部署机的运维脚本 `scripts/blog.sh`
 - **容器自愈**：四服务 `restart: unless-stopped`，app/redis 带 healthcheck，nginx 用 `condition: service_healthy` 排队。
 - **多阶段镜像**：app 与 front 均多阶段构建（builder 装依赖 → 运行阶段只带 venv / `.output`）。
 - **一体化运维** `scripts/blog.sh`：预检 / 启停 / 状态 / 日志 / 质量门禁 / 端到端冒烟 / 离线导出导入 / 备份 / 清理。
-- **CI**：Gitea Actions 双 job（后端 ruff + mypy + 迁移一致性 + pytest；前端 ESLint + vue-tsc + vitest）。
+- **CI/CD**：Jenkins（仓库根 `Jenkinsfile`）双门禁——后端 ruff + mypy + 迁移一致性 + pytest；前端 ESLint + vue-tsc + vitest。master 门禁通过后自动构建镜像并部署到本机 podman。
 
 ## 技术栈
 
@@ -295,8 +295,9 @@ scripts/blog.sh check --e2e                       # 追加真实链路冒烟（�
 （compose YAML / entrypoint / blog.sh / `nginx -t`）、**shellcheck**、**文档漂移自查**（`AGENTS.md`
 声明的用例数必须等于实际 collection、其引用的 `docs/*.md` 必须存在）。
 
-CI 见 [`.gitea/workflows/ci.yml`](./.gitea/workflows/ci.yml)：后端 job（ruff / mypy / 迁移 / pytest / shellcheck）
-与前端 job（ESLint / vue-tsc / vitest）。本地可用 `scripts/blog.sh install-hooks` 装 pre-push 钩子获得等效门禁。
+CI/CD 见 [`Jenkinsfile`](./Jenkinsfile)：后端门禁（ruff / mypy / 迁移一致性 / pytest）→ 前端门禁
+（ESLint / vue-tsc / vitest）→ 构建 app/front 镜像 → 通过受限 SSH 交给宿主 `jenkins-deploy.sh` 部署，
+失败自动回滚。本地可用 `scripts/blog.sh install-hooks` 装 pre-push 钩子获得等效门禁。
 
 > ⚠️ 修改用例数量后，需同步 `AGENTS.md` 里的「当前 N 个」，否则 `blog.sh check` 会阻断。
 
