@@ -110,7 +110,7 @@ pipeline {
 提交：$GIT_COMMIT
 链接：$BUILD_URL
 ''',
-        contentType: 'text/plain'
+        mimeType: 'text/plain'
       )
     }
     failure {
@@ -125,7 +125,7 @@ pipeline {
 
 控制台日志见附件。
 ''',
-        contentType: 'text/plain',
+        mimeType: 'text/plain',
         attachLog: true
       )
     }
@@ -139,7 +139,7 @@ pipeline {
 提交：$GIT_COMMIT
 链接：$BUILD_URL
 ''',
-        contentType: 'text/plain'
+        mimeType: 'text/plain'
       )
     }
   }
