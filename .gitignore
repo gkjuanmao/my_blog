@@ -31,3 +31,6 @@ shrink_images.py
 
 # SQLite 数据目录（bind mount 持久化）
 db_data/
+
+# CI 生成的门禁/测试/邮件产物
+/reports/
