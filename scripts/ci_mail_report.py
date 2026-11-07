@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# HTML 邮件模板依赖长行属性，拆行会改变渲染结果；本文件豁免行长检查。
+# ruff: noqa: E501
 """Generate a Jenkins build report mail body, subject and PNG trend chart.
 
 Only the Python standard library is used.  The script is intentionally
@@ -730,7 +732,6 @@ def render_html(data: dict[str, Any]) -> str:
     build = data["build"]
     sha = data["sha"]
     short = data["short_sha"]
-    result = data["result"]
     result_cn = data["result_cn"]
     status_color = data["status_color"]
     duration_text = data["duration_text"]
