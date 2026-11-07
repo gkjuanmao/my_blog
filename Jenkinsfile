@@ -62,7 +62,7 @@ pipeline {
           uv run mypy config articles common users
           uv run python manage.py makemigrations --check --dry-run
           mkdir -p reports
-          uv run pytest -q --junitxml=reports/junit.xml
+          uv run pytest -q --junitxml=reports/pytest.xml
         '''
       }
     }
@@ -75,7 +75,8 @@ pipeline {
             npm ci --no-audit --no-fund
             npm run lint
             npx vue-tsc --noEmit
-            npm test
+            # junit reporter 产出 XML，交给 junit 插件与后端结果合并展示
+            npm test -- --reporter=default --reporter=junit --outputFile=../reports/vitest.xml
           '''
         }
       }
@@ -94,7 +95,9 @@ pipeline {
 
   post {
     always {
-      junit allowEmptyResults: true, testResults: 'reports/junit.xml'
+      // 后端 pytest 与前端 vitest 的结果合并进同一份测试报告 / 趋势图
+      junit allowEmptyResults: true, testResults: 'reports/pytest.xml'
+      junit allowEmptyResults: true, testResults: 'reports/vitest.xml'
       archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
     }
     failure {
