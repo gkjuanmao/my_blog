@@ -984,7 +984,8 @@ def build_subject(
 
     test_part = ""
     if test_total > 0:
-        if is_success:
+        if is_success or test_fail == 0:
+            # 门禁失败但用例全绿时，不要把主题写成「0/469 失败」。
             test_part = f"用例 {test_pass}/{test_total} 通过"
         else:
             test_part = f"用例 {test_fail}/{test_total} 失败"
