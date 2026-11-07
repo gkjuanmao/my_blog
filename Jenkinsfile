@@ -100,8 +100,47 @@ pipeline {
       junit allowEmptyResults: true, testResults: 'reports/vitest.xml'
       archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
     }
+    success {
+      emailext(
+        to: '765674897@qq.com',
+        subject: "[Jenkins][部署成功] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: '''部署成功。
+
+项目：$PROJECT_NAME #$BUILD_NUMBER
+提交：$GIT_COMMIT
+链接：$BUILD_URL
+''',
+        contentType: 'text/plain'
+      )
+    }
     failure {
-      echo '流水线失败：deploy.sh 会自行回滚镜像；请查看 Deploy 阶段输出。'
+      emailext(
+        to: '765674897@qq.com',
+        subject: "[Jenkins][失败] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: '''部署失败，deploy.sh 已自动回滚上一版镜像。
+
+项目：$PROJECT_NAME #$BUILD_NUMBER
+提交：$GIT_COMMIT
+链接：$BUILD_URL
+
+控制台日志见附件。
+''',
+        contentType: 'text/plain',
+        attachLog: true
+      )
+    }
+    fixed {
+      emailext(
+        to: '765674897@qq.com',
+        subject: "[Jenkins][恢复] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: '''构建已恢复正常。
+
+项目：$PROJECT_NAME #$BUILD_NUMBER
+提交：$GIT_COMMIT
+链接：$BUILD_URL
+''',
+        contentType: 'text/plain'
+      )
     }
   }
 }
