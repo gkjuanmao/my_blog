@@ -643,7 +643,8 @@ watch(filtered, () => {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-height: calc(100vh - 140px);
+  /* 导航是 fixed 浮层（与首页一致）：画布自身让出 72px 导航高，内容才不会顶进导航 */
+  min-height: calc(100vh - 72px);
   color: var(--hp-ink);
   font-family: var(--hp-font-sans);
 }
@@ -745,7 +746,8 @@ watch(filtered, () => {
 .tl-shell {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 36px 28px 72px;
+  /* +72px：让开固定导航（与首页 cv-nav 同高） */
+  padding: calc(36px + 72px) 28px 72px;
 }
 
 /* ---------- 头部 ---------- */
@@ -1515,7 +1517,7 @@ watch(filtered, () => {
 
 @media (max-width: 639px) {
   .tl-shell {
-    padding: 28px 20px 56px;
+    padding: calc(28px + 72px) 20px 56px;
   }
 
   .tl-head {

@@ -657,6 +657,59 @@ html.skin-neon .public-shell > header.cv-nav--home[data-nav='scrolled'] .cv-nav_
   }
 }
 
+/* -------------------------------------------------------------------------
+ * 时间轴顶态（`html.tl-page`）：顶部是 --hp-surface 浅色画布，不是深色照片。
+ * 白字与深色遮罩带都是为 hero 照片服务的，直接搬过来会「白字消失 + 一块脏灰」。
+ * 这里把顶态换成墨青 token，与滚动态同色 —— 滚动时只有背景/高度变化，无色彩跳变，
+ * 结构（fixed 浮层 / 短线 / 进度条 / 磨砂滚动态）与首页完全一致。
+ * ⚠️ 本块必须排在皮肤的 `.cv-nav--home[data-nav='top']` 白字覆盖之后（同特异度靠源顺序）。
+ * ---------------------------------------------------------------------- */
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] {
+  color: var(--hp-ink);
+}
+
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand {
+  color: var(--hp-brand);
+}
+
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link {
+  color: var(--hp-ink);
+}
+
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link[aria-current='page'] {
+  color: var(--hp-ink);
+}
+
+/* 照片用的深色遮罩带：浅色画布上只是一块脏灰 */
+html.tl-page .cv-nav__veil {
+  display: none;
+}
+
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button,
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn {
+  border-color: var(--hp-line-strong);
+  color: var(--hp-ink);
+}
+
+/* 顶态焦点环：亮底用赭金 --hp-focus，不用压深照片的 --hp-focus-on-dark（金对白仅 1.9:1） */
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand:focus-visible,
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:focus-visible,
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions :is(a, button):focus-visible,
+html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn:focus-visible {
+  outline-color: var(--hp-focus);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:hover {
+    color: var(--hp-brand);
+  }
+
+  html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button:not(:disabled):hover {
+    border-color: var(--hp-brand);
+    color: var(--hp-brand);
+  }
+}
+
 /* ==========================================================================
    6. Hero
    ========================================================================== */

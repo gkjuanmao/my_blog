@@ -25,6 +25,11 @@ if (import.meta.server) {
 /** 首页全出血 + 卷首版式；其他页保持原容器宽度与内距 */
 const isHome = computed(() => route.path === '/')
 
+/** 时间轴与首页共用「卷首式」导航（fixed 透明浮层 + 滚动状态机 + 进度条）；
+ *  时间轴顶态是浅色画布而非深色照片，顶态配色由 home-cover.css 的 .tl-page 段单独覆盖 */
+const isTimeline = computed(() => route.path === '/timeline')
+const useCoverNav = computed(() => isHome.value || isTimeline.value)
+
 const navLinks: { label: string; to: string; browse?: 'category' | 'tag' | 'search' }[] = [
   { label: '首页', to: '/' },
   { label: '时间轴', to: '/timeline' },
@@ -63,7 +68,7 @@ const skinOptions: { value: Skin; label: string }[] = [
 const isDark = computed(() => colorMode.value === 'dark')
 
 /* -------------------------------------------------------------------------
- * 首页导航状态机 + 进度条 + 视差：**全页唯一**的 scroll 监听（passive + rAF 节流）
+ * 首页/时间轴导航状态机 + 进度条 + 视差：**全页唯一**的 scroll 监听（passive + rAF 节流）
  * 滚动回调里只写 CSS 变量与 navState，不读 layout（缓存 scrollHeight，resize 时重算）
  * ---------------------------------------------------------------------- */
 const navState = ref<'top' | 'scrolled'>('top')
@@ -71,7 +76,7 @@ let stopScroll: (() => void) | null = null
 
 function setupHomeScroll() {
   teardownHomeScroll()
-  if (!import.meta.client || !isHome.value) return
+  if (!import.meta.client || !useCoverNav.value) return
 
   const root = document.documentElement
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -134,7 +139,7 @@ function teardownHomeScroll() {
 
 onMounted(setupHomeScroll)
 onBeforeUnmount(teardownHomeScroll)
-watch(isHome, async () => {
+watch(useCoverNav, async () => {
   teardownHomeScroll()
   await nextTick()
   setupHomeScroll()
@@ -231,28 +236,28 @@ onBeforeUnmount(() => {
     <a class="skip-link" href="#main">跳到主要内容</a>
 
     <header
-      :class="isHome
+      :class="useCoverNav
         ? 'cv-nav cv-nav--home'
         : 'sticky top-0 z-10 border-b border-stone-200 bg-paper-light/80 backdrop-blur dark:border-stone-800 dark:bg-stone-900/80'"
-      :data-nav="isHome ? navState : undefined"
+      :data-nav="useCoverNav ? navState : undefined"
     >
-      <span v-if="isHome" class="cv-nav__veil" aria-hidden="true"/>
-      <div v-if="isHome" class="cv-progress" aria-hidden="true">
+      <span v-if="useCoverNav" class="cv-nav__veil" aria-hidden="true"/>
+      <div v-if="useCoverNav" class="cv-progress" aria-hidden="true">
         <span class="cv-progress__bar"/>
       </div>
 
-      <div :class="isHome ? 'cv-nav__inner' : 'mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4'">
+      <div :class="useCoverNav ? 'cv-nav__inner' : 'mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4'">
         <NuxtLink
           to="/"
-          :class="isHome
+          :class="useCoverNav
             ? 'cv-nav__brand'
             : 'text-xl font-serif font-bold tracking-wide text-brand-600 dark:text-amber-500 sm:text-2xl'"
         >
           {{ site.name }}
         </NuxtLink>
 
-        <!-- 首页：链接居中，桌面才出现 -->
-        <nav v-if="isHome" class="cv-nav__links" aria-label="主导航">
+        <!-- 首页/时间轴：链接居中，桌面才出现 -->
+        <nav v-if="useCoverNav" class="cv-nav__links" aria-label="主导航">
           <a
             v-for="link in navLinks"
             :key="link.to"
@@ -265,7 +270,7 @@ onBeforeUnmount(() => {
           </a>
         </nav>
 
-        <div v-if="isHome" class="cv-nav__actions">
+        <div v-if="useCoverNav" class="cv-nav__actions">
           <SkinSwitcher />
           <ThemeToggle />
         </div>
@@ -293,7 +298,7 @@ onBeforeUnmount(() => {
           <button
             ref="menuBtn"
             type="button"
-            :class="isHome
+            :class="useCoverNav
               ? 'cv-menu-btn'
               : 'flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-stone-600 dark:border-stone-700 dark:text-stone-300'"
             :aria-expanded="sheetOpen"
@@ -310,7 +315,7 @@ onBeforeUnmount(() => {
     <main
       id="main"
       tabindex="-1"
-      :class="isHome
+      :class="useCoverNav
         ? 'w-full flex-1'
         : 'mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-8'"
     >
