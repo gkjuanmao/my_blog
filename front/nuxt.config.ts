@@ -1,3 +1,10 @@
+/**
+ * 开发代理目标（nitro.devProxy 的 /api/ 与 /media/ 前缀指向哪里）。
+ * 默认指向本机后端；需要连局域网 / 远程后端时用
+ * `NUXT_DEV_PROXY_TARGET=http://192.168.x.x:port npm run dev` 覆盖，不要把内网地址写进仓库。
+ */
+const DEV_PROXY_TARGET = process.env.NUXT_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-01',
   devtools: { enabled: true },
@@ -46,11 +53,13 @@ export default defineNuxtConfig({
     // 皮肤样式必须排在 tailwind 之后，才能在同等优先级下覆盖工具类
     '~/assets/css/skin-elegant.css',
     '~/assets/css/skin-neon.css',
+    // 首页卷首视觉层：必须排在两套皮肤之后（等权重时靠文件顺序胜出）
+    '~/assets/css/home-cover.css',
   ],
   nitro: {
     devProxy: {
-      '/api/': { target: 'http://127.0.0.1:8000/api', changeOrigin: false },
-      '/media/': { target: 'http://127.0.0.1:8000/media', changeOrigin: false },
+      '/api/': { target: `${DEV_PROXY_TARGET}/api`, changeOrigin: false },
+      '/media/': { target: `${DEV_PROXY_TARGET}/media`, changeOrigin: false },
     },
   },
   devServer: {

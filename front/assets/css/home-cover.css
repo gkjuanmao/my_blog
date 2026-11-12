@@ -1,0 +1,2873 @@
+/*
+ * 卷首式首页 · 视觉层（home-cover.css）
+ *
+ * 依据：.workbuddy/design/01-visual-spec.md（视觉）+ 02-ux-spec.md（体验，含对视觉稿的 9 条强制修改）
+ *
+ * 三条必须记住的前提：
+ *  1. 皮肤激活时 <html> 上没有 .dark（useAppTheme.setSkin 强制 colorMode=light），
+ *     所以首页模板**不写任何 dark: 工具类**，颜色一律走 --hp-*。
+ *  2. 皮肤 CSS 的选择器权重会反杀低权重覆盖（skin-elegant.css:105 / :115），
+ *     覆盖 header / footer 时选择器必须带 `.public-shell > header.cv-nav` 这类前缀。
+ *  3. 本文件排在 tailwind / skin-elegant / skin-neon **之后**加载，不得写 @tailwind / @apply。
+ */
+
+/* ==========================================================================
+   1. 令牌
+   ========================================================================== */
+
+:root {
+  /* 底色 */
+  --hp-bg: #f6f7f4;
+  --hp-bg-2: #ecefe9;
+  --hp-surface: #ffffff;
+  --hp-surface-2: #f0f2ed;
+  /* 文字 */
+  --hp-ink: #1b2523;
+  --hp-ink-2: #4a5753;
+  --hp-ink-3: #617069;
+  /* 线 */
+  --hp-line: #dde3dc;
+  --hp-line-strong: #c6d0c8;
+  /* 结构色（墨青） */
+  --hp-brand: #1e3d3a;
+  --hp-brand-2: #2f5c56;
+  --hp-mist: #5e8a8c;
+  /* 语气色（赭金） */
+  --hp-accent: #96662c;
+  --hp-accent-soft: #f3e7d5;
+  --hp-accent-lume: #e0ac68;
+  /* 实底上的字 */
+  --hp-on-accent: #101a19;
+  --hp-on-brand: #ffffff;
+  /* 焦点 */
+  --hp-focus: #96662c;
+  --hp-focus-on-dark: #e0ac68;
+  /* 光晕 RGB 分量（供 rgba 拼接） */
+  --hp-glow-rgb: 224, 172, 104;
+  /* 照片暗底 */
+  --hp-scrim-deep: #091413;
+  --hp-scrim-mid: #0c1816;
+  /* 磨砂导航 */
+  --hp-nav-frost: rgba(246, 247, 244, 0.82);
+  --hp-nav-frost-solid: rgba(246, 247, 244, 0.94);
+  /* 圆角（elegant 会改成 8px） */
+  --hp-radius-card: 12px;
+  --hp-radius-card-lg: 16px;
+  --hp-radius-chip: 3px;
+  /* 阴影 */
+  --hp-shadow-hover:
+    0 8px 24px rgba(27, 37, 35, 0.1), 0 2px 6px rgba(27, 37, 35, 0.06);
+  /* 字体栈（全部系统字体，零外链） */
+  --hp-font-sans:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --hp-font-serif:
+    'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC',
+    'STSong', SimSun, Georgia, 'Times New Roman', serif;
+  --hp-font-mono:
+    'SF Mono', 'JetBrains Mono', 'Cascadia Code', Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  /* 字号 */
+  --hp-fs-display: clamp(44px, 6.2vw, 82px);
+  --hp-fs-featured: 34px;
+  --hp-fs-h2: 28px;
+  --hp-fs-h3: 20px;
+  --hp-fs-wide: 28px;
+  --hp-fs-body: 16px;
+  --hp-fs-sm: 14px;
+  --hp-fs-xs: 12px;
+  --hp-fs-num: 13px;
+  --hp-fs-wordmark: 20px;
+  /* 间距节奏 */
+  --hp-gutter: 40px;
+  --hp-section-gap: 96px;
+  --hp-grid-gap: 24px;
+  --hp-block-gap: 48px;
+  --hp-pager-gap: 64px;
+  /* 缓动 */
+  --hp-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --hp-ease-state: cubic-bezier(0.4, 0, 0.2, 1);
+  /* 照片调色（默认亮色；皮肤逐个覆盖） */
+  --hp-photo-filter: saturate(0.78) contrast(1.04) brightness(0.96);
+  --hp-card-filter: saturate(0.8) contrast(1.03) brightness(0.97);
+  --hp-card-filter-hover: saturate(0.92) contrast(1.03) brightness(0.97);
+  /* 运行时（JS 写入） */
+  --hp-progress: 0;
+  --hp-parallax-y: 0px;
+  --hp-kenburns: 1;
+}
+
+html.dark {
+  --hp-bg: #101a19;
+  --hp-bg-2: #16221f;
+  --hp-surface: #182522;
+  --hp-surface-2: #1e2e2a;
+  --hp-ink: #eaf0ec;
+  --hp-ink-2: #a9b9b2;
+  --hp-ink-3: #82958d;
+  --hp-line: #2a3a35;
+  --hp-line-strong: #3b4e48;
+  --hp-brand: #6fb0a6;
+  --hp-brand-2: #8fc9c0;
+  --hp-mist: #4c7c86;
+  --hp-accent: #e0ac68;
+  --hp-accent-soft: #2a2419;
+  --hp-accent-lume: #e0ac68;
+  --hp-on-accent: #101a19;
+  --hp-on-brand: #101a19;
+  --hp-focus: #e0ac68;
+  --hp-focus-on-dark: #e0ac68;
+  --hp-nav-frost: rgba(16, 26, 25, 0.8);
+  --hp-nav-frost-solid: rgba(16, 26, 25, 0.94);
+  --hp-shadow-hover: 0 0 0 1px var(--hp-line-strong);
+  /* 暗底上照片要更沉 */
+  --hp-card-filter: saturate(0.8) contrast(1.03) brightness(0.9);
+  --hp-card-filter-hover: saturate(0.92) contrast(1.03) brightness(0.9);
+}
+
+/* 皮肤 A：优雅暖色（浅色） */
+html.skin-elegant {
+  --hp-bg: #f5f1e8;
+  --hp-bg-2: #ebe4d6;
+  --hp-surface: #fffaf0;
+  --hp-surface-2: #ebe4d6;
+  --hp-ink: #211f1a;
+  --hp-ink-2: #686259;
+  /* skin 的 #8a8175 只有 3.40:1；首页小字用 #6d6559（5.10:1） */
+  --hp-ink-3: #6d6559;
+  --hp-line: rgba(58, 49, 38, 0.14);
+  --hp-line-strong: rgba(58, 49, 38, 0.22);
+  --hp-brand: #211f1a;
+  --hp-brand-2: #3a3126;
+  --hp-mist: #8f693f;
+  --hp-accent: #7e5c35;
+  --hp-accent-soft: #f1e3cb;
+  --hp-accent-lume: #c9a46a;
+  --hp-on-accent: #211f1a;
+  --hp-on-brand: #fffaf0;
+  --hp-focus: #7e5c35;
+  --hp-focus-on-dark: #c9a46a;
+  --hp-glow-rgb: 201, 164, 106;
+  --hp-nav-frost: rgba(245, 241, 232, 0.82);
+  --hp-nav-frost-solid: rgba(245, 241, 232, 0.94);
+  --hp-radius-card: 8px;
+  --hp-radius-card-lg: 8px;
+  --hp-shadow-hover: 0 18px 60px rgba(45, 38, 28, 0.1);
+  --hp-photo-filter: saturate(0.72) sepia(0.18) contrast(1.02) brightness(1.02);
+  --hp-card-filter: saturate(0.8) sepia(0.1) contrast(1.03) brightness(0.97);
+  --hp-card-filter-hover: saturate(0.92) sepia(0.1) contrast(1.03) brightness(0.97);
+}
+
+/* 皮肤 B：赛博霓虹（固定深色） */
+html.skin-neon {
+  --hp-bg: #0a0a0a;
+  --hp-bg-2: #141414;
+  --hp-surface: rgba(255, 255, 255, 0.05);
+  --hp-surface-2: #141414;
+  --hp-ink: #ffffff;
+  --hp-ink-2: #d0d0d0;
+  /* skin 的 #6f6f6f 只有 3.94:1 */
+  --hp-ink-3: #8a8a8a;
+  --hp-line: rgba(255, 255, 255, 0.12);
+  --hp-line-strong: rgba(255, 255, 255, 0.22);
+  --hp-brand: #00ff88;
+  --hp-brand-2: #33ffa0;
+  --hp-mist: #0080ff;
+  --hp-accent: #00ff88;
+  --hp-accent-soft: rgba(0, 255, 136, 0.12);
+  --hp-accent-lume: #7cffc4;
+  --hp-on-accent: #04120b;
+  --hp-on-brand: #04120b;
+  --hp-focus: #7cffc4;
+  --hp-focus-on-dark: #7cffc4;
+  --hp-glow-rgb: 124, 255, 196;
+  --hp-nav-frost: rgba(10, 10, 10, 0.8);
+  --hp-nav-frost-solid: rgba(10, 10, 10, 0.94);
+  --hp-radius-card: 12px;
+  --hp-radius-card-lg: 16px;
+  --hp-shadow-hover: 0 0 44px rgba(0, 255, 136, 0.22);
+  --hp-photo-filter: saturate(0.62) contrast(1.06) brightness(0.72);
+  --hp-card-filter: saturate(0.7) contrast(1.03) brightness(0.8);
+  --hp-card-filter-hover: saturate(0.84) contrast(1.03) brightness(0.82);
+}
+
+/* kenburns 需要可插值的数值变量；不支持 @property 的浏览器动画静默失效，视差仍工作 */
+@property --hp-kenburns {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
+/* ==========================================================================
+   2. 渐变令牌（照片遮罩：硬编码，不随主题/皮肤变，否则照片会泛绿/发黄）
+   ========================================================================== */
+
+:root {
+  --hp-grad-ink: linear-gradient(
+    135deg,
+    var(--hp-brand) 0%,
+    var(--hp-brand-2) 46%,
+    var(--hp-mist) 100%
+  );
+  --hp-grad-glow: radial-gradient(
+    ellipse 60% 120% at 50% 50%,
+    rgba(var(--hp-glow-rgb), 0.42),
+    transparent 70%
+  );
+  --hp-grad-hero-side: linear-gradient(
+    100deg,
+    rgba(9, 20, 19, 0.82) 0%,
+    rgba(9, 20, 19, 0.48) 44%,
+    rgba(9, 20, 19, 0.06) 82%
+  );
+  --hp-grad-hero-top: linear-gradient(
+    180deg,
+    rgba(12, 24, 22, 0.46) 0%,
+    rgba(12, 24, 22, 0) 30%
+  );
+  /*
+   * 卡片遮罩：UX 规范 M1 修正版。
+   * 0.56 是白字 4.5:1 的数学下限（纯白封面上），取 0.60 留余量；
+   * 中段停靠点从 38% 提前到 44%，覆盖「2 行标题顶边」所在位置。
+   */
+  --hp-grad-card: linear-gradient(
+    0deg,
+    rgba(9, 20, 19, 0.9) 0%,
+    rgba(9, 20, 19, 0.6) 44%,
+    rgba(9, 20, 19, 0.1) 78%,
+    transparent 100%
+  );
+  --hp-grad-card-deep: linear-gradient(
+    0deg,
+    rgba(9, 20, 19, 0.92) 0%,
+    rgba(9, 20, 19, 0.56) 40%,
+    rgba(9, 20, 19, 0.12) 76%,
+    transparent 100%
+  );
+  --hp-grad-sheen: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.18) 48%,
+    transparent 66%
+  );
+  --hp-aurora-a1: 0.18;
+  --hp-aurora-a2: 0.14;
+  --hp-grad-aurora:
+    radial-gradient(
+      circle at 72% 18%,
+      rgba(111, 176, 166, var(--hp-aurora-a1)),
+      transparent 56%
+    ),
+    radial-gradient(
+      circle at 18% 84%,
+      rgba(224, 172, 104, var(--hp-aurora-a2)),
+      transparent 52%
+    );
+}
+
+/* 暗色极光 ×1.8；neon 回到 1.0（skin 已是纯黑底） */
+html.dark {
+  --hp-aurora-a1: 0.324;
+  --hp-aurora-a2: 0.252;
+}
+
+html.skin-neon {
+  --hp-aurora-a1: 0.18;
+  --hp-aurora-a2: 0.14;
+}
+
+/* ==========================================================================
+   3. 与内页的桥接（公开页作用域内把琥珀指向赭金；admin 不受影响）
+   ========================================================================== */
+
+html .public-shell .text-brand-600,
+html .public-shell .hover\:text-brand-600:hover {
+  color: var(--hp-accent);
+}
+
+html.dark .public-shell .text-amber-400,
+html.dark .public-shell .text-amber-500,
+html.dark .public-shell .hover\:text-amber-400:hover {
+  color: var(--hp-accent-lume);
+}
+
+html .public-shell .bg-brand-100 {
+  background-color: var(--hp-accent-soft);
+}
+
+/* 皮肤文件里有更高权重的同名覆盖，这里补等权重的皮肤版本，靠文件顺序胜出 */
+html.skin-elegant .public-shell .text-brand-600,
+html.skin-elegant .public-shell .hover\:text-brand-600:hover,
+html.skin-neon .public-shell .text-brand-600,
+html.skin-neon .public-shell .hover\:text-brand-600:hover {
+  color: var(--hp-accent);
+}
+
+html.skin-elegant .public-shell .bg-brand-100,
+html.skin-neon .public-shell .bg-brand-100 {
+  background-color: var(--hp-accent-soft);
+}
+
+html:not(.skin-elegant):not(.skin-neon) .public-shell {
+  background-color: var(--hp-bg);
+}
+
+/* ==========================================================================
+   4. 容器 / 跳过链接
+   ========================================================================== */
+
+.cv-hero__inner,
+.cv-section,
+.cv-nav__inner,
+.cv-footer__inner {
+  width: min(1200px, calc(100% - 2 * var(--hp-gutter)));
+  margin-inline: auto;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 10px 16px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 8px;
+  background: var(--hp-surface);
+  color: var(--hp-ink);
+  font-size: 14px;
+  text-decoration: none;
+  /* 默认移出视口，但保留在 Tab 序里（display:none / visibility:hidden 会让它拿不到焦点） */
+  transform: translateY(-200%);
+  transition: transform 120ms var(--hp-ease-state);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--hp-focus);
+  outline-offset: 2px;
+}
+
+/* 程序化落点：不画焦点环，下一次 Tab 落到 hero 主 CTA */
+#main:focus,
+#journal:focus {
+  outline: none;
+}
+
+/* ==========================================================================
+   5. 顶部导航（首页：透明浮层 → 滚动后磨砂；其他页保持原有 sticky）
+   ========================================================================== */
+
+.public-shell > header.cv-nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: 72px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.92);
+  transition:
+    height 480ms var(--hp-ease-state),
+    background-color 480ms var(--hp-ease-state),
+    border-color 480ms var(--hp-ease-state),
+    color 480ms var(--hp-ease-state);
+}
+
+.cv-nav__inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 100%;
+}
+
+/*
+ * 透明态的独立遮罩带（UX M4）：纯白照片上白字只有 3.28:1，
+ * 这里用 132px 高的渐变把导航区压到 5.02:1。只改 opacity，不参与布局与焦点。
+ */
+.cv-nav__veil {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 132px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 20, 19, 0.62) 0%,
+    rgba(9, 20, 19, 0.34) 56%,
+    transparent 100%
+  );
+  transition: opacity 480ms var(--hp-ease-state);
+}
+
+.cv-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.cv-progress__bar {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--hp-grad-ink);
+  transform: scaleX(var(--hp-progress, 0));
+  transform-origin: left;
+  /* rAF 直写，加 transition 会拖尾 */
+  transition: none;
+}
+
+.cv-nav__brand {
+  font: 600 var(--hp-fs-wordmark)/1.2 var(--hp-font-serif);
+  letter-spacing: 0.1em;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 480ms var(--hp-ease-state);
+}
+
+.cv-nav__links {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin: 0 auto;
+}
+
+.cv-nav__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* 命中区 ≥44px，靠 padding + 负 margin 撑开，视觉位置不变（UX N5） */
+  min-height: 44px;
+  padding-inline: 8px;
+  margin-inline: -8px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 120ms var(--hp-ease-state);
+}
+
+/* 当前项短线（装饰）：纯 CSS 定位，不做 --hp-active-x 的位移计算，resize 后不会指错链接。
+   颜色故意用 currentColor 而不是金色：导航是常驻控件，它的选中态属于 UI 状态、不属于「重音」；
+   金色只留给内容区 5 处（hero 高亮词 / 印章 / 24px 短线 / 卡片 underline / 分页当前页小点）。
+   currentColor 还能自动跟随 top（白）/ scrolled（墨青）两种导航态，不必写两遍。 */
+.cv-nav__link[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 20px;
+  height: 2px;
+  margin-left: -10px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.92;
+}
+
+/* 导航区焦点环：默认 UA 的 1px 黑环（实测 rgb(16,16,16) / 1px）压在深色 hero 上几乎不可见 */
+.public-shell > header .cv-nav__brand:focus-visible,
+.public-shell > header .cv-nav__link:focus-visible,
+.public-shell > header .cv-nav__actions :is(a, button):focus-visible {
+  outline: 2px solid var(--hp-focus-on-dark);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* 滚动态背景变浅，深底金环会掉对比，换回亮底赭金（两态都要 ≥3:1） */
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__brand:focus-visible,
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__link:focus-visible,
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__actions :is(a, button):focus-visible {
+  outline-color: var(--hp-focus);
+}
+
+.cv-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 图标按钮：视觉 36×36，::after 把热区扩到 44×44 */
+.cv-nav--home .cv-nav__actions button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  transition:
+    border-color 120ms var(--hp-ease-state),
+    color 120ms var(--hp-ease-state);
+}
+
+.cv-nav--home .cv-nav__actions button::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+}
+
+.cv-nav--home .cv-nav__actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cv-menu-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  transition:
+    border-color 120ms var(--hp-ease-state),
+    color 120ms var(--hp-ease-state);
+}
+
+/* ---- 滚动态 ---- */
+.public-shell > header.cv-nav[data-nav='scrolled'] {
+  height: 60px;
+  background: var(--hp-nav-frost);
+  /* backdrop-filter 只在滚动态声明：常驻会在首屏留一条 60px 的模糊带 */
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom-color: var(--hp-line);
+  color: var(--hp-ink);
+}
+
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__veil {
+  opacity: 0;
+}
+
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__brand {
+  color: var(--hp-brand);
+}
+
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__link {
+  color: var(--hp-ink);
+}
+
+.public-shell > header.cv-nav[data-nav='top'] .cv-nav__link {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.public-shell > header.cv-nav[data-nav='top'] .cv-nav__link[aria-current='page'] {
+  color: #fff;
+}
+
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__actions button,
+.public-shell > header.cv-nav[data-nav='scrolled'] .cv-menu-btn {
+  border-color: var(--hp-line);
+  color: var(--hp-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:hover {
+    color: #fff;
+  }
+
+  .public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__link:hover {
+    color: var(--hp-brand);
+  }
+
+  .cv-nav--home .cv-nav__actions button:not(:disabled):hover {
+    border-color: var(--hp-accent-lume);
+    color: var(--hp-accent-lume);
+  }
+
+  .public-shell > header.cv-nav[data-nav='scrolled'] .cv-nav__actions button:not(:disabled):hover {
+    border-color: var(--hp-brand);
+    color: var(--hp-brand);
+  }
+}
+
+/* 皮肤权重坑（skin-elegant.css:105 / skin-neon.css:107）：透明态必须显式压回去 */
+html.skin-elegant .public-shell > header.cv-nav--home[data-nav='top'],
+html.skin-neon .public-shell > header.cv-nav--home[data-nav='top'] {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+}
+
+html.skin-elegant .public-shell > header.cv-nav--home[data-nav='top'] .cv-nav__brand,
+html.skin-neon .public-shell > header.cv-nav--home[data-nav='top'] .cv-nav__brand {
+  color: #fff;
+}
+
+html.skin-elegant .public-shell > header.cv-nav--home[data-nav='scrolled'] {
+  background: var(--hp-nav-frost);
+  border-bottom-color: var(--hp-line);
+  box-shadow: 0 12px 36px rgba(45, 38, 28, 0.06);
+}
+
+html.skin-elegant .public-shell > header.cv-nav--home[data-nav='scrolled'] .cv-nav__brand {
+  color: var(--hp-brand);
+}
+
+html.skin-neon .public-shell > header.cv-nav--home[data-nav='scrolled'] {
+  background: var(--hp-nav-frost);
+  border-bottom-color: rgba(0, 255, 136, 0.22);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+html.skin-neon .public-shell > header.cv-nav--home[data-nav='scrolled'] .cv-nav__brand {
+  color: var(--hp-brand);
+  text-shadow: 0 0 14px rgba(0, 255, 136, 0.45);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .public-shell > header.cv-nav[data-nav='scrolled'],
+  html.skin-elegant .public-shell > header.cv-nav--home[data-nav='scrolled'],
+  html.skin-neon .public-shell > header.cv-nav--home[data-nav='scrolled'] {
+    background: var(--hp-nav-frost-solid);
+  }
+}
+
+/* ==========================================================================
+   6. Hero
+   ========================================================================== */
+
+.cv-hero {
+  position: relative;
+  min-height: min(88vh, 760px);
+  min-height: min(88svh, 760px);
+  display: flex;
+  align-items: center;
+  padding-top: 8vh;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--hp-scrim-mid);
+}
+
+/* z0 照片 */
+.cv-hero__photo {
+  position: absolute;
+  top: -60px;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 120px);
+  object-fit: cover;
+  object-position: 50% 55%;
+  filter: var(--hp-photo-filter);
+  transform-origin: 50% 55%;
+  will-change: transform;
+  transform: translate3d(0, var(--hp-parallax-y, 0px), 0) scale(var(--hp-kenburns, 1));
+  z-index: 0;
+}
+
+/* z1 调色片 */
+.cv-hero__tone {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(30, 61, 58, 0.18);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* z2 侧向 + 顶部压暗 */
+.cv-hero__shade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--hp-grad-hero-side), var(--hp-grad-hero-top);
+  pointer-events: none;
+}
+
+/* z3 极光（密度靠 alpha 变量调，不加滤镜） */
+.cv-hero__aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--hp-grad-aurora);
+  opacity: 1;
+  filter: none;
+  pointer-events: none;
+}
+
+/* z4 颗粒（静态，零动画） */
+.cv-hero__grain {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='180'%20height='180'%3E%3Cfilter%20id='g'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='3'%20stitchTiles='stitch'/%3E%3C/filter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+html.dark .cv-hero__grain {
+  opacity: 0.04;
+  mix-blend-mode: soft-light;
+}
+
+/* z5 等高线 */
+.cv-hero__contours {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 35%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.cv-hero__contours path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+}
+
+/* z6 底部渐隐 */
+.cv-hero__fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 80px;
+  z-index: 6;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, var(--hp-bg) 100%);
+}
+
+/* z7 内容 */
+.cv-hero__inner {
+  position: relative;
+  z-index: 7;
+}
+
+.cv-hero__copy {
+  position: relative;
+  max-width: min(940px, 100%);
+  color: #fff;
+}
+
+.cv-hero__seal {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hp-accent-lume);
+  border-radius: 3px;
+  color: var(--hp-accent-lume);
+  font: 600 20px/1 var(--hp-font-serif);
+}
+
+.cv-hero__eyebrow {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin: 0 0 20px;
+  padding-left: 56px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+}
+
+.cv-hero__rule {
+  display: block;
+  width: 24px;
+  height: 2px;
+  margin: 0 0 24px;
+  background: var(--hp-accent-lume);
+}
+
+.cv-hero h1 {
+  margin: 0 0 24px;
+  font: 600 var(--hp-fs-display)/1.16 var(--hp-font-serif);
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-wrap: balance;
+  /* 长英文串不撑破容器（UX N9） */
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.cv-hero__hl {
+  position: relative;
+  isolation: isolate;
+  color: var(--hp-accent-lume);
+}
+
+.cv-hero__glow {
+  position: absolute;
+  inset: -45% -30%;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--hp-grad-glow);
+  opacity: 0.6;
+}
+
+.cv-hero__meta {
+  margin: 0 0 32px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cv-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 24px;
+  border-radius: 8px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    background-color 120ms var(--hp-ease-state),
+    border-color 120ms var(--hp-ease-state),
+    color 120ms var(--hp-ease-state),
+    transform 240ms var(--hp-ease-state),
+    filter 120ms var(--hp-ease-state);
+}
+
+.cv-btn--primary {
+  margin-right: 12px;
+  border: 1px solid var(--hp-accent-lume);
+  background: var(--hp-accent-lume);
+  color: var(--hp-on-accent);
+}
+
+.cv-btn--ghost {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: transparent;
+  color: #fff;
+}
+
+.cv-btn:focus-visible {
+  outline: 2px solid var(--hp-focus-on-dark);
+  outline-offset: 3px;
+  /* 深色外环：保证金环落在亮照片上也可见（双环） */
+  box-shadow: 0 0 0 5px rgba(9, 20, 19, 0.75);
+}
+
+.cv-btn:active {
+  transform: translateY(0) scale(0.99);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-btn--primary:hover {
+    filter: brightness(1.06);
+    transform: translateY(-2px);
+  }
+
+  .cv-btn--primary:hover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--hp-grad-sheen);
+    animation: cvSheenOnce 600ms var(--hp-ease-state) 1;
+  }
+
+  .cv-btn--ghost:hover {
+    border-color: var(--hp-accent-lume);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--hp-accent-lume);
+  }
+}
+
+.cv-hero__vertical {
+  position: absolute;
+  z-index: 8;
+  right: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.cv-hero__vertical-text {
+  writing-mode: vertical-rl;
+  font-size: var(--hp-fs-xs);
+  letter-spacing: 0.5em;
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.cv-hero__vertical-line {
+  display: block;
+  width: 1px;
+  height: 64px;
+  background: var(--hp-accent-lume);
+}
+
+.cv-scroll-cue {
+  position: absolute;
+  z-index: 8;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.cv-scroll-cue__label {
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cv-scroll-cue__line {
+  position: relative;
+  display: block;
+  width: 1px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cv-scroll-cue__dot {
+  position: absolute;
+  top: 0;
+  left: -1.5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--hp-accent-lume);
+  opacity: 0;
+}
+
+/* 无图降级：渐变底 + 颗粒 + 等高线，绝不是白块 */
+.cv-hero--nophoto {
+  background-color: #0c1816;
+  background-image:
+    radial-gradient(120% 90% at 78% 12%, rgba(111, 176, 166, 0.2), transparent 58%),
+    radial-gradient(90% 80% at 12% 88%, rgba(224, 172, 104, 0.16), transparent 62%),
+    linear-gradient(150deg, #0c1816 0%, #15332e 46%, #0b1917 100%);
+}
+
+.cv-hero--nophoto .cv-hero__tone {
+  display: none;
+}
+
+.cv-hero--nophoto .cv-hero__shade {
+  opacity: 0.55;
+}
+
+.cv-hero--nophoto .cv-hero__contours {
+  width: 52%;
+}
+
+.cv-hero--nophoto .cv-hero__contours path {
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+/* ==========================================================================
+   7. 区块标题条
+   ========================================================================== */
+
+.cv-section {
+  padding-bottom: var(--hp-section-gap);
+  scroll-margin-top: 76px;
+}
+
+.cv-section-head {
+  padding-top: var(--hp-section-gap);
+}
+
+.cv-section-head__top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cv-section-head__eyebrow {
+  margin: 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  /* 赭金小字只能落在 --hp-bg / --hp-surface 上（bg-2 / surface-2 / accent-soft 均 <4.5） */
+  color: var(--hp-accent);
+}
+
+.cv-section-head__title {
+  margin: 8px 0 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-h2);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--hp-ink);
+}
+
+.cv-section-head__count {
+  margin: 0 0 4px;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--hp-ink-3);
+  white-space: nowrap;
+}
+
+/* 分隔线用 ::before 才做得到精确 48px 的强化段 */
+.cv-section-head__line {
+  position: relative;
+  height: 1px;
+  margin-top: 24px;
+  background: var(--hp-line);
+}
+
+.cv-section-head__line::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 1px;
+  background: var(--hp-accent);
+}
+
+/* ==========================================================================
+   8. 12 列栅格
+   ========================================================================== */
+
+.cv-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--hp-grid-gap);
+  margin: var(--hp-block-gap) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cv-grid__item {
+  grid-column: span 6;
+  /* 长标题在 grid 里撑出横向滚动的前提条件（1.4.10） */
+  min-width: 0;
+}
+
+.cv-grid__item--featured,
+.cv-grid__item--wide {
+  grid-column: span 12;
+}
+
+.cv-grid[aria-busy='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 200ms var(--hp-ease-state);
+}
+
+/* ==========================================================================
+   9. 标准卡（16:10 图 + 图上叠加文字）
+   ========================================================================== */
+
+.cv-card {
+  display: block;
+  position: relative;
+  border-radius: var(--hp-radius-card);
+  color: inherit;
+  text-decoration: none;
+  outline-offset: 3px;
+  transition:
+    transform 240ms var(--hp-ease-state),
+    box-shadow 240ms var(--hp-ease-state);
+}
+
+.cv-card__media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--hp-radius-card);
+  background: var(--hp-surface-2);
+}
+
+.cv-card__media img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 42%;
+  filter: var(--hp-card-filter);
+  transition:
+    transform 240ms var(--hp-ease-state),
+    filter 240ms var(--hp-ease-state);
+}
+
+/* 无图降级：渐变底 + 序号/chip/标题/underline 照常渲染 */
+.cv-card__media.is-failed {
+  background:
+    radial-gradient(120% 100% at 20% 0%, rgba(94, 138, 140, 0.28), transparent 60%),
+    linear-gradient(135deg, var(--hp-surface-2), var(--hp-line));
+}
+
+.cv-card__tone {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 61, 58, 0.16);
+  pointer-events: none;
+}
+
+html.dark .cv-card__tone {
+  background: rgba(9, 20, 19, 0.28);
+}
+
+.cv-card__top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 88px;
+  background: linear-gradient(180deg, rgba(9, 20, 19, 0.12), transparent);
+  pointer-events: none;
+}
+
+.cv-card__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--hp-grad-card);
+  pointer-events: none;
+}
+
+/* hover/focus 时再叠一层，不改布局 */
+.cv-card__scrim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--hp-grad-card);
+  opacity: 0;
+  transition: opacity 240ms var(--hp-ease-state);
+}
+
+.cv-card__text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 20px 20px 18px;
+}
+
+/* chip 底 .72：白字在浅色封面上 6.7:1（UX M2） */
+.cv-card__chip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  max-width: 60%;
+  height: 22px;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--hp-radius-chip);
+  background: rgba(9, 20, 19, 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 500;
+  line-height: 20px;
+  transition: border-color 120ms var(--hp-ease-state);
+}
+
+.cv-card__num {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-family: var(--hp-font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.cv-card h3 {
+  margin: 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-h3);
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: 0;
+  color: #fff;
+  text-wrap: balance;
+  /* 冗余兜底：遮罩已按最坏情况设计，text-shadow 只为真实观感 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  overflow-wrap: anywhere;
+  word-break: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-card__underline {
+  display: block;
+  width: 32px;
+  height: 2px;
+  margin-top: 8px;
+  background: var(--hp-accent-lume);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 240ms var(--hp-ease-state);
+}
+
+.cv-card__foot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cv-card__route {
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cv-card__date {
+  margin-left: auto;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 触屏「阅读 →」角标：默认不显示，只在无 hover 的设备出现 */
+.cv-card__ext {
+  display: none;
+  margin-left: 4px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--hp-shadow-hover);
+  }
+
+  .cv-card:hover .cv-card__media img {
+    transform: scale(1.045);
+    filter: var(--hp-card-filter-hover);
+  }
+
+  .cv-card:hover .cv-card__scrim::after {
+    opacity: 0.15;
+  }
+
+  .cv-card:hover .cv-card__underline {
+    transform: scaleX(1);
+  }
+
+  .cv-card:hover .cv-card__chip {
+    border-color: rgba(var(--hp-glow-rgb), 0.6);
+  }
+}
+
+/* 键盘用户必须获得与鼠标完全等价的三件事（边界/文字可读/可点） */
+.cv-card:focus-visible {
+  outline: 2px solid var(--hp-focus-on-dark);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 5px rgba(9, 20, 19, 0.75),
+    var(--hp-shadow-hover);
+  /* 不做位移，避免焦点框跟着飘 */
+  transform: none;
+}
+
+.cv-card:focus-visible .cv-card__scrim::after {
+  opacity: 0.15;
+}
+
+.cv-card:focus-visible .cv-card__underline {
+  transform: scaleX(1);
+}
+
+.cv-card:active {
+  transform: scale(0.995);
+}
+
+/* ==========================================================================
+   10. 精选卡（左 40% 面板 + 右 60% 照片）
+   ========================================================================== */
+
+.cv-feat {
+  display: block;
+  position: relative;
+  border-bottom: 1px solid var(--hp-line);
+  border-radius: var(--hp-radius-card-lg);
+  color: inherit;
+  text-decoration: none;
+  outline-offset: 3px;
+  transition:
+    transform 240ms var(--hp-ease-state),
+    box-shadow 240ms var(--hp-ease-state);
+}
+
+.cv-feat__inner {
+  display: grid;
+  grid-template-columns: 40% 60%;
+  min-height: 380px;
+}
+
+.cv-feat__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* padding-bottom 104px = 印章 40 + 底距 40 + 间隙 24：真实标题可达 200 字，
+     line-clamp:2 后仍可能压到印章，预留出来彻底规避 */
+  padding: 40px 40px 104px;
+  border-radius: var(--hp-radius-card-lg) 0 0 var(--hp-radius-card-lg);
+  background: var(--hp-surface);
+}
+
+.cv-feat__eyebrow {
+  margin: 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hp-accent);
+}
+
+.cv-feat h3 {
+  margin: 16px 0 12px;
+  font-family: var(--hp-font-serif);
+  font-size: var(--hp-fs-featured);
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: 0.005em;
+  color: var(--hp-ink);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-feat__route {
+  display: -webkit-box;
+  margin: 0 0 4px;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--hp-ink-2);
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-feat__meta {
+  margin: 0;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--hp-ink-3);
+}
+
+.cv-feat__seal {
+  position: absolute;
+  left: 40px;
+  bottom: 40px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hp-accent);
+  border-radius: 3px;
+  color: var(--hp-accent);
+  font: 600 20px/1 var(--hp-font-serif);
+}
+
+.cv-feat__readmore {
+  position: absolute;
+  left: 92px;
+  bottom: 52px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--hp-accent);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  font-weight: 500;
+  color: var(--hp-brand);
+}
+
+.cv-feat__index {
+  position: absolute;
+  right: 40px;
+  bottom: 40px;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--hp-ink-3);
+}
+
+.cv-feat__media {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0 var(--hp-radius-card-lg) var(--hp-radius-card-lg) 0;
+  background: var(--hp-surface-2);
+}
+
+/* 照片绝对定位：不参与高度计算，精选卡的高度由面板内容 + min-height:380px 决定
+   （否则 <img> 会按自身比例把卡片撑到 540px，破坏 40/60 版式与行高节奏） */
+.cv-feat__media img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  filter: var(--hp-card-filter);
+  transition:
+    transform 240ms var(--hp-ease-state),
+    filter 240ms var(--hp-ease-state);
+}
+
+.cv-feat__media.is-failed {
+  background:
+    radial-gradient(120% 100% at 20% 0%, rgba(94, 138, 140, 0.28), transparent 60%),
+    linear-gradient(135deg, var(--hp-surface-2), var(--hp-line));
+}
+
+/* 照片 scrim 只在右缘压暗，让照片「贴」到面板 */
+.cv-feat__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 60%, rgba(9, 20, 19, 0.18) 100%);
+  pointer-events: none;
+}
+
+.cv-feat__seam {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--hp-surface) 0%, transparent 22%);
+  pointer-events: none;
+}
+
+.cv-feat__media.is-failed .cv-feat__seam {
+  background: linear-gradient(90deg, var(--hp-surface) 0%, transparent 46%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-feat:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--hp-shadow-hover);
+  }
+
+  .cv-feat:hover .cv-feat__media img {
+    transform: scale(1.045);
+    filter: var(--hp-card-filter-hover);
+  }
+
+  /* 用 box-shadow 加粗下划线，避免 border 宽度变化引起布局跳动 */
+  .cv-feat:hover .cv-feat__readmore {
+    box-shadow: inset 0 -1px 0 var(--hp-accent);
+  }
+}
+
+.cv-feat:focus-visible {
+  outline: 2px solid var(--hp-focus-on-dark);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 5px rgba(9, 20, 19, 0.75),
+    var(--hp-shadow-hover);
+  transform: none;
+}
+
+.cv-feat:active {
+  transform: scale(0.995);
+}
+
+/* ==========================================================================
+   11. 宽卡（4:1 图 + 深遮罩 + 本期终）
+   ========================================================================== */
+
+.cv-wide {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--hp-radius-card-lg);
+  color: inherit;
+  text-decoration: none;
+  outline-offset: 3px;
+  transition:
+    transform 240ms var(--hp-ease-state),
+    box-shadow 240ms var(--hp-ease-state);
+}
+
+.cv-wide__media {
+  position: relative;
+  aspect-ratio: 4 / 1;
+  background: var(--hp-surface-2);
+}
+
+.cv-wide__media img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 20%;
+  filter: var(--hp-card-filter);
+  transition:
+    transform 240ms var(--hp-ease-state),
+    filter 240ms var(--hp-ease-state);
+}
+
+.cv-wide__media.is-failed {
+  background:
+    radial-gradient(120% 100% at 20% 0%, rgba(94, 138, 140, 0.28), transparent 60%),
+    linear-gradient(135deg, var(--hp-surface-2), var(--hp-line));
+}
+
+.cv-wide__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--hp-grad-card-deep);
+  pointer-events: none;
+}
+
+.cv-wide__text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 32px 40px;
+}
+
+.cv-wide h3 {
+  margin: 0;
+  font-family: var(--hp-font-serif);
+  font-size: var(--hp-fs-wide);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  overflow-wrap: anywhere;
+  word-break: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-wide__fin {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cv-wide__index {
+  margin-left: 4px;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-num);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-wide:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--hp-shadow-hover);
+  }
+
+  .cv-wide:hover .cv-wide__media img {
+    transform: scale(1.045);
+    filter: var(--hp-card-filter-hover);
+  }
+
+  .cv-wide:hover .cv-card__underline {
+    transform: scaleX(1);
+  }
+}
+
+.cv-wide:focus-visible {
+  outline: 2px solid var(--hp-focus-on-dark);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 5px rgba(9, 20, 19, 0.75),
+    var(--hp-shadow-hover);
+  transform: none;
+}
+
+.cv-wide:active {
+  transform: scale(0.995);
+}
+
+/* ==========================================================================
+   12. 分页行（不复用 AppPagination：它 ≤639 塌成 24px 按钮、≥640 多渲染 sizes 下拉）
+   ========================================================================== */
+
+.cv-pager-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: var(--hp-pager-gap);
+}
+
+.cv-pager-row[data-busy='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cv-size-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cv-size-label {
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  color: var(--hp-ink-3);
+}
+
+.cv-size-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-ink-3);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 120ms var(--hp-ease-state),
+    border-color 120ms var(--hp-ease-state);
+}
+
+.cv-size-btn[aria-pressed='true'] {
+  color: var(--hp-ink);
+}
+
+.cv-size-btn[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--hp-accent);
+}
+
+.cv-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cv-pager__num {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-ink-2);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--hp-ease-state),
+    color 120ms var(--hp-ease-state);
+}
+
+.cv-pager__num[aria-current='page'] {
+  border-color: var(--hp-brand);
+  background: var(--hp-brand);
+  color: var(--hp-on-brand);
+}
+
+/* 金色第二次（也是最后一处）出现：当前页右下 4px 圆点 */
+.cv-pager__num[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--hp-accent-lume);
+}
+
+.cv-pager__gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 36px;
+  color: var(--hp-ink-3);
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-xs);
+}
+
+.cv-pager__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-ink-2);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 120ms var(--hp-ease-state),
+    border-color 120ms var(--hp-ease-state);
+}
+
+.cv-pager__step:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-pager__num:not([aria-current='page']):hover,
+  .cv-size-btn:not([aria-pressed='true']):hover,
+  .cv-pager__step:not(:disabled):hover {
+    border-color: var(--hp-brand);
+    color: var(--hp-brand);
+  }
+}
+
+.cv-pager__num:focus-visible,
+.cv-pager__step:focus-visible,
+.cv-size-btn:focus-visible {
+  outline: 2px solid var(--hp-focus);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   13. 页脚（两栏）
+   ========================================================================== */
+
+.cv-footer {
+  position: relative;
+  overflow: hidden;
+  padding: 64px 0 48px;
+  border-top: 1px solid var(--hp-line);
+  background: var(--hp-bg-2);
+}
+
+.cv-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--hp-grad-ink);
+  opacity: 0.06;
+}
+
+.cv-footer__inner {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cv-footer__brand {
+  margin: 0 0 8px;
+  font: 600 var(--hp-fs-wordmark)/1.2 var(--hp-font-serif);
+  color: var(--hp-brand);
+}
+
+/* 页脚小字一律 ink-2：ink-3 在 bg-2 上只有 4.49:1（UX M5） */
+.cv-footer__tagline {
+  margin: 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  color: var(--hp-ink-2);
+}
+
+.cv-footer__right {
+  text-align: right;
+}
+
+.cv-footer__copy {
+  margin: 0 0 8px;
+  font-family: var(--hp-font-mono);
+  font-size: var(--hp-fs-xs);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--hp-ink-2);
+}
+
+.cv-footer__hint {
+  margin: 0;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  color: var(--hp-ink-2);
+}
+
+/* skin-elegant.css:115 把 > footer 变成深棕底（#6d6559 on #211f1a = 2.87:1），必须压回来 */
+html.skin-elegant .public-shell > footer.cv-footer {
+  border-top-color: var(--hp-line);
+  background: var(--hp-bg-2);
+  color: var(--hp-ink-2);
+}
+
+html.skin-neon .public-shell > footer.cv-footer {
+  border-top-color: rgba(0, 255, 136, 0.18);
+  background: var(--hp-bg-2);
+  color: var(--hp-ink-2);
+}
+
+/* ==========================================================================
+   14. 三态（加载 / 错误 / 空）
+   ========================================================================== */
+
+.cv-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  /* 高度兜底：否则加载态只有一行字，页脚会「跳」进视口 */
+  min-height: clamp(240px, 40vh, 420px);
+  text-align: center;
+  color: var(--hp-ink-2);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+}
+
+.cv-state__msg {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.cv-state__retry {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-accent);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cv-state__retry:focus-visible {
+  outline: 2px solid var(--hp-focus);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   15. 移动端抽屉（原生 dialog，top layer）
+   ========================================================================== */
+
+dialog.cv-sheet {
+  position: fixed;
+  inset: 0 0 auto 0;
+  width: 100%;
+  max-width: none;
+  max-height: calc(100svh - 24px);
+  margin: 0;
+  padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0 0 16px 16px;
+  background: var(--hp-bg);
+  color: var(--hp-ink);
+}
+
+dialog.cv-sheet::backdrop {
+  background: rgba(9, 20, 19, 0.56);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.cv-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hp-line);
+}
+
+.cv-sheet__title {
+  font-family: var(--hp-font-serif);
+  font-size: var(--hp-fs-wordmark);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--hp-brand);
+}
+
+.cv-sheet__close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-ink-2);
+  cursor: pointer;
+}
+
+.cv-sheet__nav ul {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cv-sheet__nav a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--hp-ink);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-body);
+  text-decoration: none;
+}
+
+.cv-sheet__nav a[aria-current='page'] {
+  color: var(--hp-accent);
+}
+
+.cv-sheet__group {
+  margin: 20px 0 0;
+  padding: 16px;
+  border: 1px solid var(--hp-line);
+  border-radius: 12px;
+}
+
+.cv-sheet__group legend {
+  padding: 0 6px;
+  color: var(--hp-ink-2);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.cv-sheet__radio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--hp-ink);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  cursor: pointer;
+}
+
+.cv-sheet__radio input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--hp-accent);
+}
+
+.cv-sheet__hint {
+  margin: 8px 0 0;
+  color: var(--hp-ink-2);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  line-height: 1.6;
+}
+
+.cv-sheet__switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hp-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hp-ink);
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-sm);
+  cursor: pointer;
+}
+
+.cv-sheet__switch[aria-checked='true'] {
+  border-color: var(--hp-brand);
+  color: var(--hp-brand);
+}
+
+.cv-sheet__switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cv-sheet__switch-state {
+  color: var(--hp-ink-2);
+  font-size: var(--hp-fs-xs);
+}
+
+.cv-sheet a:focus-visible,
+.cv-sheet button:focus-visible,
+.cv-sheet input:focus-visible {
+  outline: 2px solid var(--hp-focus);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   16. 动效
+   ========================================================================== */
+
+/* 入场：起始隐藏态只在 JS 挂上 .js.motion-ok 后生效（双门控，无 JS 时 SSR 内容直接可见） */
+html.js.motion-ok .cv-hero__copy {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: cvCopyIn 760ms var(--hp-ease-enter) both;
+}
+
+html.js.motion-ok .cv-hero__copy > * {
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
+  animation: cvItemIn 620ms var(--hp-ease-enter) both;
+}
+
+/* 只有 wrapper 做位移，7 个子项只做 clip-path + opacity（避免 7 个合成层同时位移） */
+html.js.motion-ok .cv-hero__seal {
+  animation-delay: 0ms;
+}
+
+html.js.motion-ok .cv-hero__eyebrow {
+  animation-delay: 40ms;
+}
+
+html.js.motion-ok .cv-hero__rule {
+  animation-delay: 80ms;
+}
+
+html.js.motion-ok .cv-hero__title {
+  animation-delay: 120ms;
+}
+
+html.js.motion-ok .cv-hero__meta {
+  animation-delay: 180ms;
+}
+
+html.js.motion-ok .cv-hero__cta--primary {
+  animation-delay: 240ms;
+}
+
+html.js.motion-ok .cv-hero__cta--ghost {
+  animation-delay: 300ms;
+}
+
+html.js.motion-ok .cv-hero__contours path {
+  stroke-dashoffset: 100;
+  animation: cvDraw 1600ms var(--hp-ease-enter) 200ms both;
+}
+
+html.js.motion-ok .cv-hero__glow {
+  opacity: 0;
+  animation: cvBloom 900ms var(--hp-ease-enter) 400ms both;
+}
+
+/* 入场结束必须解除全部起始隐藏（含 clip-path），否则高亮词光晕会被裁掉 */
+html.is-settled .cv-hero__copy,
+html.is-settled .cv-hero__copy > * {
+  opacity: 1 !important;
+  transform: none !important;
+  clip-path: none !important;
+}
+
+/* 入场期间（未 is-settled）任一子项拿到焦点：整块立即全显，且不改变 Tab 序。
+   四条缺一不可：
+   - opacity：父层不透明度会乘到子项，只管子项无效
+   - transform / clip-path：入场隐藏基态是静态声明，必须一并清，
+     否则 animation:none 之类会「回落到裁切 + 位移」的不可见态
+   - transition:none：过渡声明在层叠顺序里高于作者 !important，!important 终止不了在飞过渡，
+     这是唯一手段（否则聚焦会补间成 240ms 渐显，而不是「落上即全显」）
+   刻意不写 animation:none：关掉动画后，失焦时 animation-name 从 none 变回有名，
+   浏览器会重建实例并从 0 重播入场，表现为 hero 闪回再次入场。动画实例保持不动即可。 */
+html:not(.is-settled) .cv-hero__copy:focus-within,
+html:not(.is-settled) .cv-hero__copy:focus-within > * {
+  opacity: 1 !important;
+  transform: none !important;
+  clip-path: none !important;
+  transition: none !important;
+}
+
+@keyframes cvCopyIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cvItemIn {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes cvDraw {
+  from {
+    stroke-dashoffset: 100;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cvBloom {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.6;
+  }
+}
+
+@keyframes cvSheenOnce {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* L1 · 照片缓慢推近（与视差共用同一 transform） */
+@keyframes cvKenburns {
+  from {
+    --hp-kenburns: 1;
+  }
+
+  to {
+    --hp-kenburns: 1.06;
+  }
+}
+
+/* L2 · 高亮词光晕呼吸 */
+@keyframes cvBreathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* L3 · 滚动提示圆点 */
+@keyframes cvCue {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(48px);
+    opacity: 0;
+  }
+}
+
+/* 三个常驻循环（只有这三个，没有第四个） */
+html.is-settled.motion-ok .cv-hero__photo {
+  animation: cvKenburns 22s linear infinite alternate;
+}
+
+html.is-settled.motion-ok .cv-hero__glow {
+  animation: cvBreathe 7s ease-in-out infinite;
+}
+
+html.is-settled.motion-ok .cv-scroll-cue__dot {
+  animation: cvCue 2.2s ease-in-out infinite;
+}
+
+/* hero 出视口 / 标签页隐藏 → 暂停三个循环（省电） */
+html.hero-offscreen.is-settled.motion-ok .cv-hero__photo,
+html.hero-offscreen.is-settled.motion-ok .cv-hero__glow,
+html.hero-offscreen.is-settled.motion-ok .cv-scroll-cue__dot,
+html.is-hidden.is-settled.motion-ok .cv-hero__photo,
+html.is-hidden.is-settled.motion-ok .cv-hero__glow,
+html.is-hidden.is-settled.motion-ok .cv-scroll-cue__dot {
+  animation-play-state: paused;
+}
+
+/* 卡片揭示：隐藏态只由 JS 在客户端加类（SSR 无 JS 时直接可见） */
+.cv-grid > .cv-grid__item.cv-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 700ms var(--hp-ease-enter),
+    transform 700ms var(--hp-ease-enter);
+  transition-delay: var(--cv-reveal-delay, 0ms);
+}
+
+.cv-grid > .cv-grid__item.cv-reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ==========================================================================
+   17. prefers-reduced-motion：唯一一个全局关闭块
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-home,
+  .cv-home *,
+  .cv-home *::before,
+  .cv-home *::after,
+  .cv-nav,
+  .cv-nav *,
+  .cv-footer,
+  .cv-footer *::before,
+  .cv-sheet,
+  .cv-sheet::backdrop,
+  .skip-link {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* 强制回到最终态：首屏文字必须立即可见，而不是等 3s 看门狗 */
+  .cv-hero__copy,
+  .cv-hero__copy > *,
+  .cv-grid > .cv-grid__item.cv-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+
+  .cv-hero__contours path {
+    stroke-dashoffset: 0 !important;
+  }
+
+  /* 保留静态光晕（它是视觉的一部分） */
+  .cv-hero__glow {
+    opacity: 0.6 !important;
+  }
+
+  /* 循环点彻底关掉 */
+  .cv-scroll-cue__dot {
+    opacity: 0 !important;
+  }
+
+  /* 连视差一起关（JS 侧也不再写 --hp-parallax-y） */
+  .cv-hero__photo {
+    transform: none !important;
+  }
+
+  /* 没有 hover 反馈的替代：underline 恒显，信息不丢 */
+  .cv-card__underline,
+  .cv-wide .cv-card__underline {
+    transform: scaleX(1) !important;
+  }
+
+  .cv-card:hover,
+  .cv-feat:hover,
+  .cv-wide:hover {
+    transform: none !important;
+  }
+
+  .cv-sheet::backdrop {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ==========================================================================
+   18. 触屏（无 hover）
+   ========================================================================== */
+
+@media (hover: none), (pointer: coarse) {
+  /* 触屏没有 hover：位移与缩放全部关闭，underline 恒显，右下出现「阅读 →」 */
+  .cv-card:hover,
+  .cv-feat:hover,
+  .cv-wide:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .cv-card:hover .cv-card__media img,
+  .cv-feat:hover .cv-feat__media img,
+  .cv-wide:hover .cv-wide__media img {
+    transform: none;
+  }
+
+  .cv-card__underline {
+    transform: scaleX(1);
+  }
+
+  .cv-card__ext {
+    display: inline;
+  }
+
+  .cv-size-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .cv-pager__num,
+  .cv-pager__step {
+    min-height: 44px;
+  }
+}
+
+/* ==========================================================================
+   19. 强制颜色模式（照片会被系统重写颜色，白字会消失）
+   ========================================================================== */
+
+@media (forced-colors: active) {
+  .cv-hero__photo,
+  .cv-card__media img,
+  .cv-feat__media img,
+  .cv-wide__media img {
+    display: none;
+  }
+
+  .cv-card,
+  .cv-feat,
+  .cv-wide {
+    border: 1px solid CanvasText;
+  }
+
+  .cv-hero__tone,
+  .cv-hero__grain,
+  .cv-card__scrim,
+  .cv-card__tone,
+  .cv-card__top,
+  .cv-wide__scrim,
+  .cv-feat__scrim {
+    display: none;
+  }
+
+  .cv-hero__copy,
+  .cv-card h3,
+  .cv-wide h3 {
+    color: CanvasText;
+  }
+
+  :where(a, button, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+/* ==========================================================================
+   20. 三档响应式（只用 768 / 1024 / 440，禁止 sm: 640 档做首页布局）
+   ========================================================================== */
+
+/* ---- 平板档 ---- */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root {
+    --hp-gutter: 28px;
+    --hp-fs-h2: 24px;
+    --hp-fs-h3: 19px;
+    --hp-fs-featured: 30px;
+    --hp-fs-display: clamp(38px, 5.6vw, 60px);
+    --hp-grid-gap: 16px;
+    --hp-block-gap: 38px;
+    --hp-pager-gap: 52px;
+    --hp-section-gap: 76px;
+  }
+
+  .cv-nav__inner,
+  .cv-nav__links {
+    gap: 16px;
+  }
+
+  .cv-nav__link {
+    font-size: 13px;
+  }
+
+  .cv-hero {
+    min-height: min(78vh, 640px);
+    min-height: min(78svh, 640px);
+  }
+
+  .cv-hero__contours {
+    width: 28%;
+  }
+
+  .cv-hero__vertical {
+    right: 28px;
+  }
+
+  .cv-feat__inner {
+    grid-template-columns: 45% 55%;
+    min-height: 320px;
+  }
+
+  .cv-feat__panel {
+    padding: 32px 32px 96px;
+  }
+
+  .cv-feat__seal {
+    left: 32px;
+    bottom: 32px;
+  }
+
+  .cv-feat__readmore {
+    left: 84px;
+    bottom: 44px;
+  }
+
+  .cv-feat__index {
+    right: 32px;
+    bottom: 32px;
+  }
+
+  .cv-wide__media {
+    height: 260px;
+    aspect-ratio: auto;
+  }
+
+  .cv-section {
+    scroll-margin-top: 72px;
+  }
+
+  .cv-footer {
+    padding: 52px 0 40px;
+  }
+}
+
+/* ---- 手机档 ---- */
+@media (max-width: 767px) {
+  :root {
+    --hp-gutter: 20px;
+    --hp-fs-display: clamp(36px, 9vw, 48px);
+    --hp-fs-featured: 26px;
+    --hp-fs-h2: 22px;
+    --hp-fs-h3: 17px;
+    --hp-fs-wide: 20px;
+    --hp-fs-xs: 11px;
+    --hp-fs-num: 12px;
+    --hp-grid-gap: 16px;
+    --hp-block-gap: 28px;
+    --hp-pager-gap: 38px;
+    --hp-section-gap: 58px;
+    /* 手机卡只有约 209px 高，文字占卡高比例更大 → 更靠上就开始压暗（UX M1） */
+    --hp-grad-card: linear-gradient(
+      0deg,
+      rgba(9, 20, 19, 0.94) 0%,
+      rgba(9, 20, 19, 0.8) 40%,
+      rgba(9, 20, 19, 0.4) 72%,
+      transparent 100%
+    );
+  }
+
+  .cv-nav__inner {
+    gap: 12px;
+  }
+
+  .cv-nav__brand {
+    font-size: 18px;
+  }
+
+  /* 导航链接 / 皮肤 / 亮暗全部进抽屉，顶栏只留菜单按钮（UX M7） */
+  .cv-nav__links,
+  .cv-nav__actions,
+  .cv-nav__link[aria-current='page']::after {
+    display: none;
+  }
+
+  /* 链接与动作区隐藏后只剩「品牌 + 菜单按钮」，靠 space-between 把它们分到两端 */
+  .cv-nav__inner {
+    justify-content: space-between;
+  }
+
+  .cv-hero {
+    min-height: min(76vh, 560px);
+    min-height: min(76svh, 560px);
+    padding-top: 4vh;
+  }
+
+  .cv-hero__copy {
+    max-width: 100%;
+  }
+
+  .cv-hero__seal {
+    width: 32px;
+    height: 32px;
+    font-size: 17px;
+  }
+
+  .cv-hero__eyebrow {
+    min-height: 32px;
+    margin-bottom: 12px;
+    padding-left: 44px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+  }
+
+  .cv-hero__rule {
+    margin-bottom: 14px;
+  }
+
+  .cv-hero h1 {
+    margin-bottom: 14px;
+  }
+
+  .cv-hero__meta {
+    margin-bottom: 18px;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+
+  /* 竖排装饰与等高线在手机上只会挤占画面 */
+  .cv-hero__vertical,
+  .cv-hero__contours {
+    display: none;
+  }
+
+  .cv-btn {
+    width: 100%;
+    height: 48px;
+    margin: 0 0 10px;
+  }
+
+  .cv-btn--primary {
+    margin-right: 0;
+  }
+
+  .cv-btn--ghost {
+    margin-bottom: 0;
+  }
+
+  /* 滚动提示与 CTA 重叠 9px，且信息已由主 CTA 承担（UX M6） */
+  .cv-scroll-cue {
+    display: none;
+  }
+
+  .cv-hero__fade {
+    height: 64px;
+  }
+
+  .cv-section {
+    scroll-margin-top: 68px;
+  }
+
+  .cv-section-head h2 {
+    margin-top: 6px;
+  }
+
+  .cv-section-head__line {
+    margin-top: 18px;
+  }
+
+  .cv-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-grid__item,
+  .cv-grid__item--featured,
+  .cv-grid__item--wide {
+    grid-column: 1 / -1;
+  }
+
+  .cv-card__text {
+    padding: 16px 16px 14px;
+  }
+
+  .cv-card__chip {
+    top: 10px;
+    left: 10px;
+  }
+
+  .cv-card__num {
+    top: 8px;
+    right: 12px;
+    font-size: 19px;
+  }
+
+  .cv-card__date {
+    font-size: 12px;
+  }
+
+  /* 精选卡上下堆叠：图区在上、面板在下 */
+  .cv-feat__inner {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* flex 列里 aspect-ratio 会被 flex-basis 抵消塌成 0，必须显式高度 */
+  .cv-feat__media {
+    order: -1;
+    flex: 0 0 200px;
+    height: 200px;
+    border-radius: var(--hp-radius-card-lg) var(--hp-radius-card-lg) 0 0;
+  }
+
+  .cv-feat__seam {
+    background: linear-gradient(180deg, var(--hp-surface) 0%, transparent 22%);
+  }
+
+  .cv-feat__panel {
+    padding: 24px;
+    border-radius: 0 0 var(--hp-radius-card-lg) var(--hp-radius-card-lg);
+  }
+
+  .cv-feat h3 {
+    margin: 12px 0 8px;
+  }
+
+  .cv-feat__seal {
+    position: static;
+    width: 32px;
+    height: 32px;
+    margin-top: 20px;
+    font-size: 17px;
+  }
+
+  .cv-feat__readmore {
+    position: static;
+    margin-top: 20px;
+  }
+
+  .cv-feat__index {
+    right: 24px;
+    bottom: 24px;
+  }
+
+  .cv-wide__media {
+    height: 220px;
+    aspect-ratio: auto;
+  }
+
+  .cv-wide__text {
+    padding: 20px;
+  }
+
+  .cv-wide__fin {
+    top: 12px;
+    right: 14px;
+  }
+
+  .cv-pager-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .cv-size-group {
+    justify-content: flex-start;
+  }
+
+  .cv-pager {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .cv-pager__step {
+    padding: 0 4px;
+    font-size: 12px;
+  }
+
+  .cv-pager__num {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 页码超过 5 个槽时省略号只会挤占宽度，直接隐藏 */
+  .cv-pager__gap {
+    display: none;
+  }
+
+  .cv-footer {
+    padding: 48px 0 32px;
+  }
+
+  .cv-footer__inner {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .cv-footer__right {
+    text-align: left;
+  }
+
+  html.js.motion-ok .cv-hero__contours path {
+    animation: none;
+  }
+}
+
+/* 矮视口保护：横屏手机 / 分屏 */
+@media (max-height: 480px) {
+  .cv-hero {
+    min-height: 420px;
+    padding-top: 72px;
+  }
+}
+
+/*
+ * H1 两行硬约束：第二行「也收藏「人间烟火」。」= 10 个全角字，
+ * 叠 letter-spacing:.01em 后需 10.1 × fs 宽；<768 内容宽 = 100vw − 40px。
+ * 这一档是 375px 不溢出的唯一保证，不要删、不要给 H1 加 nowrap。
+ */
+@media (max-width: 440px) {
+  :root {
+    --hp-fs-display: clamp(26px, 8.4vw, 36px);
+  }
+}
+
+/* ==========================================================================
+   21. 皮肤材质（发光 / 药丸 / 光晕是「材质」，无法靠单个颜色变量表达）
+   ========================================================================== */
+
+html.skin-neon .cv-card,
+html.skin-neon .cv-feat,
+html.skin-neon .cv-wide {
+  border: 1px solid var(--hp-line);
+  box-shadow: 0 0 24px rgba(0, 255, 136, 0.12);
+}
+
+html.skin-neon .cv-card:hover,
+html.skin-neon .cv-wide:hover,
+html.skin-neon .cv-feat:hover {
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 44px rgba(0, 255, 136, 0.22);
+}
+
+html.skin-neon .cv-btn {
+  border-radius: 999px;
+}
+
+html.skin-neon .cv-btn--primary {
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.28);
+}
+
+html.skin-neon .cv-pager__num[aria-current='page'] {
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.28);
+}
+
+html.skin-elegant .cv-feat__panel {
+  /* 羊皮纸底纹会从半透明面板下透出来，精选面板必须是纯色 */
+  background: var(--hp-surface);
+}
+
+html.skin-elegant .cv-hero__seal,
+html.skin-elegant .cv-feat__seal {
+  border-color: var(--hp-accent-lume);
+  color: var(--hp-accent-lume);
+}
+
+/* ==========================================================================
+   22. 皮肤动效兜底（UX N1）
+   useSkinMotion() 会给 .public-shell 内所有 h1/h2/h3 挂 .skin-reveal(opacity:0)，
+   与首页自己的入场叠加会闪两次、甚至停在中间态。首页整体交还给自身动效。
+   ========================================================================== */
+
+html.skin-elegant .cv-home .skin-reveal,
+html.skin-neon .cv-home .skin-reveal {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
