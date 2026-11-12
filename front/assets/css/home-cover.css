@@ -2597,6 +2597,23 @@ html.is-hidden.is-settled.motion-ok .cv-scroll-cue__dot {
     max-width: 100%;
   }
 
+  /* 移动端文字块占满整宽（实测 5%–95%），侧向遮罩在右端只剩 0.14 →「人间烟火」右段
+     压在亮照片上只有 1.93:1（AA 需 3:1）。手机改成纵向遮罩：照片上缘保持干净，
+     文字区（27%–79%）整体压到 ≥0.62，白色正文对最亮背景实测 ≥8:1。 */
+  .cv-hero__shade {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(9, 20, 19, 0) 0%,
+        rgba(9, 20, 19, 0.4) 14%,
+        rgba(9, 20, 19, 0.62) 24%,
+        rgba(9, 20, 19, 0.7) 34%,
+        rgba(9, 20, 19, 0.74) 70%,
+        rgba(9, 20, 19, 0.72) 100%
+      ),
+      var(--hp-grad-hero-top);
+  }
+
   .cv-hero__seal {
     width: 32px;
     height: 32px;
