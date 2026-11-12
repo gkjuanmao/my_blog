@@ -211,14 +211,19 @@ html.skin-neon {
   );
   --hp-grad-glow: radial-gradient(
     ellipse 60% 120% at 50% 50%,
-    rgba(var(--hp-glow-rgb), 0.42),
+    /* 金色光晕叠在金色字后面等于自减对比（亮底 + 亮字），压到 0.24 */
+    rgba(var(--hp-glow-rgb), 0.24),
     transparent 70%
   );
+  /* 侧向遮罩：0.48@44% 会把 H1 金色高亮词（约在 53% 处）压到 2.26:1，
+     改为「宽平台」——66% 处仍保 0.46，86% 才收到 0.18，保证高亮词底 ≥4:1 */
   --hp-grad-hero-side: linear-gradient(
     100deg,
     rgba(9, 20, 19, 0.82) 0%,
-    rgba(9, 20, 19, 0.48) 44%,
-    rgba(9, 20, 19, 0.06) 82%
+    rgba(9, 20, 19, 0.64) 40%,
+    rgba(9, 20, 19, 0.46) 66%,
+    rgba(9, 20, 19, 0.18) 86%,
+    rgba(9, 20, 19, 0.04) 100%
   );
   --hp-grad-hero-top: linear-gradient(
     180deg,
