@@ -25,13 +25,24 @@ if (import.meta.server) {
 /** 首页全出血 + 卷首版式；其他页保持原容器宽度与内距 */
 const isHome = computed(() => route.path === '/')
 
-const navLinks = [
+const navLinks: { label: string; to: string; browse?: 'category' | 'tag' | 'search' }[] = [
   { label: '首页', to: '/' },
   { label: '时间轴', to: '/timeline' },
-  { label: '分类', to: '/categories' },
-  { label: '标签', to: '/tags' },
-  { label: '搜索', to: '/search' },
+  { label: '分类', to: '/categories', browse: 'category' },
+  { label: '标签', to: '/tags', browse: 'tag' },
+  { label: '搜索', to: '/search', browse: 'search' },
 ]
+
+/* 浏览弹窗（搜索/分类/标签）：三项导航走弹窗，其余仍走路由 */
+const browseOpen = ref(false)
+const browseMode = ref<'category' | 'tag' | 'search'>('search')
+
+function openBrowse(mode: 'category' | 'tag' | 'search', event?: Event) {
+  event?.preventDefault()
+  if (sheetOpen.value) closeMenu()
+  browseMode.value = mode
+  browseOpen.value = true
+}
 
 const skinOptions: { value: Skin; label: string }[] = [
   { value: 'default', label: '默认风格' },
@@ -237,6 +248,7 @@ onBeforeUnmount(() => {
             :key="link.to"
             :to="link.to"
             class="cv-nav__link"
+            @click="link.browse ? openBrowse(link.browse, $event) : undefined"
           >
             {{ link.label }}
           </NuxtLink>
@@ -255,6 +267,7 @@ onBeforeUnmount(() => {
               :key="link.to"
               :to="link.to"
               class="text-sm text-stone-600 transition-colors hover:text-brand-600 dark:text-stone-300 dark:hover:text-amber-400"
+              @click="link.browse ? openBrowse(link.browse, $event) : undefined"
             >
               {{ link.label }}
             </NuxtLink>
@@ -324,7 +337,12 @@ onBeforeUnmount(() => {
       <nav class="cv-sheet__nav" aria-label="移动端导航">
         <ul role="list">
           <li v-for="link in navLinks" :key="link.to">
-            <NuxtLink :to="link.to" @click="closeMenu">{{ link.label }}</NuxtLink>
+            <NuxtLink
+              :to="link.to"
+              @click="link.browse ? openBrowse(link.browse, $event) : closeMenu()"
+            >
+              {{ link.label }}
+            </NuxtLink>
           </li>
         </ul>
       </nav>
@@ -361,5 +379,7 @@ onBeforeUnmount(() => {
         </button>
       </fieldset>
     </dialog>
+
+    <BrowseDialog v-model:open="browseOpen" :initial-mode="browseMode" />
   </div>
 </template>

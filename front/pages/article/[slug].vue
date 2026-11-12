@@ -60,67 +60,69 @@ useHead(() => ({
 </script>
 
 <template>
-  <article v-if="article" class="space-y-6">
-    <div data-skin="surface" class="overflow-hidden rounded-2xl bg-stone-100 dark:bg-stone-800">
+  <article v-if="article" class="cv-article">
+    <header class="cv-article__head">
+      <p class="cv-article__eyebrow">
+        <span v-if="article.category" lang="en">{{ article.category.name }}</span>
+        <template v-if="article.category"> / </template>
+        <span lang="en">TRAVEL JOURNAL</span>
+      </p>
+      <h1 class="cv-article__title">{{ article.title }}</h1>
+      <div class="cv-article__meta">
+        <time :datetime="article.publish_time">{{ formatDate(article.publish_time) }}</time>
+        <span v-if="article.location" class="cv-article__meta-item">{{ article.location }}</span>
+        <span v-if="article.views" class="cv-article__meta-item">{{ article.views }} 次阅读</span>
+      </div>
+    </header>
+
+    <!-- 封面：宽幅裁切，圆角与首页卡片一致 -->
+    <figure class="cv-article__cover" :class="{ 'is-failed': !article.cover_image_url || coverError }">
       <img
         v-if="article.cover_image_url && !coverError"
         :src="article.cover_image_url"
         :alt="article.title"
-        class="max-h-96 w-full object-cover"
+        width="1600"
+        height="900"
+        fetchpriority="high"
+        decoding="async"
         @error="coverError = true"
       >
-      <div v-else class="flex h-56 w-full items-center justify-center text-6xl text-stone-300 dark:text-stone-600">✈</div>
-    </div>
-
-    <header class="space-y-2">
-      <h1 class="text-2xl font-serif font-bold text-stone-900 dark:text-stone-100 sm:text-3xl">{{ article.title }}</h1>
-      <div class="flex flex-wrap items-center gap-3 text-sm text-stone-500 dark:text-stone-400">
-        <time>{{ formatDate(article.publish_time) }}</time>
-        <span v-if="article.location">· {{ article.location }}</span>
-        <el-tag v-if="article.category" type="warning" effect="light" size="small">
-          {{ article.category.name }}
-        </el-tag>
-        <span>· {{ article.views }} 次阅读</span>
-      </div>
-    </header>
-
-    <p v-if="article.summary" class="text-stone-600 dark:text-stone-300">{{ article.summary }}</p>
+      <figcaption v-if="article.summary" class="cv-article__lede">{{ article.summary }}</figcaption>
+    </figure>
 
     <!-- 正文：服务端渲染 + 消毒后的 HTML（nh3 白名单，见 AGENTS.md） -->
     <!-- eslint-disable-next-line vue/no-v-html -->
-    <div v-if="hasContent" class="md-body" v-html="article.content_html" />
+    <div v-if="hasContent" class="md-body cv-article__body" v-html="article.content_html" />
 
     <!-- 存量文章（无正文）回退：只给附件下载入口，不再做 PDF 在线预览 -->
-    <div
-      v-else-if="!article.file_url"
-      class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-400 dark:border-stone-700"
-    >
+    <div v-else-if="!article.file_url" class="cv-state">
       该文章暂无正文
     </div>
-    <div
-      v-else
-      class="rounded-xl border border-dashed border-stone-300 py-12 text-center text-sm text-stone-500 dark:border-stone-700 dark:text-stone-400"
-    >
+    <div v-else class="cv-state">
       该文章以附件形式提供，请下载后查看。
     </div>
 
-    <div v-if="article.file_url" class="flex justify-center">
+    <div v-if="article.file_url" class="cv-article__attachment">
       <a
         :href="article.file_url"
         :download="article.file_name"
         target="_blank"
         rel="noopener"
-        data-skin="button"
-        class="rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+        class="cv-btn cv-btn--primary"
       >
         下载附件（{{ article.file_name }}）
       </a>
     </div>
+
+    <footer class="cv-article__foot">
+      <NuxtLink to="/" class="cv-article__back">← 返回首页</NuxtLink>
+      <NuxtLink to="/timeline" class="cv-article__back">按时间轴浏览 →</NuxtLink>
+    </footer>
   </article>
 
-  <div v-else-if="pending" class="py-16 text-center text-sm text-stone-400">加载中…</div>
-  <div v-else class="py-16 text-center">
-    <p class="mb-4 text-sm text-red-500">{{ fetchError ? '文章不存在或已下架' : '文章不存在' }}</p>
-    <NuxtLink to="/" class="text-sm text-brand-600 hover:underline dark:text-amber-400">返回首页</NuxtLink>
+  <div v-else-if="pending" class="cv-state">加载中…</div>
+  <div v-else class="cv-state">
+    <p>{{ fetchError ? '文章不存在或已下架' : '文章不存在' }}</p>
+    <NuxtLink to="/" class="cv-article__back">返回首页</NuxtLink>
   </div>
 </template>

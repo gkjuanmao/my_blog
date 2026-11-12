@@ -14,7 +14,7 @@ const ENTRANCE_SETTLE_MS = 1300
 /** 看门狗：超时无条件落定，避免任何 JS 异常把首屏留在不可见状态 */
 const WATCHDOG_MS = 3000
 /** 卡片揭示动画时长（播完移除 data 类，交还元素自身样式，否则会压住 hover 位移） */
-const REVEAL_MS = 800
+const REVEAL_MS = 520
 
 /**
  * 入场 + 常驻循环的暂停条件。
@@ -159,7 +159,8 @@ export function useCoverReveal(
           timers.add(timer)
         }
       },
-      { rootMargin: '0px 0px -6% 0px', threshold: 0.06 },
+      // rootMargin 下方放宽到 +12%：卡片刚进入视口下缘就揭示，而不是「再滚 6% 才开始」
+      { rootMargin: '0px 0px 12% 0px', threshold: 0.01 },
     )
 
     let delay = 0
@@ -167,7 +168,9 @@ export function useCoverReveal(
       if (index > 0) {
         // 行判定：与上一项顶边基本重合 = 同排
         const sameRow = Math.abs(item.offsetTop - items[index - 1]!.offsetTop) < 8
-        delay += sameRow ? 80 : 120
+        // 错峰只做「同行微错开」，不再累加到 900ms 那种让最后一张卡迟迟不出现的程度
+        delay += sameRow ? 60 : 90
+        delay = Math.min(delay, 360)
       }
       item.style.setProperty('--cv-reveal-delay', `${delay}ms`)
       item.classList.add('cv-reveal')
