@@ -37,11 +37,21 @@ const navLinks: { label: string; to: string; browse?: 'category' | 'tag' | 'sear
 const browseOpen = ref(false)
 const browseMode = ref<'category' | 'tag' | 'search'>('search')
 
-function openBrowse(mode: 'category' | 'tag' | 'search', event?: Event) {
-  event?.preventDefault()
+function onNavClick(
+  link: { to: string; browse?: 'category' | 'tag' | 'search' },
+  event: Event,
+) {
+  // 统一接管点击：browse 项开弹窗（绝不跳转），其余走客户端路由
+  event.preventDefault()
+  event.stopPropagation()
+  if (link.browse) {
+    if (sheetOpen.value) closeMenu()
+    browseMode.value = link.browse
+    browseOpen.value = true
+    return
+  }
   if (sheetOpen.value) closeMenu()
-  browseMode.value = mode
-  browseOpen.value = true
+  if (route.path !== link.to) void navigateTo(link.to)
 }
 
 const skinOptions: { value: Skin; label: string }[] = [
@@ -243,15 +253,16 @@ onBeforeUnmount(() => {
 
         <!-- 首页：链接居中，桌面才出现 -->
         <nav v-if="isHome" class="cv-nav__links" aria-label="主导航">
-          <NuxtLink
+          <a
             v-for="link in navLinks"
             :key="link.to"
-            :to="link.to"
+            :href="link.to"
             class="cv-nav__link"
-            @click="link.browse ? openBrowse(link.browse, $event) : undefined"
+            :aria-current="route.path === link.to ? 'page' : undefined"
+            @click="onNavClick(link, $event)"
           >
             {{ link.label }}
-          </NuxtLink>
+          </a>
         </nav>
 
         <div v-if="isHome" class="cv-nav__actions">
@@ -262,15 +273,16 @@ onBeforeUnmount(() => {
         <!-- 其他页：保持原有「链接 + 图标同一行、整体右对齐」的布局 -->
         <div v-else class="hidden items-center gap-6 md:flex">
           <nav class="flex items-center gap-6" aria-label="主导航">
-            <NuxtLink
+            <a
               v-for="link in navLinks"
               :key="link.to"
-              :to="link.to"
+              :href="link.to"
               class="text-sm text-stone-600 transition-colors hover:text-brand-600 dark:text-stone-300 dark:hover:text-amber-400"
-              @click="link.browse ? openBrowse(link.browse, $event) : undefined"
+              :aria-current="route.path === link.to ? 'page' : undefined"
+              @click="onNavClick(link, $event)"
             >
               {{ link.label }}
-            </NuxtLink>
+            </a>
           </nav>
           <SkinSwitcher />
           <ThemeToggle />
@@ -337,12 +349,13 @@ onBeforeUnmount(() => {
       <nav class="cv-sheet__nav" aria-label="移动端导航">
         <ul role="list">
           <li v-for="link in navLinks" :key="link.to">
-            <NuxtLink
-              :to="link.to"
-              @click="link.browse ? openBrowse(link.browse, $event) : closeMenu()"
+            <a
+              :href="link.to"
+              :aria-current="route.path === link.to ? 'page' : undefined"
+              @click="onNavClick(link, $event)"
             >
               {{ link.label }}
-            </NuxtLink>
+            </a>
           </li>
         </ul>
       </nav>
