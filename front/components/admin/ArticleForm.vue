@@ -440,6 +440,7 @@ function formatSize(bytes?: number): string {
           <p class="ad-efield__label">标签</p>
           <el-select
             v-model="form.tag_ids"
+            class="ad-tag-select"
             multiple
             collapse-tags
             collapse-tags-tooltip

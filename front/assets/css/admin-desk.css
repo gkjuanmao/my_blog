@@ -1927,6 +1927,30 @@
   color: var(--hp-ink-2);
 }
 
+/* 多选（标签）：下划线皮肤只有一条底线，chip 撑满 24px 后会悬在「标签」二字下面、
+   离底线又远，看起来像掉出输入框。多值字段单独改成完整细边框的盒子，
+   chip 落在盒内居中，边界一目了然。只作用于 .ad-tag-select，不影响其它下拉。 */
+.ad-desk .ad-tag-select .el-select__wrapper {
+  padding: 5px 8px;
+  min-height: 36px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: var(--ad-r-ctl);
+  background: #fff;
+}
+.ad-desk .ad-tag-select .el-select__wrapper:hover {
+  border-color: var(--hp-ink-3);
+}
+.ad-desk .ad-tag-select .el-select__wrapper.is-focused {
+  border-color: var(--hp-brand);
+  box-shadow: 0 0 0 1px var(--hp-brand);
+}
+/* chip 略收一号，避免在 36px 的盒子里显得臃肿 */
+.ad-desk .ad-tag-select .el-tag {
+  height: 22px;
+  line-height: 20px;
+  padding: 0 6px;
+}
+
 /* 选择框里的标签 chip */
 .ad-desk .el-select .el-tag {
   border-color: transparent;
