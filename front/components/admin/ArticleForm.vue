@@ -43,19 +43,36 @@ const form = reactive({
   is_published: props.initial?.is_published ?? false,
 })
 
-const rules = {
-  title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
-  publish_time: [{ required: true, message: '请选择发布时间', trigger: 'change' }],
-}
+/** 内联校验：表单很短，直接给字段错误，不引入 el-form 的 label 结构 */
+const errors = reactive({ title: '', publish_time: '', cover: '', content: '' })
+const titleRef = ref<HTMLInputElement | null>(null)
+
+/* ------------------------------------------------------------------ 上传 */
 
 const coverFile = ref<File | null>(null)
 const attachmentFile = ref<File | null>(null)
 const coverList = ref<{ name: string; url?: string }[]>(
   props.initial?.cover_image_url ? [{ name: props.initial.cover_image_name, url: props.initial.cover_image_url }] : [],
 )
-const attachmentList = ref<{ name: string; url?: string }[]>(
-  props.initial?.file_url ? [{ name: props.initial.file_name, url: props.initial.file_url }] : [],
+const attachmentList = ref<{ name: string; url?: string; size?: number }[]>(
+  props.initial?.file_url
+    ? [{ name: props.initial.file_name, url: props.initial.file_url }]
+    : [],
 )
+
+/** 封面预览：既有封面用后端 URL，新选文件用 object URL */
+const coverPreview = ref(props.initial?.cover_image_url ?? '')
+let previewBlob: string | null = null
+
+function setCoverPreview(url: string) {
+  if (previewBlob) URL.revokeObjectURL(previewBlob)
+  previewBlob = url.startsWith('blob:') ? url : null
+  coverPreview.value = url
+}
+
+onBeforeUnmount(() => {
+  if (previewBlob) URL.revokeObjectURL(previewBlob)
+})
 
 // 单文件"替换"语义：不用 el-upload 的 limit/on-exceed 拦截——当列表里已有文件
 // （编辑模式预填的封面）时再选新文件会走 on-exceed 且不触发 on-change，新文件会被
@@ -69,6 +86,8 @@ function onCoverChange(file: UploadFile, files: UploadFile[]) {
   }
   coverFile.value = file.raw
   coverList.value = [file]
+  errors.cover = ''
+  setCoverPreview(URL.createObjectURL(file.raw))
 }
 function onAttachmentChange(file: UploadFile, files: UploadFile[]) {
   if (!file.raw) return
@@ -79,6 +98,7 @@ function onAttachmentChange(file: UploadFile, files: UploadFile[]) {
   }
   attachmentFile.value = file.raw
   attachmentList.value = [file]
+  errors.content = ''
 }
 // 从列表里移除后不得再提交该文件（否则"删掉"仍会被上传）
 function onCoverRemove() {
@@ -87,6 +107,35 @@ function onCoverRemove() {
 function onAttachmentRemove() {
   attachmentFile.value = null
 }
+function clearCover() {
+  coverList.value = []
+  onCoverRemove()
+  setCoverPreview('')
+}
+function clearAttachment() {
+  attachmentList.value = []
+  onAttachmentRemove()
+}
+
+/* -------------------------------------------------------------- 校验（内联） */
+
+function validate(): boolean {
+  errors.title = form.title.trim() ? '' : '请填写标题'
+  errors.publish_time = form.publish_time ? '' : '请选择发布时间'
+  errors.cover =
+    isCreateMode.value && !coverFile.value && !coverList.value.length ? '请选择封面' : ''
+  errors.content =
+    !form.content.trim() && !attachmentList.value.length ? '正文与附件至少填写一项' : ''
+
+  if (errors.title) {
+    titleRef.value?.focus()
+    return false
+  }
+  return !errors.publish_time && !errors.cover && !errors.content
+}
+
+/** 正文字数（去掉空白，按字符计，中文一格一字） */
+const wordCount = computed(() => form.content.replace(/\s/g, '').length)
 
 /* ---------------------------------------------------------------- Markdown 正文 */
 
@@ -235,15 +284,7 @@ function buildFormData(): FormData {
 }
 
 function handleSubmit() {
-  if (isCreateMode.value && coverList.value.length === 0) {
-    ElMessage.error('请上传封面')
-    return
-  }
-  // 附件可选，但「正文与附件至少填一项」（后端同样校验）
-  if (!form.content.trim() && attachmentList.value.length === 0) {
-    ElMessage.error('正文与附件至少填写一项')
-    return
-  }
+  if (!validate()) return
   const fd = buildFormData()
   if ((coverFile.value?.size ?? 0) + (attachmentFile.value?.size ?? 0) > API_UPLOAD_LIMIT_BYTES) {
     ElMessage.error(`封面与附件合计不能超过 ${formatMB(API_UPLOAD_LIMIT_BYTES)}`)
@@ -251,60 +292,239 @@ function handleSubmit() {
   }
   emit('submit', fd)
 }
+
+function formatSize(bytes?: number): string {
+  if (!bytes) return ''
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
 </script>
 
 <template>
-  <el-form :model="form" :rules="rules" label-position="top" class="max-w-2xl">
-    <el-form-item label="标题" prop="title">
-      <el-input v-model="form.title" placeholder="请输入标题" />
-    </el-form-item>
-    <el-form-item label="Slug（留空自动生成）">
-      <el-input v-model="form.slug" placeholder="如 my-first-trip" />
-    </el-form-item>
-    <el-form-item label="摘要">
-      <el-input v-model="form.summary" type="textarea" :rows="3" placeholder="请输入摘要" />
-    </el-form-item>
-    <el-form-item label="正文（Markdown，图片请用「插入图片」上传）">
-      <el-input
-        ref="contentRef"
-        v-model="form.content"
-        type="textarea"
-        :rows="18"
-        resize="vertical"
-        class="font-mono"
-        placeholder="支持 Markdown：# 标题、**加粗**、- 列表、```代码块```、| 表格 |"
-      />
-      <div class="mt-2 flex flex-wrap items-center gap-2">
+  <form class="ad-editor" novalidate @submit.prevent="handleSubmit">
+    <!-- 主栏：标题 → slug → 摘要 → 正文 -->
+    <div class="ad-editor__main">
+      <div class="ad-title">
+        <label class="ad-sr" for="ad-article-title">标题</label>
+        <input
+          id="ad-article-title"
+          ref="titleRef"
+          v-model="form.title"
+          type="text"
+          placeholder="无标题"
+          :aria-invalid="errors.title ? 'true' : undefined"
+          @input="errors.title = ''"
+        >
+        <span v-if="errors.title" class="ad-error">{{ errors.title }}</span>
+      </div>
+
+      <div class="ad-slugrow">
+        <span>slug</span>
+        <input v-model="form.slug" type="text" placeholder="留空由标题自动生成拼音">
+      </div>
+
+      <div class="ad-efield">
+        <p class="ad-efield__label">摘要 <em>SUMMARY</em></p>
+        <el-input
+          v-model="form.summary"
+          type="textarea"
+          :rows="3"
+          resize="none"
+          placeholder="一两句话交代这段旅程，会出现在卡片和搜索结果里"
+        />
+      </div>
+
+      <div class="ad-efield">
+        <p class="ad-efield__label">
+          正文 <em>MARKDOWN · {{ wordCount.toLocaleString() }} 字</em>
+        </p>
+        <el-input
+          ref="contentRef"
+          v-model="form.content"
+          type="textarea"
+          :rows="20"
+          resize="vertical"
+          class="ad-md"
+          placeholder="支持 Markdown：# 标题、**加粗**、- 列表、```代码块```、| 表格 |"
+          @input="errors.content = ''"
+        />
+        <p v-if="errors.content" class="ad-error" style="margin-top: 6px">{{ errors.content }}</p>
+
+        <div class="ad-efield__tools">
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="false"
+            :accept="'.jpg,.jpeg,.png,.webp'"
+            :on-change="onInlineImageChange"
+            :disabled="uploadingImage"
+            style="width: auto"
+          >
+            <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" :disabled="uploadingImage">
+              {{ uploadingImage ? '上传中…' : '插入图片' }}
+            </button>
+          </el-upload>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" :disabled="previewing" @click="handlePreview">
+            {{ previewing ? '渲染中…' : previewVisible ? '刷新清样' : '预览' }}
+          </button>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" @click="openHtmlImport">
+            导入 HTML
+          </button>
+          <span class="ad-efield__hint">
+            插图压缩为 WebP（最长边 {{ INLINE_IMAGE_MAX_LONG_EDGE }}）后插入
+          </span>
+        </div>
+
+        <div v-if="previewVisible" class="ad-proof">
+          <div class="ad-proof__head">
+            清样 <span style="font-family: var(--hp-font-mono); letter-spacing: 0.04em">PROOF</span>
+            <button class="ad-link" type="button" @click="previewVisible = false">收起</button>
+          </div>
+          <!-- 预览 HTML 由后端 /admin/articles/preview/ 渲染并经 nh3 消毒（跨多行，
+               故用 disable/enable 块而非 disable-next-line） -->
+          <!-- eslint-disable vue/no-v-html -->
+          <div class="ad-proof__body md-body" v-html="previewHtml" />
+          <!-- eslint-enable vue/no-v-html -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 侧栏：发布设置 → 封面 → 附件 -->
+    <aside class="ad-editor__aside">
+      <section class="ad-aside-card">
+        <h3>发布设置</h3>
+
+        <div class="ad-aside-field">
+          <p class="ad-efield__label">状态</p>
+          <div class="ad-segs" role="group" aria-label="发布状态">
+            <button
+              class="ad-seg"
+              type="button"
+              :aria-pressed="!form.is_published"
+              @click="form.is_published = false"
+            >
+              草稿
+            </button>
+            <button
+              class="ad-seg"
+              type="button"
+              :aria-pressed="form.is_published"
+              @click="form.is_published = true"
+            >
+              已发布
+            </button>
+          </div>
+        </div>
+
+        <div class="ad-aside-field">
+          <p class="ad-efield__label">发布时间</p>
+          <el-date-picker
+            v-model="form.publish_time"
+            type="datetime"
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            placeholder="选择时间"
+            style="width: 100%"
+            @change="errors.publish_time = ''"
+          />
+          <span v-if="errors.publish_time" class="ad-error">{{ errors.publish_time }}</span>
+        </div>
+
+        <div class="ad-aside-field">
+          <p class="ad-efield__label">栏目</p>
+          <el-select v-model="form.category_id" clearable placeholder="默认分类" style="width: 100%">
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </div>
+
+        <div class="ad-aside-field">
+          <p class="ad-efield__label">标签</p>
+          <el-select
+            v-model="form.tag_ids"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="选择标签"
+            style="width: 100%"
+          >
+            <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </div>
+
+        <div class="ad-aside-field">
+          <p class="ad-efield__label">地点</p>
+          <el-input v-model="form.location" placeholder="如 云南 · 大理" />
+        </div>
+      </section>
+
+      <section class="ad-aside-card">
+        <h3>封面</h3>
         <el-upload
           :auto-upload="false"
           :show-file-list="false"
           :accept="'.jpg,.jpeg,.png,.webp'"
-          :on-change="onInlineImageChange"
-          :disabled="uploadingImage"
+          :on-change="onCoverChange"
         >
-          <el-button size="small" :loading="uploadingImage">插入图片</el-button>
+          <div class="ad-cover">
+            <img v-if="coverPreview" :src="coverPreview" alt="封面预览">
+            <span v-else class="ad-cover__empty">点击选择封面图片</span>
+          </div>
         </el-upload>
-        <el-button size="small" :loading="previewing" @click="handlePreview">
-          {{ previewVisible ? '刷新预览' : '预览' }}
-        </el-button>
-        <el-button size="small" @click="openHtmlImport">导入 HTML</el-button>
-        <el-button v-if="previewVisible" size="small" text @click="previewVisible = false">收起预览</el-button>
-        <span class="text-xs text-stone-400">图片会压缩为 WebP（最长边 {{ INLINE_IMAGE_MAX_LONG_EDGE }}）后插入</span>
-      </div>
-    </el-form-item>
-    <el-form-item v-if="previewVisible" label="预览（服务端渲染结果）">
-      <!-- 限高 + 内部滚动：长正文预览不会把后面的表单字段顶到很下面 -->
-      <!-- 预览 HTML 由后端 /admin/articles/preview/ 渲染并经 nh3 消毒（跨多行，
-           故用 disable/enable 块而非 disable-next-line） -->
-      <!-- eslint-disable vue/no-v-html -->
-      <div
-        class="md-body max-h-[32rem] w-full overflow-y-auto overscroll-contain rounded-lg border border-stone-200 p-4 dark:border-stone-700"
-        v-html="previewHtml"
-      />
-      <!-- eslint-enable vue/no-v-html -->
-    </el-form-item>
+        <div class="ad-cover__acts">
+          <span class="ad-hint">JPG / PNG / WebP，≤{{ formatMB(COVER_MAX_BYTES) }}，自动压成 WebP</span>
+          <button v-if="coverPreview" class="ad-link" type="button" @click="clearCover">移除</button>
+        </div>
+        <p v-if="errors.cover" class="ad-error" style="margin-top: 4px">{{ errors.cover }}</p>
+      </section>
 
-    <el-dialog v-model="htmlImportVisible" title="导入 HTML 并转为 Markdown" width="640px">
+      <section class="ad-aside-card">
+        <h3>附件</h3>
+        <div v-if="attachmentList.length" class="ad-file" style="margin-bottom: 10px">
+          <span class="ad-file__name">{{ attachmentList[0]?.name }}</span>
+          <span v-if="attachmentList[0]?.size" class="ad-file__meta">
+            {{ formatSize(attachmentList[0]?.size) }}
+          </span>
+          <a
+            v-if="attachmentList[0]?.url"
+            class="ad-link"
+            :href="attachmentList[0]?.url"
+            target="_blank"
+            rel="noopener"
+          >
+            下载
+          </a>
+          <button class="ad-link ad-link--danger" type="button" @click="clearAttachment">移除</button>
+        </div>
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="false"
+          :accept="'.pdf,.doc,.docx'"
+          :on-change="onAttachmentChange"
+        >
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button">
+            {{ attachmentList.length ? '替换附件' : '选择附件' }}
+          </button>
+        </el-upload>
+        <p class="ad-hint" style="margin-top: 8px">
+          可选，PDF / Word ≤{{ formatMB(ATTACHMENT_MAX_BYTES) }}；正文与附件至少填一项。
+        </p>
+      </section>
+    </aside>
+
+    <!-- 粘底动作条：滚动时始终可达 -->
+    <div class="ad-editor__foot">
+      <p class="ad-editor__foot-meta">
+        {{ form.is_published ? '已发布' : '草稿' }} · {{ wordCount.toLocaleString() }} 字
+        <template v-if="form.slug"> · {{ form.slug }}</template>
+      </p>
+      <div class="ad-editor__foot-acts">
+        <NuxtLink class="ad-btn ad-btn--text" to="/administrator/articles">取消</NuxtLink>
+        <button class="ad-btn ad-btn--primary" type="submit" :disabled="loading">
+          {{ loading ? '保存中…' : submitLabel }}
+        </button>
+      </div>
+    </div>
+
+    <el-dialog v-model="htmlImportVisible" title="导入 HTML 并转为 Markdown" width="min(640px, 94vw)">
       <el-alert
         v-if="htmlWarnings.length"
         type="warning"
@@ -316,7 +536,8 @@ function handleSubmit() {
         </ul>
       </el-alert>
 
-      <el-form-item label="选择 HTML 文件" class="mt-3">
+      <div class="ad-field" style="margin-top: 16px">
+        <span>选择 HTML 文件</span>
         <el-upload
           :auto-upload="false"
           :show-file-list="true"
@@ -324,22 +545,23 @@ function handleSubmit() {
           accept=".html,.htm"
           :on-change="onHtmlFileChange"
         >
-          <el-button size="small">选择文件</el-button>
+          <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button">选择文件</button>
         </el-upload>
-      </el-form-item>
-      <el-form-item label="或粘贴 HTML">
+      </div>
+      <div class="ad-field" style="margin-top: 18px">
+        <span>或粘贴 HTML</span>
         <el-input
           v-model="htmlPaste"
           type="textarea"
           :rows="8"
           resize="vertical"
-          class="font-mono"
           placeholder="把手机导出的 HTML 源码粘贴到这里"
         />
-      </el-form-item>
-      <p class="text-xs text-stone-400">
+      </div>
+      <p class="ad-hint" style="margin-top: 12px">
         正文里的 base64 内嵌图会压缩为 WebP 并按内容寻址落盘（同图自动去重），外链图保留原样；
-        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大 {{ formatMB(HTML_IMPORT_MAX_BYTES) }}。
+        标题为空时会用文件名（去掉时间戳后缀）自动填入；单个 HTML 文件最大
+        {{ formatMB(HTML_IMPORT_MAX_BYTES) }}。
       </p>
       <template #footer>
         <el-button @click="htmlImportVisible = false">关闭</el-button>
@@ -348,47 +570,5 @@ function handleSubmit() {
         </el-button>
       </template>
     </el-dialog>
-    <el-form-item label="发布时间" prop="publish_time">
-      <el-date-picker v-model="form.publish_time" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选择时间" style="width: 100%" />
-    </el-form-item>
-    <el-form-item label="地点">
-      <el-input v-model="form.location" placeholder="如 云南 · 大理" />
-    </el-form-item>
-    <el-form-item label="分类">
-      <el-select v-model="form.category_id" clearable placeholder="默认分类" style="width: 100%">
-        <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-      </el-select>
-    </el-form-item>
-    <el-form-item label="标签">
-      <el-select v-model="form.tag_ids" multiple placeholder="选择标签" style="width: 100%">
-        <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
-      </el-select>
-    </el-form-item>
-    <el-form-item label="是否发布">
-      <el-switch v-model="form.is_published" active-text="发布" inactive-text="草稿" />
-    </el-form-item>
-    <el-form-item :label="`封面（JPG/PNG/WebP ≤${formatMB(COVER_MAX_BYTES)}）`" :required="isCreateMode">
-      <el-upload
-        v-model:file-list="coverList"
-        :auto-upload="false"
-        :accept="'.jpg,.jpeg,.png,.webp'"
-        :on-change="onCoverChange"
-        :on-remove="onCoverRemove"
-      >
-        <el-button>选择封面</el-button>
-      </el-upload>
-    </el-form-item>
-    <el-form-item :label="`附件（可选，PDF/Word ≤${formatMB(ATTACHMENT_MAX_BYTES)}）`">
-      <el-upload
-        v-model:file-list="attachmentList"
-        :auto-upload="false"
-        :accept="'.pdf,.doc,.docx'"
-        :on-change="onAttachmentChange"
-        :on-remove="onAttachmentRemove"
-      >
-        <el-button>选择附件</el-button>
-      </el-upload>
-    </el-form-item>
-    <el-button type="warning" :loading="loading" @click="handleSubmit">{{ submitLabel }}</el-button>
-  </el-form>
+  </form>
 </template>

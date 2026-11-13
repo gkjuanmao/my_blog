@@ -78,14 +78,21 @@ async function doExport(scope: 'selected' | 'filtered') {
 </script>
 
 <template>
-  <el-button
+  <button
+    class="ad-btn ad-btn--ghost ad-btn--sm"
+    type="button"
     :disabled="!selectedIds.length || exporting"
-    :loading="exporting"
     @click="doExport('selected')"
   >
     导出所选{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
-  </el-button>
-  <el-button :disabled="exporting" title="按当前筛选条件导出全部" @click="doExport('filtered')">
-    导出全部
-  </el-button>
+  </button>
+  <button
+    class="ad-btn ad-btn--ghost ad-btn--sm"
+    type="button"
+    :disabled="exporting"
+    title="按当前筛选条件导出全部"
+    @click="doExport('filtered')"
+  >
+    {{ exporting ? '导出中…' : '导出全部' }}
+  </button>
 </template>

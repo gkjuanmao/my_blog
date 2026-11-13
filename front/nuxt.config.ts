@@ -55,6 +55,8 @@ export default defineNuxtConfig({
     '~/assets/css/skin-neon.css',
     // 首页卷首视觉层：必须排在两套皮肤之后（等权重时靠文件顺序胜出）
     '~/assets/css/home-cover.css',
+    // 管理台「编辑部台账」：复用 --hp-* 令牌，只作用于 .ad-desk / .ad-body
+    '~/assets/css/admin-desk.css',
   ],
   nitro: {
     devProxy: {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 文章管理：列表 + 筛选/排序 + 选择导出 + 批量删除 + 归档导入
 //
-// FE-09 拆分后本文件只保留「页面级」状态与调度：筛选条件、勾选集合、增删改导航、
-// 以及列表加载。视图与归档流程分别在 components/admin/ 下的四个组件里。
+// 本文件只保留「页面级」状态与调度：筛选条件、勾选集合、增删改导航、列表加载。
+// 视图与归档流程在 components/admin/ 下的组件里（桌面台账表 / 移动卡片 / 筛选 / 导出 / 导入）。
 import type {
   Article,
   BulkDeleteResult,
@@ -13,8 +13,9 @@ import { useArticleList } from '~/composables/useArticleList'
 
 definePageMeta({ layout: 'admin' })
 
+const route = useRoute()
 const keyword = ref('')
-const categorySlug = ref('')
+const categorySlug = ref(typeof route.query.category === 'string' ? route.query.category : '')
 const status = ref('') // '' | 'true' | 'false'
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const categories = ref<Category[]>([])
@@ -25,6 +26,20 @@ const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleL
 const selectedIds = ref<number[]>([])
 const importVisible = ref(false)
 const bulkDeleting = ref(false)
+
+/** 抬头里的筛选说明：只说当前生效的条件 */
+const filterSummary = computed(() => {
+  const parts: string[] = [`共 ${total.value} 篇`]
+  if (keyword.value.trim()) parts.push(`关键词「${keyword.value.trim()}」`)
+  if (categorySlug.value) {
+    const name = categories.value.find(c => c.slug === categorySlug.value)?.name
+    if (name) parts.push(`栏目「${name}」`)
+  }
+  if (status.value === 'true') parts.push('只看已发布')
+  if (status.value === 'false') parts.push('只看草稿')
+  parts.push(`按发布时间${sortOrder.value === 'desc' ? '新 → 旧' : '旧 → 新'}`)
+  return parts.join(' · ')
+})
 
 function fetchArticles() {
   // onLoaded：仅在响应仍是最新时清空勾选（避免乱序响应把新页的勾选清掉）
@@ -57,10 +72,6 @@ function applyFilters() {
   else page.value = 1
 }
 
-function doSearch() {
-  applyFilters()
-}
-
 function resetFilters() {
   keyword.value = ''
   categorySlug.value = ''
@@ -69,7 +80,7 @@ function resetFilters() {
   applyFilters()
 }
 
-/** el-table 自定义排序 → 服务端排序（仅发布时间列可排） */
+/** 表头「发布时间」点击 → 服务端排序（direction 用 el-table 的语义，兼容原回调） */
 function handleSortChange({ prop, order }: { prop: string | null; order: string | null }) {
   if (prop !== 'publish_time') return
   sortOrder.value = order === 'ascending' ? 'asc' : 'desc'
@@ -84,7 +95,11 @@ function goEdit(id: number) {
 }
 async function handleDelete(row: Article) {
   try {
-    await ElMessageBox.confirm(`确定删除文章「${row.title}」吗？`, '删除确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除文章「${row.title}」吗？封面与附件会一并清理。`, '删除文章', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    })
   } catch {
     return
   }
@@ -104,7 +119,7 @@ function clearSelection() {
 }
 function toggleSelect(id: number) {
   selectedIds.value = selectedIds.value.includes(id)
-    ? selectedIds.value.filter((value) => value !== id)
+    ? selectedIds.value.filter(value => value !== id)
     : [...selectedIds.value, id]
 }
 
@@ -114,24 +129,19 @@ const allSelectedOnPage = computed(
 
 /** 全选/取消全选当前页（勾选集合是唯一数据源，表格与卡片都受控） */
 function toggleSelectAllOnPage() {
-  selectedIds.value = allSelectedOnPage.value
-    ? []
-    : articles.value.map((row) => row.id)
+  selectedIds.value = allSelectedOnPage.value ? [] : articles.value.map(row => row.id)
 }
 
 /* ------------------------------------------------------------------ 批量删除 */
 
 async function doBulkDelete() {
   const count = selectedIds.value.length
-  if (!count) {
-    ElMessage.warning('请先勾选要删除的文章')
-    return
-  }
+  if (!count) return
   try {
     await ElMessageBox.confirm(
       `确定删除选中的 ${count} 篇文章吗？其封面与附件文件会一并清除，且不可恢复。`,
-      '批量删除确认',
-      { type: 'warning', confirmButtonText: '确认删除' },
+      '批量删除',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
     )
   } catch {
     return
@@ -168,87 +178,96 @@ onMounted(() => {
 
 <template>
   <div>
-    <h1 class="text-xl font-semibold">文章管理</h1>
-    <div class="space-y-4">
-      <div class="flex flex-col gap-3">
-        <ArticleAdminFilters
-          v-model:keyword="keyword"
-          v-model:category-slug="categorySlug"
-          v-model:status="status"
-          v-model:sort-order="sortOrder"
-          :categories="categories"
-          @change="applyFilters"
-          @search="doSearch"
-        />
-        <!--
-          工具栏配色约定（与「分类管理 / 标签管理」对齐）：
-          - warning（品牌琥珀色）= 页面主操作：搜索、新建文章
-          - default              = 中性/次要操作：重置、导出、导入
-          - danger plain         = 破坏性操作：批量删除
-          - link primary         = 辅助链接：全选本页
-          分组用竖线分隔：筛选 │ 归档 │ 删除 ……… 全选 / 新建
-        -->
-        <div class="flex flex-wrap items-center gap-2">
-          <el-button type="warning" @click="doSearch">搜索</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-
-          <span class="mx-1 h-6 w-px bg-stone-300 dark:bg-stone-700" />
-
-          <ArticleExportBar
-            :keyword="keyword"
-            :category-slug="categorySlug"
-            :status="status"
-            :selected-ids="selectedIds"
-          />
-          <el-button @click="importVisible = true">导入</el-button>
-
-          <span class="mx-1 h-6 w-px bg-stone-300 dark:bg-stone-700" />
-
-          <el-button
-            type="danger"
-            plain
-            :disabled="!selectedIds.length || bulkDeleting"
-            :loading="bulkDeleting"
-            @click="doBulkDelete"
-          >
-            批量删除{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
-          </el-button>
-
-          <div class="ml-auto flex items-center gap-2">
-            <el-button v-if="articles.length" link type="primary" @click="toggleSelectAllOnPage">
-              {{ allSelectedOnPage ? '取消全选本页' : '全选本页' }}
-            </el-button>
-            <el-button type="warning" @click="goCreate">新建文章</el-button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="errorMsg" class="py-8 text-center text-sm text-red-500">{{ errorMsg }}</div>
-      <template v-else>
-        <ArticleListTable
-          :articles="articles"
-          :loading="loading"
-          :selected-ids="selectedIds"
-          @sort-change="handleSortChange"
-          @toggle-select="toggleSelect"
-          @toggle-select-all="toggleSelectAllOnPage"
-          @edit="goEdit"
-          @delete="handleDelete"
-        />
-        <ArticleMobileCards
-          :articles="articles"
-          :loading="loading"
-          :selected-ids="selectedIds"
-          @toggle-select="toggleSelect"
-          @edit="goEdit"
-          @delete="handleDelete"
-        />
+    <AdminMasthead eyebrow="稿件" eyebrow-en="Manuscripts" title="文章管理" :meta="filterSummary">
+      <template #actions>
+        <button class="ad-btn ad-btn--ghost" type="button" @click="importVisible = true">
+          导入归档
+        </button>
+        <button class="ad-btn ad-btn--primary" type="button" @click="goCreate">新建文章</button>
       </template>
+    </AdminMasthead>
 
-      <div v-if="total > 0" class="flex justify-center">
-        <AppPagination v-model:page="page" v-model:page-size="pageSize" :total="total" />
-      </div>
+    <ArticleAdminFilters
+      v-model:keyword="keyword"
+      v-model:category-slug="categorySlug"
+      v-model:status="status"
+      v-model:sort-order="sortOrder"
+      :categories="categories"
+      @change="applyFilters"
+      @search="applyFilters"
+    />
+
+    <div class="ad-toolbar">
+      <ArticleExportBar
+        :keyword="keyword"
+        :category-slug="categorySlug"
+        :status="status"
+        :selected-ids="selectedIds"
+      />
+      <button class="ad-btn ad-btn--text ad-btn--sm" type="button" @click="resetFilters">
+        重置筛选
+      </button>
+      <span class="ad-toolbar__spacer" />
+      <button
+        v-if="articles.length"
+        class="ad-btn ad-btn--text ad-btn--sm"
+        type="button"
+        @click="toggleSelectAllOnPage"
+      >
+        {{ allSelectedOnPage ? '取消全选本页' : '全选本页' }}
+      </button>
     </div>
+
+    <div v-if="selectedIds.length" class="ad-selbar">
+      <p>已选 <b>{{ selectedIds.length }}</b> 篇</p>
+      <button
+        class="ad-link ad-link--danger"
+        type="button"
+        :disabled="bulkDeleting"
+        @click="doBulkDelete"
+      >
+        {{ bulkDeleting ? '正在删除…' : '批量删除' }}
+      </button>
+      <button class="ad-link ad-selbar__clear" type="button" @click="clearSelection">
+        清空选择
+      </button>
+    </div>
+
+    <div v-if="errorMsg" role="alert" style="padding: 40px 0">
+      <p class="ad-error">{{ errorMsg }}</p>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" style="margin-top: 14px" @click="fetchArticles">
+        重试
+      </button>
+    </div>
+    <template v-else>
+      <ArticleListTable
+        :articles="articles"
+        :loading="loading"
+        :selected-ids="selectedIds"
+        :order="sortOrder"
+        @sort-change="handleSortChange"
+        @toggle-select="toggleSelect"
+        @toggle-select-all="toggleSelectAllOnPage"
+        @edit="goEdit"
+        @delete="handleDelete"
+      />
+      <ArticleMobileCards
+        :articles="articles"
+        :loading="loading"
+        :selected-ids="selectedIds"
+        @toggle-select="toggleSelect"
+        @edit="goEdit"
+        @delete="handleDelete"
+      />
+    </template>
+
+    <AdminPager
+      v-if="total > 0"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="total"
+      :page-sizes="[10, 20, 50]"
+    />
 
     <ArticleImportDialog v-model="importVisible" @imported="fetchArticles" />
   </div>

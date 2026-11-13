@@ -53,16 +53,38 @@ async function handleSubmit(fd: FormData) {
     submitting.value = false
   }
 }
+
+const meta = computed(() => {
+  if (!article.value) return ''
+  return `${article.value.slug} · 更新于 ${formatDateTime(article.value.updated_at)}`
+})
 </script>
 
 <template>
   <div>
-    <h1 class="text-xl font-semibold">编辑文章</h1>
-    <div v-if="loading" class="py-12 text-center text-sm text-stone-400">加载中…</div>
-    <div v-else-if="errorMsg" class="py-12 text-center">
-      <p class="mb-4 text-sm text-red-500">{{ errorMsg }}</p>
-      <NuxtLink to="/administrator/articles" class="text-sm text-brand-600 hover:underline">返回列表</NuxtLink>
+    <AdminMasthead eyebrow="稿件" eyebrow-en="Manuscript" title="编辑文章" :meta="meta">
+      <template #actions>
+        <NuxtLink class="ad-btn ad-btn--ghost" to="/administrator/articles">返回列表</NuxtLink>
+      </template>
+    </AdminMasthead>
+
+    <div v-if="loading" class="ad-loading" style="padding: 60px 0; color: var(--hp-ink-3)">
+      正在取稿…
     </div>
-    <ArticleForm v-else :initial="article" submit-label="保存" :categories="categories" :tags="tags" :loading="submitting" @submit="handleSubmit" />
+    <div v-else-if="errorMsg" role="alert" style="padding: 40px 0">
+      <p class="ad-error">{{ errorMsg }}</p>
+      <NuxtLink class="ad-btn ad-btn--ghost ad-btn--sm" to="/administrator/articles" style="margin-top: 14px">
+        返回列表
+      </NuxtLink>
+    </div>
+    <ArticleForm
+      v-else
+      :initial="article"
+      submit-label="保存修改"
+      :categories="categories"
+      :tags="tags"
+      :loading="submitting"
+      @submit="handleSubmit"
+    />
   </div>
 </template>

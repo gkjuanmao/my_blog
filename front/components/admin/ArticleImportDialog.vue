@@ -412,7 +412,7 @@ function skipReasonText(item: { skip_reason: string | null }): string {
         上传并预检
       </el-button>
       <el-button
-        type="warning"
+        type="primary"
         :loading="committing"
         :disabled="!stagedId || staging || replanning || committing"
         @click="doCommit"

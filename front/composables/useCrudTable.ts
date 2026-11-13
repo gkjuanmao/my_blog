@@ -1,9 +1,8 @@
 /**
  * 「简单资源」（分类 / 标签）列表 + 增删改的**数据层**（FE-10）。
  *
- * 界面的本地状态（弹窗开关、正在编辑的行、表单值、保存中、删除确认）在
- * `components/admin/ResourceCrudTable.vue` 里；这里只负责列表加载与两个写请求，
- * 两者合起来取代了 `categories.vue` / `tags.vue` 原先 1:1 复制的两份实现。
+ * 界面的本地状态（选中行、表单值、保存中、删除确认）在
+ * `components/admin/CategoryIndex.vue` / `TagIndex.vue` 里；这里只负责列表加载与两个写请求。
  */
 import type { Ref } from 'vue'
 
@@ -13,20 +12,6 @@ export interface CrudRow {
   name: string
   slug: string
   description?: string
-}
-
-/** 表格列声明（驱动 el-table 的列） */
-export interface CrudColumn {
-  prop: string
-  label: string
-  width?: string
-}
-
-/** 表单字段声明（第一项为必填项） */
-export interface CrudField {
-  key: string
-  label: string
-  placeholder?: string
 }
 
 export interface CrudTableOptions {
