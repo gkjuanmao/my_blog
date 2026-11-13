@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InputInstance, UploadFile } from 'element-plus'
+import type { AutocompleteInstance, InputInstance, UploadFile } from 'element-plus'
 
 import {
   API_UPLOAD_LIMIT_BYTES,
@@ -10,7 +10,8 @@ import {
   INLINE_IMAGE_MAX_LONG_EDGE,
   formatMB,
 } from '~/constants/uploads'
-import type { AdminArticleDetail, Category, Tag } from '~/types/api'
+import type { AdminArticleDetail, Category, GeoArea, Tag } from '~/types/api'
+import { PLACE_SEPARATOR } from '~/utils/place'
 
 const props = defineProps<{
   initial?: AdminArticleDetail | null
@@ -46,6 +47,78 @@ const form = reactive({
 /** 内联校验：表单很短，直接给字段错误，不引入 el-form 的 label 结构 */
 const errors = reactive({ title: '', publish_time: '', cover: '', content: '' })
 const titleRef = ref<HTMLInputElement | null>(null)
+
+/* ------------------------------------------------------------------ 地点联想 */
+
+/** 联想候选：`hint` 有值表示这是「保留原文」的兜底项（境外地点、老数据用） */
+interface PlaceSuggestion {
+  value: string
+  hint?: string
+  /** 国家/地区：选中后自动补分隔符，方便接着打城市 */
+  appendSeparator?: boolean
+}
+
+const placeRef = ref<AutocompleteInstance | null>(null)
+/** 请求序号：只认最后一次输入的回包，避免慢请求把新输入的结果覆盖掉 */
+let placeSeq = 0
+
+/**
+ * 地点联想：查后端内置的中国省/市/区县与国家清单。
+ *
+ * 三个刻意的取舍：
+ * 1. 少于 2 个字不查——单字会命中上千条，对填写没有帮助；
+ * 2. 查不到时回一条「保留原文」的兜底项，明确告诉用户这里**不强制选择**
+ *    （境外地点、以及老数据里的自由文本全靠这条路）；
+ * 3. 请求失败静默返回空——搜索挂了不能连文章都写不了。
+ */
+async function fetchPlaceSuggestions(
+  query: string,
+  callback: (items: PlaceSuggestion[]) => void,
+) {
+  const keyword = query.trim()
+  if (keyword.length < 2) {
+    callback([])
+    return
+  }
+
+  const seq = ++placeSeq
+  try {
+    const { data } = await useApi().get<{ items: GeoArea[] }>('/geo/search/', {
+      q: keyword,
+      limit: 12,
+    })
+    if (seq !== placeSeq) return
+    if (!data.items.length) {
+      callback([{ value: keyword, hint: `没有匹配的中国地名，直接使用「${keyword}」` }])
+      return
+    }
+    callback(
+      data.items.map((area) => ({
+        value: area.label,
+        appendSeparator: area.level === 'country',
+      })),
+    )
+  } catch {
+    if (seq === placeSeq) callback([])
+  }
+}
+
+/**
+ * 选中国家后补一个分隔符并把光标放到末尾，接着打城市即可（如「瑞士 · 因特拉肯」）。
+ *
+ * 入参类型是 Element Plus 的 `Record<string, any>`（`@select` 的原生签名），
+ * 这里逐个字段取值而不是直接断言成 `PlaceSuggestion`，免得别名一改就静默失效。
+ */
+function handlePlaceSelect(item: Record<string, unknown>) {
+  if (item.appendSeparator !== true || typeof item.value !== 'string') return
+  form.location = `${item.value}${PLACE_SEPARATOR}`
+  nextTick(() => {
+    const input = placeRef.value?.inputRef?.input
+    if (!input) return
+    input.focus()
+    input.setSelectionRange(form.location.length, form.location.length)
+  })
+}
 
 /* ------------------------------------------------------------------ 上传 */
 
@@ -453,7 +526,25 @@ function formatSize(bytes?: number): string {
 
         <div class="ad-aside-field">
           <p class="ad-efield__label">地点</p>
-          <el-input v-model="form.location" placeholder="如 云南 · 大理" />
+          <el-autocomplete
+            ref="placeRef"
+            v-model="form.location"
+            :fetch-suggestions="fetchPlaceSuggestions"
+            :debounce="250"
+            :trigger-on-focus="false"
+            value-key="value"
+            clearable
+            popper-class="ad-place-popper"
+            placeholder="搜地名，如 南京"
+            style="width: 100%"
+            @select="handlePlaceSelect"
+          >
+            <template #default="{ item }">
+              <span v-if="item.hint" class="ad-place-hint">{{ item.hint }}</span>
+              <span v-else>{{ item.value }}</span>
+            </template>
+          </el-autocomplete>
+          <p class="ad-efield__hint">境外地点可直接手输，如「瑞士 · 因特拉肯」</p>
         </div>
       </section>
 

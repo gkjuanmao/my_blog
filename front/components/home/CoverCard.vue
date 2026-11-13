@@ -10,6 +10,7 @@
  *  - 日期用 `<time datetime>` + 视觉截断 + `sr-only` 全文（不用 aria-label：generic 角色上被禁用）。
  */
 import type { Article } from '~/types/api'
+import { shortPlace } from '~/utils/place'
 
 const props = defineProps<{
   article: Article
@@ -35,7 +36,7 @@ watch(coverUrl, () => {
 const href = computed(() => `/article/${props.article.slug}`)
 const categoryName = computed(() => props.article.category?.name ?? '')
 /** location 为空时必须整行不渲染（否则会多出 13px 行高，卡片高度不齐） */
-const location = computed(() => props.article.location?.trim() ?? '')
+const location = computed(() => shortPlace(props.article.location ?? ''))
 
 const dateCompact = computed(() => formatDateCompact(props.article.publish_time))
 const dateFull = computed(() => formatDate(props.article.publish_time))

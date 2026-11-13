@@ -2123,6 +2123,31 @@
   background: #fff;
 }
 
+/* 地点联想的浮层：popper 被 teleport 到 body，用专属类名限定，避免影响前台 */
+.ad-place-popper {
+  border: 1px solid #dde3dc;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(27, 37, 35, 0.14);
+}
+.ad-place-popper .el-autocomplete-suggestion__list li {
+  padding: 0 12px;
+  font-size: 12.5px;
+  line-height: 32px;
+  color: #1b2523;
+}
+.ad-place-popper .el-autocomplete-suggestion__list li:hover,
+.ad-place-popper .el-autocomplete-suggestion__list li.highlighted {
+  background: #f0f2ed;
+}
+/* 「直接使用原文」那条兜底项：语气要弱，别让人以为是个可选地名 */
+.ad-place-hint {
+  font-size: 12px;
+  color: #6b7c76;
+}
+.ad-aside-field > .ad-efield__hint {
+  margin-top: 6px;
+}
+
 /* 导入对话框里的表格 / 进度 / 标签 */
 .ad-body .el-table {
   --el-table-border-color: #dde3dc;

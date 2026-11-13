@@ -87,14 +87,21 @@ export interface ChangePasswordPayload {
   new_password: string
 }
 
+/** 地名候选（common/geo/api.py GeoAreaOut） */
+export interface GeoArea {
+  /** 完整地名，如「中国 · 江苏省 · 南京市」，直接作为 location 保存 */
+  label: string
+  /** 行政区划代码；港澳台的区一级没有 GB 编码，为空串 */
+  code: string
+  level: 'province' | 'city' | 'district' | 'country'
+}
+
 export interface Category {
   id: number
   name: string
   slug: string
   description: string
-}
-
-export interface Tag {
+}export interface Tag {
   id: number
   name: string
   slug: string
