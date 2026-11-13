@@ -658,53 +658,55 @@ html.skin-neon .public-shell > header.cv-nav--home[data-nav='scrolled'] .cv-nav_
 }
 
 /* -------------------------------------------------------------------------
- * 时间轴顶态（`html.tl-page`）：顶部是 --hp-surface 浅色画布，不是深色照片。
+ * 浅色画布顶态（`html.tl-page` 时间轴 / `html.art-page` 文章详情）：
+ * 顶部是 --hp-surface 浅色画布，不是深色照片。
  * 白字与深色遮罩带都是为 hero 照片服务的，直接搬过来会「白字消失 + 一块脏灰」。
  * 这里把顶态换成墨青 token，与滚动态同色 —— 滚动时只有背景/高度变化，无色彩跳变，
  * 结构（fixed 浮层 / 短线 / 进度条 / 磨砂滚动态）与首页完全一致。
+ * 两个页面共用同一份覆盖（`:is()` 的特异度取最高参数 = html.tl-page，故时间轴行为不变）。
  * ⚠️ 本块必须排在皮肤的 `.cv-nav--home[data-nav='top']` 白字覆盖之后（同特异度靠源顺序）。
  * ---------------------------------------------------------------------- */
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] {
   color: var(--hp-ink);
 }
 
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand {
   color: var(--hp-brand);
 }
 
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link {
   color: var(--hp-ink);
 }
 
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link[aria-current='page'] {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link[aria-current='page'] {
   color: var(--hp-ink);
 }
 
 /* 照片用的深色遮罩带：浅色画布上只是一块脏灰 */
-html.tl-page .cv-nav__veil {
+:is(html.tl-page, html.art-page) .cv-nav__veil {
   display: none;
 }
 
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button,
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button,
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn {
   border-color: var(--hp-line-strong);
   color: var(--hp-ink);
 }
 
 /* 顶态焦点环：亮底用赭金 --hp-focus，不用压深照片的 --hp-focus-on-dark（金对白仅 1.9:1） */
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand:focus-visible,
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:focus-visible,
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions :is(a, button):focus-visible,
-html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn:focus-visible {
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__brand:focus-visible,
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:focus-visible,
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions :is(a, button):focus-visible,
+:is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-menu-btn:focus-visible {
   outline-color: var(--hp-focus);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:hover {
+  :is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__link:hover {
     color: var(--hp-brand);
   }
 
-  html.tl-page .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button:not(:disabled):hover {
+  :is(html.tl-page, html.art-page) .public-shell > header.cv-nav[data-nav='top'] .cv-nav__actions button:not(:disabled):hover {
     border-color: var(--hp-brand);
     color: var(--hp-brand);
   }
@@ -2823,9 +2825,32 @@ html.is-hidden.is-settled.motion-ok .cv-scroll-cue__dot {
 
 /* ---------------- 文章详情 ---------------- */
 
+/* 本页导航是 fixed 浮层（layout 的 useCoverNav），main 因此是全出血的：
+ * 内容必须自己让出导航高度，否则标题被压在导航下面。
+ * 顶态 72px / 滚动态 60px，取 72 计算；上下留白与首页 hero 同源。
+ * 宽度 = 正文 760 + 左右各 24 padding（border-box），阅读行宽与改版前一致。
+ * ⚠️ 让位只写在这里，详情页 <style> 里不要再写第二份。 */
 .cv-article {
-  width: min(760px, 100%);
+  box-sizing: border-box;
+  width: min(808px, 100%);
   margin-inline: auto;
+  padding: calc(72px + 40px) 24px 88px;
+}
+
+/* 加载 / 空 / 错误态没有 .cv-article 外壳，同样要让位，否则一行字卡在导航下
+ * （宽度与 .cv-article 同一套数值，不要出现第二个魔数） */
+html.art-page main > .cv-state {
+  box-sizing: border-box;
+  width: min(808px, 100%);
+  margin-inline: auto;
+  padding: calc(72px + 40px) 24px 88px;
+}
+
+@media (max-width: 767px) {
+  .cv-article,
+  html.art-page main > .cv-state {
+    padding: calc(72px + 28px) 18px 64px;
+  }
 }
 
 .cv-article__head {

@@ -28,7 +28,12 @@ const isHome = computed(() => route.path === '/')
 /** 时间轴与首页共用「卷首式」导航（fixed 透明浮层 + 滚动状态机 + 进度条）；
  *  时间轴顶态是浅色画布而非深色照片，顶态配色由 home-cover.css 的 .tl-page 段单独覆盖 */
 const isTimeline = computed(() => route.path === '/timeline')
-const useCoverNav = computed(() => isHome.value || isTimeline.value)
+
+/** 文章详情与首页共用同一套导航：顶态同样是浅色画布（不走 hero 照片），
+ *  顶态配色由 home-cover.css 的 .art-page 段与 .tl-page 并列覆盖；
+ *  内容让位（固定导航高度）写在该文件的 §19 文章详情段，全站只有一处 */
+const isArticle = computed(() => route.path.startsWith('/article/'))
+const useCoverNav = computed(() => isHome.value || isTimeline.value || isArticle.value)
 
 const navLinks: { label: string; to: string; browse?: 'category' | 'tag' | 'search' }[] = [
   { label: '首页', to: '/' },

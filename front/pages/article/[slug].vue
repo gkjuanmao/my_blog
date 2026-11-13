@@ -8,6 +8,13 @@ const slug = computed(() => route.params.slug as string)
 
 const coverError = ref(false)
 
+// 本页导航与首页同款（fixed 透明浮层），顶态需要浅色画布配色：
+// 挂一个 html 作用域类供 home-cover.css 的顶态覆盖命中（与 .tl-page 并列）。
+// ⚠️ 皮肤类由 layout 的 useHead 合并进来，这里只加自己的类，不要整段覆盖 htmlAttrs。
+useHead({
+  htmlAttrs: { class: 'art-page' },
+})
+
 const { data: article, pending, error: fetchError } = await useAsyncData<ArticleDetail>(
   () => `article-${slug.value}`,
   () => useApi().get<ArticleDetail>(`/articles/${slug.value}/`).then((res) => res.data),
