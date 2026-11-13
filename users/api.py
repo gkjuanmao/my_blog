@@ -3,6 +3,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.models import update_last_login
 from django.core.cache import cache
 from django.http import HttpRequest
 from ninja import Router
@@ -14,6 +15,7 @@ from common.responses import success_response
 from common.schemas import ApiResponse
 
 from .authentication import JWTAuth
+from .presence import touch_presence
 from .schemas import LoginIn, RefreshIn, TokenObtainPairOut, TokenRefreshOut, UserOut
 
 router = Router(tags=['认证'])
@@ -71,6 +73,10 @@ def obtain_token(request: HttpRequest, payload: LoginIn) -> dict:
         cache.delete(key)
     except Exception:  # pragma: no cover - 仅在缓存故障时触发
         logger.warning('登录限流缓存清除失败', exc_info=True)
+    # 登录是最明确的在线信号：跳过节流直接写 last_seen_at，并补上 last_login
+    # （AbstractUser.last_login 只在 django.contrib.auth.login() 里更新，走 JWT 不会自动写）
+    touch_presence(user, force=True)
+    update_last_login(type(user), user)
     refresh = RefreshToken.for_user(user)  # type: ignore[misc]
     return success_response({
         'access': str(refresh.access_token),
@@ -93,6 +99,9 @@ def refresh_token(request: HttpRequest, payload: RefreshIn) -> dict:
     user = User.objects.filter(pk=refresh['user_id']).first()
     if user is None:
         raise HttpError(401, '用户不存在')
+    # 与 JWTAuth 同一口径：停用的账号不许再换新令牌
+    if not user.is_active:
+        raise HttpError(401, '账号已停用')
 
     new_refresh = RefreshToken.for_user(user)  # type: ignore[misc]
     if settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION') and hasattr(refresh, 'blacklist'):

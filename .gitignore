@@ -34,3 +34,10 @@ db_data/
 
 # CI 生成的门禁/测试/邮件产物
 /reports/
+
+# 运行期临时上传（Django 临时文件落在 CWD）与 pytest 沙箱目录
+*.upload.*
+pytest-of-*/
+
+# 本地 AI 助手的工作区数据（含日常记忆，属个人本地状态）
+.workbuddy/

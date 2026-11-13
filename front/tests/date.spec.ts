@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDate, formatDateCompact, formatDateTime } from '../utils/date'
+import { formatDate, formatDateCompact, formatDateTime, formatRelativeTime } from '../utils/date'
 
 describe('date utils', () => {
   it('formatDate 统一按 Asia/Shanghai 输出中文日期', () => {
@@ -16,5 +16,22 @@ describe('date utils', () => {
 
   it('formatDateTime 输出日期 + 时分（24 小时制）', () => {
     expect(formatDateTime('2026-07-18T00:00:00Z')).toBe('2026/07/18 08:00')
+  })
+
+  it('formatRelativeTime 按分钟/小时/天分档，超 30 天回落日期', () => {
+    const now = new Date('2026-07-18T12:00:00Z').getTime()
+
+    expect(formatRelativeTime(null, now)).toBe('从未')
+    expect(formatRelativeTime('2026-07-18T11:59:30Z', now)).toBe('刚刚')
+    expect(formatRelativeTime('2026-07-18T11:48:00Z', now)).toBe('12 分钟前')
+    expect(formatRelativeTime('2026-07-18T09:00:00Z', now)).toBe('3 小时前')
+    expect(formatRelativeTime('2026-07-16T12:00:00Z', now)).toBe('2 天前')
+    expect(formatRelativeTime('2026-05-01T12:00:00Z', now)).toBe('2026年5月1日')
+  })
+
+  it('formatRelativeTime 对客户端时钟偏慢（未来时间）不输出负数', () => {
+    const now = new Date('2026-07-18T12:00:00Z').getTime()
+
+    expect(formatRelativeTime('2026-07-18T12:05:00Z', now)).toBe('刚刚')
   })
 })

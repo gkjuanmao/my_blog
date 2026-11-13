@@ -46,6 +46,39 @@ export interface UserInfo {
   avatar: string | null
   avatar_name: string | null
   date_joined: string
+  /** 是否可进后台管理稿件（导航按权限渲染要用） */
+  is_staff: boolean
+  is_superuser: boolean
+}
+
+/** 用户管理列表行（users/schemas.py AdminUserOut） */
+export interface AdminUser {
+  id: number
+  username: string
+  email: string
+  is_active: boolean
+  is_staff: boolean
+  is_superuser: boolean
+  avatar_url: string | null
+  date_joined: string
+  last_login: string | null
+  last_seen_at: string | null
+  /** 服务端按在线窗口算好，避免前端时钟不一致 */
+  online: boolean
+  article_count: number
+}
+
+/** 创建/更新用户的请求体（更新时不带 password） */
+export interface UserPayload {
+  email: string
+  is_staff: boolean
+  is_superuser: boolean
+  is_active: boolean
+}
+
+export interface CreateUserPayload extends UserPayload {
+  username: string
+  password: string
 }
 
 export interface Category {

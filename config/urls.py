@@ -10,6 +10,7 @@ from ninja import NinjaAPI
 from articles.api import admin_router
 from articles.api import router as articles_router
 from common.exceptions import register_exception_handlers
+from users.admin_api import router as users_admin_router
 from users.api import router as users_router
 
 # 初始化 Django Ninja API
@@ -29,6 +30,8 @@ register_exception_handlers(api)
 api.add_router('', users_router)
 api.add_router('', articles_router)
 api.add_router('admin', admin_router)
+# 用户管理（仅超管）：/api/v1/admin/users/...，与文章的 admin 路由同前缀但路径不冲突
+api.add_router('admin', users_admin_router)
 
 urlpatterns: list[URLResolver] = [
     path('admin/', admin.site.urls),

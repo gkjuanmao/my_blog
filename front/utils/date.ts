@@ -44,3 +44,24 @@ export function formatDateCompact(iso: string): string {
 export function formatDateTime(iso: string): string {
   return DATETIME_FORMATTER.format(new Date(iso))
 }
+
+const MINUTE_MS = 60_000
+
+/**
+ * 相对时间，如「刚刚 / 12 分钟前 / 3 小时前 / 2 天前」，超过 30 天回落成日期。
+ *
+ * 用于用户列表的「最近活跃」：绝对时间在这里没有信息量，
+ * 而「多久没动过」才是管理员关心的。`now` 可注入，便于测试与统一渲染基准。
+ * 传入 null（从未活跃）返回「从未」。
+ */
+export function formatRelativeTime(iso: string | null, now: number = Date.now()): string {
+  if (!iso) return '从未'
+  const diff = now - new Date(iso).getTime()
+  // 客户端时钟可能比服务端慢，diff < 0 时按「刚刚」处理，不显示负数
+  if (diff < MINUTE_MS) return '刚刚'
+  if (diff < 60 * MINUTE_MS) return `${Math.floor(diff / MINUTE_MS)} 分钟前`
+  if (diff < 24 * 60 * MINUTE_MS) return `${Math.floor(diff / (60 * MINUTE_MS))} 小时前`
+  const days = Math.floor(diff / (24 * 60 * MINUTE_MS))
+  if (days < 30) return `${days} 天前`
+  return formatDate(iso)
+}

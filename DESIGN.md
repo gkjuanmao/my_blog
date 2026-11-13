@@ -29,6 +29,7 @@
 - [x] 分类 / 标签管理
 - [x] 按标题搜索文章
 - [x] JWT 身份认证
+- [x] 用户管理（仅超管：创建 / 重置密码 / 停用 / 删除，显示在线状态）
 - [x] 文件本地存储（支持未来迁移至 OSS）
 - [x] Django Admin 后台管理
 - [x] Docker 一键部署
@@ -142,6 +143,8 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | password | CharField | not null | 加密密码 (Django 自动处理) |
 | avatar | ImageField | blank=True, null=True | 头像，upload_to: `avatars/%Y/%m/UUID.ext` |
 | avatar_name | CharField(255) | blank=True | 头像原始文件名 |
+| last_seen_at | DateTimeField | null=True, db_index | 最近活跃时间；在线 = `now - last_seen_at ≤ USER_ONLINE_WINDOW_SECONDS`(900s) |
+| password_changed_at | DateTimeField | null=True | 最近改密时间；令牌 `iat` 早于它即失效 |
 | is_staff | BooleanField | default=False | 是否为管理员 |
 | date_joined | DateTimeField | auto_now_add | 注册时间 |
 
@@ -650,6 +653,38 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 ---
 
+### 5.3.4 用户管理（仅超管）
+
+鉴权统一为 `SuperUserJWTAuth`：匿名 401、普通登录用户与 staff 一律 403。路径参数用
+`{int:user_id}` 转换器，非数字路径直接 404。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/admin/users/` | 列表：`page`/`page_size`/`keyword`（用户名或邮箱）/`is_active`/`is_staff`/`ordering`（白名单 `username`/`date_joined`/`last_login`/`last_seen_at`/`is_active`），非法排序 400 |
+| GET | `/api/v1/admin/users/{int:user_id}/` | 单个用户 |
+| POST | `/api/v1/admin/users/` | 创建，201；用户名 `iexact` 判重 409；密码走 `AUTH_PASSWORD_VALIDATORS`；`is_superuser=true` 自动带 `is_staff` |
+| PUT | `/api/v1/admin/users/{int:user_id}/` | 改 `email`/`is_staff`/`is_superuser`/`is_active`（不含密码）；不能改自己的角色或启用状态（400） |
+| POST | `/api/v1/admin/users/{int:user_id}/reset-password/` | 超管手输新密码；成功后旧令牌立即失效 |
+| DELETE | `/api/v1/admin/users/{int:user_id}/` | `?reassign_to=<id>` 转移稿件 / `?force=true` 级联删除 / 无稿件直接删 |
+
+列表项字段：`id, username, email, is_active, is_staff, is_superuser, avatar_url, date_joined,
+last_login, last_seen_at, online, article_count`。`online` 由服务端按 `USER_ONLINE_WINDOW_SECONDS`
+计算后返回（避免前后端时钟不一致），`article_count` 用 `annotate(Count('article'))` 一次查出。
+
+**删除语义（三道闸）**：`Article.author` 是 `CASCADE`，直接删用户会连带删掉其全部文章，因此：
+
+1. 删自己 → 400「不能删除当前登录账号」；
+2. 目标是最后一个启用中的超管 → 400；
+3. 名下有 N 篇文章 → **默认 409**，需显式 `?reassign_to=<id>`（先把 `author` 改到目标用户再删）
+   或 `?force=true`（级联删文章，封面/附件由 `articles/signals.py` 清理）。
+
+删除用户时 `users/signals.py` 的 `post_delete` 会清理其头像文件。
+
+**错误**：400（参数/密码强度/自锁保护）、401（未登录/令牌失效）、403（非超管）、404（用户不存在）、
+409（用户名重复 / 名下有稿件）。
+
+---
+
 ## 六、认证方案
 
 ### 6.1 技术选型
@@ -695,6 +730,17 @@ SIMPLE_JWT = {
 ### 6.4 Ninja 认证类
 
 继承 `ninja.security.HttpBearer`，在 `authenticate` 方法中调用 `AccessToken(token)` 解析并返回 User 对象。
+
+| 认证类 | 要求 | 用途 |
+| :--- | :--- | :--- |
+| `JWTAuth` | 有效令牌 + 账号 `is_active` + 未在改密后失效 | 通用已登录接口（如 `/me/`） |
+| `StaffJWTAuth` | 额外要求 `is_staff`/`is_superuser` | 文章/分类/标签/归档等管理接口 |
+| `SuperUserJWTAuth` | 额外要求 `is_superuser` | `admin/users/**`（能动别人账号） |
+
+**改密与停用的即时生效**：`django-ninja-jwt` 不支持 SimpleJWT 的 `CHECK_REVOKE_TOKEN`，因此
+`JWTAuth` 自行比较令牌 `iat` 与 `User.password_changed_at`（严格小于；同秒内新签发的令牌仍然有效），
+重置密码时同时拉黑该用户全部 `OutstandingToken`；`is_active=False` 的账号在 `JWTAuth` 与
+`/token/refresh/` 两处直接 401，避免「停用了但旧令牌还能用满 2 小时」。
 
 ---
 

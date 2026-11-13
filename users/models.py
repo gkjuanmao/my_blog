@@ -48,6 +48,21 @@ class User(AbstractUser):
         blank=True,
         verbose_name='头像原始文件名',
     )
+    # 在线状态的唯一事实来源：每次成功鉴权的请求按节流窗口写一次（见 users/presence.py）。
+    # 不用缓存的 TTL 存 presence，是因为多 worker / LocMemCache 下会导致「在线」抖动。
+    last_seen_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name='最近活跃时间',
+    )
+    # 改密时间：JWTAuth 用它和令牌 iat 比对，让重置密码后旧 access token 立即失效
+    # （本项目的 django-ninja-jwt 不支持 CHECK_REVOKE_TOKEN，只能自己判）
+    password_changed_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='最近改密时间',
+    )
 
     class Meta:
         verbose_name = '用户'
