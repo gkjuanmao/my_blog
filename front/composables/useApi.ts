@@ -15,6 +15,18 @@ export function clearAuthTokens(): void {
   localStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
+/**
+ * 写入一对新令牌（登录、改密后换新都用它）。
+ *
+ * 抽出来的原因：改密接口会返回新令牌，若各处自己拼 `localStorage.setItem('access_token')`，
+ * 键名一改就漏改一处——表现为「改完密码下次请求 401」这种难查的 bug。
+ */
+export function setAuthTokens(access: string, refresh: string): void {
+  if (!import.meta.client) return
+  localStorage.setItem(ACCESS_TOKEN_KEY, access)
+  localStorage.setItem(REFRESH_TOKEN_KEY, refresh)
+}
+
 /** 单次请求超时（毫秒）：SSR 公开页在 setup 顶层 await，后端失联时不能无限白屏（FE-22） */
 const REQUEST_TIMEOUT_MS = 15000
 

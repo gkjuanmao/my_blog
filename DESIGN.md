@@ -373,15 +373,47 @@ my_blog/                          # 项目根目录 (Git 仓库根)
     "email": "admin@example.com",
     "avatar": "avatars/2026/08/12/a1b2c3d4.jpg",
     "avatar_name": "头像.jpg",
-    "date_joined": "2026-08-09T10:30:00Z"
+    "date_joined": "2026-08-09T10:30:00Z",
+    "is_staff": true,
+    "is_superuser": true
   }
 }
 ```
 
+> `is_staff` / `is_superuser` 供后台按权限渲染导航（「用户」入口只对超管可见）。
 > `avatar` 为媒体相对路径，未上传头像时为 `null`；`avatar_name` 为头像原始文件名，未上传时为空串。
 
 **错误**：
-- 401：未携带 / Token 格式错误（「无效」）/ Token 过期（「过期」），均为信封格式
+- 401：未携带 / Token 格式错误（「无效」）/ Token 过期（「过期」）/ 账号已停用 / 密码已变更，均为信封格式
+
+#### POST `/api/v1/password/change/` (修改自己的密码)
+
+**认证**：✅ `Authorization: Bearer <access_token>`（任意已登录账号，不限 staff）
+
+**请求**：`Content-Type: application/json`
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :- | :--- |
+| old_password | string | ✅ | 当前密码，用于确认操作者本人 |
+| new_password | string | ✅ | 新密码，≥8 位且走 `AUTH_PASSWORD_VALIDATORS` |
+
+**响应** (200)：返回**一对新令牌**（与登录同形），前端应写回本地存储
+```json
+{
+  "code": 200,
+  "message": "密码已更新，其他设备的登录状态已失效",
+  "data": { "access": "eyJ...", "refresh": "eyJ..." }
+}
+```
+
+**行为**：写入 `password_changed_at`（旧 access 因签发时间早于它而失效）并拉黑该用户全部
+`OutstandingToken`（旧 refresh 换不到新 access）。**顺序**是先作废旧会话再签发新令牌，
+反过来会把新 refresh 一起拉黑。
+
+**错误**：
+- 400：「当前密码不正确」/「新密码不能与当前密码相同」/ 密码强度不达标（原样返回校验器中文提示）
+- 401：未携带或令牌失效（含改密后旧 access「密码已变更」、账号「已停用」）
+- 429：「当前密码错误次数过多，请 5 分钟后再试」（同一账号连续错 5 次，防持令牌爆破旧密码）
 
 ---
 

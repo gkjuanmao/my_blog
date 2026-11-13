@@ -4,11 +4,9 @@
 这里全是超管端点，鉴权口径与风险等级完全不同，混在一起最容易在改认证时
 把管理端点一起放开。
 """
-import logging
 import re
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -24,8 +22,7 @@ from common.schemas import ApiResponse, PageData
 from .authentication import SuperUserJWTAuth
 from .presence import is_online
 from .schemas import AdminUserOut, ResetPasswordIn, UserCreateIn, UserUpdateIn
-
-logger = logging.getLogger(__name__)
+from .security import change_user_password, validate_password_or_400
 
 router = Router(tags=['用户管理'])
 
@@ -48,19 +45,6 @@ def _get_user_or_404(user_id: int):
         return User.objects.annotate(article_count=Count('article')).get(pk=user_id)
     except User.DoesNotExist:
         raise HttpError(404, '用户不存在') from None
-
-
-def _validate_password_strength(password: str, user) -> None:
-    """用项目统一的 AUTH_PASSWORD_VALIDATORS 校验密码强度。
-
-    Raises:
-        HttpError: 400，把 Django 的中文校验提示原样拼回去，
-            让前端能直接展示「密码太常见」这类具体原因。
-    """
-    try:
-        validate_password(password, user)
-    except ValidationError as exc:
-        raise HttpError(400, '；'.join(exc.messages)) from None
 
 
 def _validate_email_or_400(email: str) -> str:
@@ -100,21 +84,6 @@ def _to_out(user) -> AdminUserOut:
 def _active_superuser_count(exclude_pk: int) -> int:
     """除指定用户外，还有几个启用状态的超管。"""
     return User.objects.filter(is_superuser=True, is_active=True).exclude(pk=exclude_pk).count()
-
-
-def _blacklist_refresh_tokens(user) -> None:
-    """把该用户未过期的 refresh token 全部拉黑。
-
-    access token 的失效靠 ``password_changed_at``（见 users/authentication.py），
-    这里补上 refresh 通道，避免旧 refresh 还能换出新 access。
-    """
-    try:
-        from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-    except ImportError:  # pragma: no cover - 未装 token_blacklist app 时降级
-        logger.warning('未启用 token_blacklist，跳过 refresh 拉黑')
-        return
-    for token in OutstandingToken.objects.filter(user=user, expires_at__gt=timezone.now()):
-        BlacklistedToken.objects.get_or_create(token=token)
 
 
 def _user_queryset() -> QuerySet:
@@ -180,7 +149,7 @@ def create_user(request: HttpRequest, payload: UserCreateIn) -> Status:
         is_superuser=payload.is_superuser,
         is_active=payload.is_active,
     )
-    _validate_password_strength(payload.password, user)
+    validate_password_or_400(payload.password, user)
     user.set_password(payload.password)
     user.save()
 
@@ -229,12 +198,9 @@ def reset_user_password(request: HttpRequest, user_id: int, payload: ResetPasswo
     写入 ``password_changed_at``（JWTAuth 比对令牌 iat）+ 拉黑该用户全部 refresh。
     """
     user = _get_user_or_404(user_id)
-    _validate_password_strength(payload.password, user)
+    validate_password_or_400(payload.password, user)
 
-    user.set_password(payload.password)
-    user.password_changed_at = timezone.now()
-    user.save(update_fields=['password', 'password_changed_at'])
-    _blacklist_refresh_tokens(user)
+    change_user_password(user, payload.password)
 
     return success_response(
         {'id': user.pk, 'username': user.username},

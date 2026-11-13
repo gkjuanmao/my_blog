@@ -14,7 +14,7 @@ const { site } = useAppConfig()
 const route = useRoute()
 
 /** 当前登录者：用于顶部显示真实账号名，并决定「用户管理」是否出现在导航里 */
-const me = ref<{ username: string, is_staff: boolean, is_superuser: boolean } | null>(null)
+const me = ref<Pick<UserInfo, 'username' | 'is_staff' | 'is_superuser'> | null>(null)
 
 const baseNavItems = [
   { label: '总览', to: '/administrator/dashboard' },
@@ -63,6 +63,8 @@ function handleLogout() {
 
 const sidebarOpen = ref(false)
 const authed = ref(false)
+/** 改密弹窗：放在外壳里而不是某个页面，这样任何后台页面都能改，且改完不影响当前页面状态 */
+const passwordOpen = ref(false)
 
 // 客户端确认存在 token 后再渲染后台外壳：SSR/首帧不渲染，避免硬刷新时先闪出后台 UI
 // （真正的跳转由 middleware/auth.global.ts 完成）
@@ -123,7 +125,12 @@ useHead({
             <span class="ad-seal ad-seal--rail" aria-hidden="true">{{ sealChar }}</span>
             <span class="ad-rail__user-name">{{ me?.username ?? '…' }}<em>{{ roleText }}</em></span>
           </div>
-          <button class="ad-rail__logout" type="button" @click="handleLogout">退出登录</button>
+          <div class="ad-rail__actions">
+            <button class="ad-rail__action" type="button" @click="passwordOpen = true">
+              修改密码
+            </button>
+            <button class="ad-rail__action" type="button" @click="handleLogout">退出登录</button>
+          </div>
         </div>
       </aside>
 
@@ -164,5 +171,7 @@ useHead({
         </main>
       </div>
     </div>
+
+    <ChangePasswordDialog v-model="passwordOpen" />
   </div>
 </template>

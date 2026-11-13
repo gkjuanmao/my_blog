@@ -75,6 +75,17 @@ class ResetPasswordIn(Schema):
     password: str = Field(..., min_length=8, max_length=128, description='新密码（至少 8 位）')
 
 
+class ChangePasswordIn(Schema):
+    """本人修改密码请求体：必须提供当前密码。
+
+    为什么强制要旧密码：否则任何拿到 access token 的人都能直接改密并永久占据账号，
+    相当于把「令牌泄漏」升级成「账号被夺」。
+    """
+
+    old_password: str = Field(..., min_length=1, max_length=128, description='当前密码')
+    new_password: str = Field(..., min_length=8, max_length=128, description='新密码（至少 8 位）')
+
+
 class LoginIn(Schema):
     """登录请求体。"""
 

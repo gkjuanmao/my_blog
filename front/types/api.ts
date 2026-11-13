@@ -81,6 +81,12 @@ export interface CreateUserPayload extends UserPayload {
   password: string
 }
 
+/** 本人修改密码的请求体（users/schemas.py ChangePasswordIn） */
+export interface ChangePasswordPayload {
+  old_password: string
+  new_password: string
+}
+
 export interface Category {
   id: number
   name: string

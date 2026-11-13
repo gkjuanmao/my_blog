@@ -27,10 +27,7 @@ async function handleLogin() {
   loading.value = true
   try {
     const { data } = await useApi().post<LoginResponse>('/login/', { ...form })
-    if (import.meta.client) {
-      localStorage.setItem('access_token', data.access)
-      localStorage.setItem('refresh_token', data.refresh)
-    }
+    setAuthTokens(data.access, data.refresh)
     await navigateTo('/administrator/dashboard')
   } catch (e) {
     errorMsg.value = errorMessage(e, '用户名或密码错误')

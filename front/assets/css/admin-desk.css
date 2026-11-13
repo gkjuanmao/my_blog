@@ -239,21 +239,22 @@
   font-size: 11px;
   color: rgba(255, 255, 255, 0.55);
 }
-.ad-rail__logout {
+/* 侧栏底部的文字动作（修改密码 / 退出登录）：共用一套观感，分隔线只加在容器上 */
+.ad-rail__actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.ad-rail__action {
   width: 100%;
   min-height: 38px;
   text-align: left;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 12.5px;
   color: rgba(255, 255, 255, 0.68);
   background: none;
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
+  border: 0;
   cursor: pointer;
   transition: color 0.12s var(--ad-ease);
 }
-.ad-rail__logout:hover {
+.ad-rail__action:hover {
   color: #fff;
 }
 .ad-rail__scrim {
@@ -1988,6 +1989,11 @@
 .ad-body .el-dialog__footer {
   padding: 16px 26px 22px;
   border-top: 1px solid #dde3dc;
+}
+/* 弹窗底部的操作按钮靠右（表单内是左对齐，这里只是版式差异） */
+.ad-body .el-dialog__footer .ad-form__acts {
+  justify-content: flex-end;
+  margin-top: 0;
 }
 
 /* 按钮 */
