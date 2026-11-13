@@ -125,6 +125,9 @@ useHead(() => ({
       <NuxtLink to="/" class="cv-article__back">← 返回首页</NuxtLink>
       <NuxtLink to="/timeline" class="cv-article__back">按时间轴浏览 →</NuxtLink>
     </footer>
+
+    <!-- 纸纹切换（底部浮条）：六种纸纹 + 无，选择存 localStorage -->
+    <TexturePicker />
   </article>
 
   <div v-else-if="pending" class="cv-state">加载中…</div>
@@ -132,4 +135,5 @@ useHead(() => ({
     <p>{{ fetchError ? '文章不存在或已下架' : '文章不存在' }}</p>
     <NuxtLink to="/" class="cv-article__back">返回首页</NuxtLink>
   </div>
+
 </template>

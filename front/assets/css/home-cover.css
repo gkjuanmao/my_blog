@@ -50,6 +50,11 @@
   /* 磨砂导航 */
   --hp-nav-frost: rgba(246, 247, 244, 0.82);
   --hp-nav-frost-solid: rgba(246, 247, 244, 0.94);
+  /* 详情页纸纹（只在 html.art-page 下绘制；图片 512² 无缝平铺，36KB） */
+  --hp-tex-url: url('/texture/texture-cloud-stone-512.webp');
+  --hp-tex-size: 512px 512px;
+  --hp-tex-blend: multiply;
+  --hp-tex-opacity: 0.3;
   /* 圆角（elegant 会改成 8px） */
   --hp-radius-card: 12px;
   --hp-radius-card-lg: 16px;
@@ -119,6 +124,9 @@ html.dark {
   --hp-focus-on-dark: #e0ac68;
   --hp-nav-frost: rgba(16, 26, 25, 0.8);
   --hp-nav-frost-solid: rgba(16, 26, 25, 0.94);
+  /* 暗底改用 soft-light：multiply 会把深色纸压得更黑、纹理消失 */
+  --hp-tex-blend: soft-light;
+  --hp-tex-opacity: 0.1;
   --hp-shadow-hover: 0 0 0 1px var(--hp-line-strong);
   /* 暗底上照片要更沉 */
   --hp-card-filter: saturate(0.8) contrast(1.03) brightness(0.9);
@@ -150,6 +158,8 @@ html.skin-elegant {
   --hp-glow-rgb: 201, 164, 106;
   --hp-nav-frost: rgba(245, 241, 232, 0.82);
   --hp-nav-frost-solid: rgba(245, 241, 232, 0.94);
+  /* 暖底复用同一张图：multiply 是乘反射率，色相由 --hp-bg 决定，无需单独暖版 */
+  --hp-tex-opacity: 0.14;
   --hp-radius-card: 8px;
   --hp-radius-card-lg: 8px;
   --hp-shadow-hover: 0 18px 60px rgba(45, 38, 28, 0.1);
@@ -183,6 +193,9 @@ html.skin-neon {
   --hp-glow-rgb: 124, 255, 196;
   --hp-nav-frost: rgba(10, 10, 10, 0.8);
   --hp-nav-frost-solid: rgba(10, 10, 10, 0.94);
+  /* 霓虹皮肤停用纸纹：无纹理请求、无解码（url:none 比 opacity:0 更彻底） */
+  --hp-tex-url: none;
+  --hp-tex-opacity: 0;
   --hp-radius-card: 12px;
   --hp-radius-card-lg: 16px;
   --hp-shadow-hover: 0 0 44px rgba(0, 255, 136, 0.22);
@@ -3006,6 +3019,267 @@ html.art-page main > .cv-state {
 
 .cv-article__back:hover {
   color: var(--hp-accent);
+}
+
+
+/* ==========================================================================
+   19.1 详情页纸纹（可切换）
+   --------------------------------------------------------------------------
+   分层：--hp-bg 底色 → main::before 纸纹（multiply）→ 正文/卡片
+   ⚠️ 两条静默失败（改这里之前先读）：
+   ① 层必须 position:fixed + inset:0。改成 absolute 会只铺 760px 正文栏、四周露纯色带；
+   ② .public-shell 必须 isolation:isolate（下面那条），否则负 z-index 层被不透明 --hp-bg
+      吃掉 —— 表现为「CSS 全对、页面毫无变化」，且不报错。
+   ========================================================================== */
+
+html:not(.skin-elegant):not(.skin-neon) .public-shell {
+  isolation: isolate;
+}
+
+html.art-page main::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--hp-tex-url);
+  background-repeat: repeat;
+  background-size: var(--hp-tex-size);
+  mix-blend-mode: var(--hp-tex-blend);
+  opacity: var(--hp-tex-opacity);
+  transition: opacity 240ms var(--hp-ease-state);
+}
+
+/* 六种纸纹：各自的原生平铺尺寸（体积见 public/texture/） */
+html.art-page[data-tex='paper-fiber'] {
+  --hp-tex-url: url('/texture/texture-paper-fiber-512.webp');
+  --hp-tex-size: 512px 512px;
+}
+
+html.art-page[data-tex='xuan-paper'] {
+  --hp-tex-url: url('/texture/texture-xuan-paper-512.webp');
+  --hp-tex-size: 512px 384px;
+}
+
+html.art-page[data-tex='quartz-sand'] {
+  --hp-tex-url: url('/texture/texture-quartz-sand-512.webp');
+  --hp-tex-size: 288px 288px;
+}
+
+html.art-page[data-tex='lime-plaster'] {
+  --hp-tex-url: url('/texture/texture-lime-plaster-512.webp');
+  --hp-tex-size: 512px 512px;
+}
+
+html.art-page[data-tex='linen-weave'] {
+  --hp-tex-url: url('/texture/texture-linen-weave-512.webp');
+  --hp-tex-size: 512px 512px;
+}
+
+html.art-page[data-tex='cloud-stone'] {
+  --hp-tex-url: url('/texture/texture-cloud-stone-512.webp');
+  --hp-tex-size: 512px 512px;
+}
+
+html.art-page[data-tex='none'] {
+  --hp-tex-url: none;
+  --hp-tex-opacity: 0;
+}
+
+/* 霓虹皮肤整层关掉：光靠 --hp-tex-url:none 会被 [data-tex] 的更高特异度盖回去，
+   结果仍然发一次请求；这里直接不生成伪元素 */
+html.skin-neon.art-page main::before {
+  content: none;
+}
+
+/* 移动端纹理更淡：小屏行短、纹理相对更抢眼 */
+@media (max-width: 767px) {
+  :root {
+    --hp-tex-opacity: 0.26;
+  }
+}
+
+/* 小字改色：纸纹压深底色后，11–12px 的赭金/灰必须各深一档才保 4.5:1。
+   赭金三条限定 :not(.dark) —— 暗色下 --hp-accent 本来是 #e0ac68（8.27:1），
+   被 #8a5b22 覆盖会掉到 2.90:1。 */
+html.art-page:not(.dark) .cv-article__eyebrow,
+html.art-page:not(.dark) .cv-article__body a,
+html.art-page:not(.dark) .cv-article__back:hover {
+  color: #8a5b22;
+}
+
+html.art-page:not(.dark) .cv-article__meta,
+html.art-page:not(.dark) .cv-article__body blockquote {
+  color: #636c67;
+}
+
+html.dark.art-page .cv-article__meta,
+html.dark.art-page .cv-article__body blockquote {
+  color: #8b9e96;
+}
+
+/* 高对比模式与强制颜色模式：纸纹是纯装饰，直接关掉 */
+@media (prefers-contrast: more) {
+  html.art-page main::before {
+    content: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html.art-page main::before {
+    content: none;
+  }
+}
+
+/* ---------------- 纸纹切换器（底部浮条） ---------------- */
+
+.cv-texpick {
+  position: fixed;
+  right: 24px;
+  bottom: 22px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 13px;
+  border: 1px solid var(--hp-line);
+  border-radius: 999px;
+  background: var(--hp-nav-frost-solid);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 12px 34px rgba(9, 20, 19, 0.14);
+}
+
+.cv-texpick__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--hp-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--hp-ink-3);
+  padding-right: 3px;
+}
+
+.cv-texpick__now {
+  font-family: var(--hp-font-sans);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--hp-ink-2);
+}
+
+.cv-texpick__sw {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 50%;
+  background: var(--hp-bg-2);
+  cursor: pointer;
+  transition: transform 140ms var(--hp-ease-state), border-color 140ms var(--hp-ease-state);
+}
+
+/* 缩略图用预渲染的色卡（swatch-*.webp）：原纹理均值接近 #F0F0EB，
+   缩到 30px 肉眼等于纯白，色卡是把 ±2.5σ 拉伸后的版本，只用于辨认材质 */
+.cv-texpick__sw::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--sw-thumb);
+  background-size: cover;
+  background-position: center;
+}
+
+/* 视觉 30px，热区 42px */
+.cv-texpick__sw::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+
+.cv-texpick__sw[aria-pressed='true'] {
+  border-color: var(--hp-accent);
+  box-shadow: 0 0 0 2px var(--hp-accent);
+}
+
+.cv-texpick__sw:focus-visible {
+  outline: 2px solid var(--hp-focus);
+  outline-offset: 3px;
+}
+
+.cv-texpick__sw--none {
+  display: grid;
+  place-items: center;
+  font-family: var(--hp-font-mono);
+  font-size: 10px;
+  color: var(--hp-ink-2);
+  background-image: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cv-texpick__sw:hover {
+    transform: translateY(-1px);
+    border-color: var(--hp-brand);
+  }
+}
+
+/* 折叠按钮只在窄屏出现 */
+.cv-texpick__toggle {
+  display: none;
+}
+
+.cv-texpick__toggle-face {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-image: var(--sw-thumb);
+  background-size: cover;
+  background-position: center;
+}
+
+@media (max-width: 767px) {
+  .cv-texpick {
+    right: 14px;
+    bottom: 14px;
+    gap: 7px;
+    padding: 6px;
+    border-radius: 999px;
+  }
+
+  .cv-texpick__toggle {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .cv-texpick.is-open {
+    gap: 7px;
+    padding: 7px 11px;
+  }
+
+  .cv-texpick:not(.is-open) .cv-texpick__label,
+  .cv-texpick:not(.is-open) .cv-texpick__sw {
+    display: none;
+  }
+
+  .cv-texpick__label {
+    display: none;
+  }
+
+  .cv-texpick__sw {
+    width: 26px;
+    height: 26px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
