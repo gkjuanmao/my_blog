@@ -1126,6 +1126,12 @@
 }
 .ad-table {
   width: 100%;
+  /* 固定表格布局：列宽由表头分配，标题再长也不会把「操作」列挤出视口。
+     自动布局下每列的 min-content 由最长内容决定，而标题是 nowrap，
+     一条超长标题就会把整张表撑到比容器还宽 → 右侧列被推出可视区、底部多出横向滚动条。 */
+  table-layout: fixed;
+  /* 兜底：窄视口宁可横向滚动，也别把「操作」压成一列一个字（<820px 已切卡片视图） */
+  min-width: 720px;
   border-collapse: collapse;
   border-top: 1px solid var(--hp-line-strong);
 }
@@ -1169,6 +1175,24 @@
 .ad-table__thumb {
   width: 72px;
 }
+/* 其余列给固定宽度，剩下的全给标题列（唯一伸缩列）——这样「操作」永远贴着右边缘。
+   数值按「实际内容 + 20px 内边距」取，留一点余量即可；给多了就是在挤标题。 */
+.ad-table__cat {
+  width: 104px;
+  overflow: hidden;
+}
+.ad-table__state {
+  width: 84px;
+}
+.ad-table__pub {
+  width: 96px;
+}
+.ad-table__views {
+  width: 56px;
+}
+.ad-table__acts {
+  width: 120px;
+}
 .ad-table__thumb img {
   width: 52px;
   height: 36px;
@@ -1184,7 +1208,8 @@
   border: 1px solid var(--hp-line);
 }
 .ad-table__title {
-  min-width: 220px;
+  /* 固定布局下宽度由剩余空间决定，min-width 会反过来把表撑宽，所以归零 */
+  min-width: 0;
 }
 .ad-table__title a {
   display: block;

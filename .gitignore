@@ -26,6 +26,9 @@ private_archives/
 .obsidian/
 .omo/
 
+# 本地草稿/临时产物（测试包、一次性脚本等），不入库
+.tmp/
+
 # 本地个人脚本（不属项目代码；Ruff 默认尊重 .gitignore，忽略后 Lint 门禁才干净）
 shrink_images.py
 

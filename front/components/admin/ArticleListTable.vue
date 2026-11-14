@@ -55,9 +55,9 @@ function toggleSort() {
           </th>
           <th class="ad-table__thumb"><span class="ad-sr">封面</span></th>
           <th>标题</th>
-          <th>栏目</th>
-          <th>状态</th>
-          <th>
+          <th class="ad-table__cat">栏目</th>
+          <th class="ad-table__state">状态</th>
+          <th class="ad-table__pub">
             <button
               class="ad-sort"
               type="button"
@@ -67,7 +67,7 @@ function toggleSort() {
               发布时间 <i aria-hidden="true">{{ order === 'desc' ? '↓' : '↑' }}</i>
             </button>
           </th>
-          <th class="num">阅读</th>
+          <th class="num ad-table__views">阅读</th>
           <th class="ad-table__acts">操作</th>
         </tr>
       </thead>
@@ -89,10 +89,15 @@ function toggleSort() {
             <span v-else class="blank" aria-hidden="true" />
           </td>
           <td class="ad-table__title">
-            <NuxtLink :to="`/administrator/articles/edit/${row.id}`">{{ row.title }}</NuxtLink>
-            <span class="ad-table__slug">{{ row.slug }} · {{ row.author_name }}</span>
+            <!-- title 属性：标题被省略号截断时，悬停即可读到完整文本（不额外造 tooltip 组件） -->
+            <NuxtLink :to="`/administrator/articles/edit/${row.id}`" :title="row.title">
+              {{ row.title }}
+            </NuxtLink>
+            <span class="ad-table__slug" :title="`${row.slug} · ${row.author_name}`">
+              {{ row.slug }} · {{ row.author_name }}
+            </span>
           </td>
-          <td>
+          <td class="ad-table__cat">
             <span v-if="row.category" class="ad-chip">{{ row.category.name }}</span>
             <span v-else class="ad-table__views">—</span>
           </td>
