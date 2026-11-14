@@ -268,6 +268,7 @@ function skipReasonText(item: { skip_reason: string | null }): string {
     <el-upload
       ref="uploadRef"
       v-model:file-list="fileList"
+      class="ad-import-upload"
       drag
       :auto-upload="false"
       :limit="1"

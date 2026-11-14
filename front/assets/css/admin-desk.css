@@ -2165,6 +2165,12 @@
 .ad-body .el-progress-bar__inner {
   background: #1e3d3a;
 }
+/* 归档导入：el-upload 会在列表项里自带一条 2px 进度条（右侧还有一份百分比），
+   与弹窗里那条 14px 条纹进度条同时出现，看起来像“两个进度条”。进度统一由
+   el-progress 那条承担，列表项只留文件名 + 删除按钮。 */
+.ad-import-upload .el-upload-list__item .el-progress {
+  display: none;
+}
 .ad-body .el-tag {
   border-radius: 3px;
   font-size: 11px;
