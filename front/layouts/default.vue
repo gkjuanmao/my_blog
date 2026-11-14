@@ -335,7 +335,6 @@ onBeforeUnmount(() => {
         </div>
         <div class="cv-footer__right">
           <p class="cv-footer__copy">© 2026 {{ site.name }} · 文艺 · 极简</p>
-          <p class="cv-footer__hint">可在右上角切换外观与减少动效</p>
         </div>
       </div>
     </footer>

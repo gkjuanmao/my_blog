@@ -2033,18 +2033,11 @@ html.dark .cv-card__tone {
 }
 
 .cv-footer__copy {
-  margin: 0 0 8px;
+  margin: 0;
   font-family: var(--hp-font-mono);
   font-size: var(--hp-fs-xs);
   font-weight: 500;
   line-height: 1.6;
-  color: var(--hp-ink-2);
-}
-
-.cv-footer__hint {
-  margin: 0;
-  font-family: var(--hp-font-sans);
-  font-size: var(--hp-fs-xs);
   color: var(--hp-ink-2);
 }
 
