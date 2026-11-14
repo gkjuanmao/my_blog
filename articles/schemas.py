@@ -277,6 +277,8 @@ class ArchiveImportTaskIn(Schema):
     auto_create_taxonomy: bool = True
     as_draft: bool = False
     preview_totals: dict[str, Any] | None = None
+    #: 代传：把导入的文章直接挂到别人名下（**仅超管**，普通用户只能导给自己）
+    author_id: int | None = None
 
 
 class ArchiveImportPlanIn(Schema):

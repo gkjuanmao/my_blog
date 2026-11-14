@@ -432,6 +432,9 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
         return task
 
     lim = archive_limits()
+    # 归属作者：默认是提交者；超管代传时是 PR 里指定的那个人。
+    # **作用域与落库作者必须是同一个**，否则 planner 会去匹配别人的文章。
+    owner = task.author or task.user
     # 进度上报顺带续租导入锁（拿到锁之后再把 extend 挂上去）
     progress = _Progress(task.pk)
     staging: ArchiveStaging | None = task.staging
@@ -451,7 +454,7 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
             progress.start_phase(ArticleImportTask.Phase.VALIDATING, '正在校验压缩包…')
             info = archive_validate.validate_package(package_path, limits_override=lim)
             plan = archive_planner.build_plan(
-                info.entries, strategy=task.strategy, user=task.user, lim=lim
+                info.entries, strategy=task.strategy, user=owner, lim=lim
             )
             package = package_info_dict(info)
             progress.total = len(plan.items)
@@ -474,7 +477,7 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
                 strategy=task.strategy,
                 auto_create_taxonomy=task.auto_create_taxonomy,
                 as_draft=task.as_draft,
-                user=task.user,
+                user=owner,
             )
             report = archive_importer.execute_plan(
                 plan,

@@ -16,24 +16,27 @@ const route = useRoute()
 /** 当前登录者：用于顶部显示真实账号名，并决定「用户管理」是否出现在导航里 */
 const me = ref<Pick<UserInfo, 'username' | 'is_staff' | 'is_superuser'> | null>(null)
 
-const baseNavItems = [
-  { label: '总览', to: '/administrator/dashboard' },
-  { label: '文章', to: '/administrator/articles' },
+//: staff（编辑）专属：分类与标签是**全站结构**，作者只能决定自己稿件挂哪个栏目，
+//: 不能新建/改名栏目——否则多人导入后分类树会被各人的命名塞满。
+const editorNavItems = [
   { label: '分类', to: '/administrator/categories' },
   { label: '标签', to: '/administrator/tags' },
-  { label: '任务', to: '/administrator/tasks' },
 ]
 
 // 有导入任务在跑时，导航上挂一个计数，避免用户不知道后台还在干活
 const { activeCount } = useImportTasks()
 
-// 用户管理只对超管开放（后端 /admin/users/** 同样只放超管），
-// 非超管看不到入口，避免点进去只收获一个 403。
-const navItems = computed(() =>
-  me.value?.is_superuser
-    ? [...baseNavItems, { label: '用户', to: '/administrator/users' }]
-    : baseNavItems,
-)
+// 导航按角色拼：所有登录用户都能写/导自己的稿；分类标签给编辑；用户管理给超管。
+// 前端只做「不展示注定 403 的入口」，真正的门在服务端。
+const navItems = computed(() => {
+  const items = [
+    { label: '总览', to: '/administrator/dashboard' },
+    { label: '文章', to: '/administrator/articles' },
+    ...(me.value?.is_staff ? editorNavItems : []),
+    { label: '任务', to: '/administrator/tasks' },
+  ]
+  return me.value?.is_superuser ? [...items, { label: '用户', to: '/administrator/users' }] : items
+})
 
 const roleText = computed(() => {
   if (!me.value) return '管理'

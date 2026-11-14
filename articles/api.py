@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Q, Sum
 from django.db.models.query import QuerySet
 from django.http import FileResponse, HttpRequest
 from django.utils import timezone
@@ -32,7 +32,7 @@ from articles.archive.report import package_info_dict, plan_report
 from common.net import client_ip
 from common.responses import success_response
 from common.schemas import ApiResponse, PageData
-from users.authentication import StaffJWTAuth, SuperUserJWTAuth
+from users.authentication import JWTAuth, StaffJWTAuth, SuperUserJWTAuth
 from users.models import User
 
 from .caching import cached_public, invalidate_public_cache
@@ -93,6 +93,9 @@ BULK_DELETE_MAX_IDS = 200
 # 管理端点统一要求 staff：导出/导入/传图/HTML 导入与文章、分类、标签的 CRUD 同权。
 # （本项目无公开注册，账号只能在 admin 创建；管理端点不应允许普通登录用户越权管理。）
 staff_auth = StaffJWTAuth()
+# 归档导入对所有登录用户开放（每个作者导自己的包）：鉴权只要「已登录」，
+# 写域由 planner 的 author 作用域保证（见 Step 4 的改动说明）
+jwt_auth = JWTAuth()
 # 归属转移是「能动别人东西」的操作，门槛抬到超管（同 /admin/users/**）
 superuser_auth = SuperUserJWTAuth()
 
@@ -380,7 +383,7 @@ def article_detail(request: HttpRequest, slug: str) -> dict:
     return success_response(article_to_detail(request, article).model_dump())
 
 
-@admin_router.get('/articles/', response=ApiResponse[PageData[ArticleOut]], auth=staff_auth)
+@admin_router.get('/articles/', response=ApiResponse[PageData[ArticleOut]], auth=jwt_auth)
 def list_admin_articles(
     request: HttpRequest,
     page: int = Query(1, ge=1, description='页码'),
@@ -395,7 +398,11 @@ def list_admin_articles(
     ),
 ) -> dict:
     """管理文章列表：返回全部文章（含未发布草稿），供后台管理与定位。"""
+    current_user = cast(User, request.auth)  # type: ignore[attr-defined]
     qs = Article.objects.select_related('category', 'author').prefetch_related('tags')
+    # 普通作者只看得到自己的稿；staff 看全站（编辑视角）
+    if not current_user.is_staff:
+        qs = qs.filter(author=current_user)
     if is_published is not None:
         qs = qs.filter(is_published=is_published)
     if keyword:
@@ -500,7 +507,7 @@ def estimate_export(
     return success_response(estimate.to_dict())
 
 
-@admin_router.post('/articles/bulk-delete/', response=ApiResponse[dict], auth=staff_auth)
+@admin_router.post('/articles/bulk-delete/', response=ApiResponse[dict], auth=jwt_auth)
 def bulk_delete_articles(request: HttpRequest, payload: BulkDeleteIn) -> dict:
     """批量删除文章（含草稿）。
 
@@ -518,10 +525,13 @@ def bulk_delete_articles(request: HttpRequest, payload: BulkDeleteIn) -> dict:
     if len(ids) > BULK_DELETE_MAX_IDS:
         raise HttpError(400, f'单次最多删除 {BULK_DELETE_MAX_IDS} 篇')
 
+    current_user = cast(User, request.auth)  # type: ignore[attr-defined]
     unique_ids = sorted({int(value) for value in ids})
-    existing = list(
-        Article.objects.filter(pk__in=unique_ids).values_list('id', flat=True)
-    )
+    scoped = Article.objects.filter(pk__in=unique_ids)
+    if not current_user.is_staff:
+        # 别人的稿既不在「已存在」里也不报错：与单篇删除同样按「不存在」处理
+        scoped = scoped.filter(author=current_user)
+    existing = list(scoped.values_list('id', flat=True))
     missing = [value for value in unique_ids if value not in set(existing)]
     if existing:
         with transaction.atomic():
@@ -663,7 +673,7 @@ def convert_html_article(
 
 
 @admin_router.get(
-    '/articles/{article_id}/', response=ApiResponse[AdminArticleDetailOut], auth=staff_auth
+    '/articles/{article_id}/', response=ApiResponse[AdminArticleDetailOut], auth=jwt_auth
 )
 def get_admin_article(request: HttpRequest, article_id: int) -> dict:
     """获取单篇文章详情（含草稿与原始 Markdown），供后台编辑回填。"""
@@ -673,12 +683,12 @@ def get_admin_article(request: HttpRequest, article_id: int) -> dict:
         .filter(pk=article_id)
         .first()
     )
-    if article is None:
+    if article is None or not _can_touch(cast(User, request.auth), article):  # type: ignore[attr-defined]
         raise HttpError(404, '文章不存在')
     return success_response(article_to_admin_detail(request, article).model_dump())
 
 
-@admin_router.post('/articles/', response={201: ApiResponse[ArticleOut]}, auth=staff_auth)
+@admin_router.post('/articles/', response={201: ApiResponse[ArticleOut]}, auth=jwt_auth)
 def create_article(
     request: HttpRequest,
     payload: ArticleCreateIn = Form(...),
@@ -749,7 +759,7 @@ def _delete_stored_files(names: list[str | None]) -> None:
             default_storage.delete(name)
 
 
-@admin_router.put('/articles/{article_id}/', response=ApiResponse[ArticleOut], auth=staff_auth)
+@admin_router.put('/articles/{article_id}/', response=ApiResponse[ArticleOut], auth=jwt_auth)
 def update_article(
     request: HttpRequest,
     article_id: int,
@@ -765,9 +775,7 @@ def update_article(
     auto_now 的 updated_at 也不会刷新。update_fields 同时避免覆盖 views 等
     未提交字段。被替换掉的旧文件在保存成功后清理。
     """
-    article = Article.objects.filter(pk=article_id).first()
-    if article is None:
-        raise HttpError(404, '文章不存在')
+    article = _get_article_for_write(cast(User, request.auth), article_id)  # type: ignore[attr-defined]
 
     # 先校验后落盘：校验失败不得改动数据，也不留下新写入的文件
     # （封面顺带在这压缩；下面再用 `is not None` 收窄类型，别改成依赖同一条件）
@@ -873,21 +881,19 @@ def update_article(
     return success_response(article_to_out(request, article).model_dump())
 
 
-@admin_router.delete('/articles/{article_id}/', response=ApiResponse[None], auth=staff_auth)
+@admin_router.delete('/articles/{article_id}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_article(request: HttpRequest, article_id: int) -> dict:
     """按 id 删除文章（含草稿）。"""
-    article = Article.objects.filter(pk=article_id).first()
-    if article is None:
-        raise HttpError(404, '文章不存在')
+    article = _get_article_for_write(cast(User, request.auth), article_id)  # type: ignore[attr-defined]
     article.delete()
     return success_response(message='删除成功')
 
 
-@admin_router.delete('/articles/slug/{slug}/', response=ApiResponse[None], auth=staff_auth)
+@admin_router.delete('/articles/slug/{slug}/', response=ApiResponse[None], auth=jwt_auth)
 def delete_article_by_slug(request: HttpRequest, slug: str) -> dict:
     """按 slug 删除文章（含草稿）。"""
     article = Article.objects.filter(slug=slug).first()
-    if article is None:
+    if article is None or not _can_touch(cast(User, request.auth), article):  # type: ignore[attr-defined]
         raise HttpError(404, '文章不存在')
     article.delete()
     return success_response(message='删除成功')
@@ -1027,6 +1033,23 @@ def _archive_error(exc: archive_errors.ArchiveError) -> HttpError:
     return HttpError(exc.http_status, exc.message)
 
 
+def _can_touch(user: User, article: Article) -> bool:
+    """谁能改这篇稿：staff 管全站，其他人只管自己的。
+
+    非 staff 访问别人的稿一律 404 而不是 403——403 等于确认「这个 id 存在」，
+    草稿的存在性本身就是信息。
+    """
+    return user.is_staff or article.author_id == user.pk
+
+
+def _get_article_for_write(user: User, article_id: int) -> Article:
+    """按 id 取一篇「当前用户可写」的文章，否则 404。"""
+    article = Article.objects.filter(pk=article_id).first()
+    if article is None or not _can_touch(user, article):
+        raise HttpError(404, '文章不存在')
+    return article
+
+
 def _parse_ids(raw: str) -> list[int]:
     """解析逗号分隔的文章 id 列表。"""
     out: list[int] = []
@@ -1077,7 +1100,7 @@ def reissue_archive(request: HttpRequest, ticket: str) -> dict:
     })
 
 
-@admin_router.post('/articles/import/stage/', response=ApiResponse[dict], auth=staff_auth)
+@admin_router.post('/articles/import/stage/', response=ApiResponse[dict], auth=jwt_auth)
 def stage_import(
     request: HttpRequest,
     file: UploadedFile = File(...),
@@ -1088,6 +1111,7 @@ def stage_import(
     size = file.size or 0
     if size > lim.max_upload_bytes:
         raise HttpError(413, f'压缩包超过上限 {lim.max_upload_bytes} 字节')
+    _ensure_staging_quota(cast(User, request.auth), size, lim)  # type: ignore[attr-defined]
     if strategy not in archive_planner.STRATEGIES:
         raise HttpError(400, 'strategy 取值非法')
 
@@ -1132,7 +1156,7 @@ def stage_import(
     return success_response(report)
 
 
-@admin_router.post('/articles/import/plan/', response=ApiResponse[dict], auth=staff_auth)
+@admin_router.post('/articles/import/plan/', response=ApiResponse[dict], auth=jwt_auth)
 def plan_import(request: HttpRequest, payload: ArchiveImportPlanIn) -> dict:
     """按指定策略对已暂存的包重新预检（**不重传文件**）。
 
@@ -1167,7 +1191,7 @@ def plan_import(request: HttpRequest, payload: ArchiveImportPlanIn) -> dict:
 
 
 @admin_router.post(
-    '/articles/import/tasks/', response={202: ApiResponse[ImportTaskOut]}, auth=staff_auth
+    '/articles/import/tasks/', response={202: ApiResponse[ImportTaskOut]}, auth=jwt_auth
 )
 def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
     """入队一个导入任务（**202**）：立刻返回任务号，真正的执行在 worker 进程里。
@@ -1187,6 +1211,32 @@ def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
     staging = ArchiveStaging.objects.filter(pk=payload.staged_id, user=user).first()
     if staging is None:
         raise HttpError(404, '暂存包不存在')
+
+    # 排队上限：全局单 worker 串行，一个人连提 5 个大包会把所有人堵在后面
+    queued = ArticleImportTask.objects.filter(
+        user=user, status=ArticleImportTask.Status.QUEUED
+    ).count()
+    if queued >= lim.max_queued_tasks_per_user:
+        raise HttpError(429, f'你已有 {queued} 个任务在排队，请等它们开始执行后再提交')
+
+    # 权限收窄（非编辑）：只能导给自己、只能落草稿、不能顺手造分类标签。
+    # 为什么强制草稿：导入是把外部内容灌进站点，未经审阅不该直接上线。
+    if not user.is_staff:
+        if not payload.as_draft:
+            raise HttpError(403, '导入会创建文章，普通作者必须以草稿方式导入（as_draft=true）')
+        if payload.auto_create_taxonomy:
+            raise HttpError(403, '普通作者导入不能自动创建分类/标签，请先联系编辑建立栏目')
+        if payload.author_id is not None and payload.author_id != user.id:
+            raise HttpError(403, '只有超级管理员可以代传到其他作者名下')
+
+    owner: User = user
+    if payload.author_id is not None:
+        if not user.is_superuser:
+            raise HttpError(403, '只有超级管理员可以指定作者')
+        target_author = User.objects.filter(pk=payload.author_id, is_active=True).first()
+        if target_author is None:
+            raise HttpError(400, '目标作者不存在或已停用')
+        owner = target_author
 
     now = timezone.now()
     try:
@@ -1208,6 +1258,7 @@ def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
                 raise HttpError(409, '该暂存包已被执行或已过期，请重新上传')
             task = ArticleImportTask.objects.create(
                 user=user,
+                author=owner,
                 staging=staging,
                 strategy=payload.strategy,
                 auto_create_taxonomy=payload.auto_create_taxonomy,
@@ -1229,7 +1280,7 @@ def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
 
 
 @admin_router.get(
-    '/articles/import/tasks/', response=ApiResponse[PageData[ImportTaskOut]], auth=staff_auth
+    '/articles/import/tasks/', response=ApiResponse[PageData[ImportTaskOut]], auth=jwt_auth
 )
 def list_import_tasks(
     request: HttpRequest,
@@ -1264,7 +1315,7 @@ def list_import_tasks(
 @admin_router.get(
     '/articles/import/tasks/{task_id}/',
     response=ApiResponse[ImportTaskDetailOut],
-    auth=staff_auth,
+    auth=jwt_auth,
 )
 def get_import_task(request: HttpRequest, task_id: str) -> dict:
     """任务详情：带完整执行报告（items / plan_drift）与回滚包。"""
@@ -1275,7 +1326,7 @@ def get_import_task(request: HttpRequest, task_id: str) -> dict:
 @admin_router.post(
     '/articles/import/tasks/{task_id}/cancel/',
     response=ApiResponse[ImportTaskOut],
-    auth=staff_auth,
+    auth=jwt_auth,
 )
 def cancel_import_task(request: HttpRequest, task_id: str) -> dict:
     """取消**排队中**的任务。
@@ -1381,6 +1432,28 @@ def _task_dict(
     return data
 
 
+def _ensure_staging_quota(user: User, incoming: int, lim) -> None:
+    """单个用户的暂存包磁盘配额。
+
+    开放多人导入后，若不管，一个人连传几个 1GB 包就能把盘吃满，
+    受害的是所有人（包括 web 进程写日志与 SQLite 的 WAL）。
+    只统计**未过期**的暂存包：过期的会被 purge 收走，不该继续占配额。
+    """
+    used = (
+        ArchiveStaging.objects.filter(user=user, expires_at__gt=timezone.now()).aggregate(
+            total=Sum('bytes')
+        )['total']
+        or 0
+    )
+    if used + incoming > lim.max_staging_bytes_per_user:
+        raise HttpError(
+            413,
+            f'你的暂存包已占用 {used // 1024 // 1024}MB，'
+            f'超过单人上限 {lim.max_staging_bytes_per_user // 1024 // 1024}MB；'
+            '请先等已有任务结束（或丢弃待导入的包）',
+        )
+
+
 def _duplicate_package_warning(user: User, staging: ArchiveStaging) -> dict | None:
     """同一个包重复导入的防呆提示（**不阻断**，前端弹二次确认）。
 
@@ -1407,7 +1480,7 @@ def _duplicate_package_warning(user: User, staging: ArchiveStaging) -> dict | No
 
 
 @admin_router.delete(
-    '/articles/import/stage/{staging_id}/', response=ApiResponse[None], auth=staff_auth
+    '/articles/import/stage/{staging_id}/', response=ApiResponse[None], auth=jwt_auth
 )
 def discard_staging(request: HttpRequest, staging_id: str) -> dict:
     """放弃一个暂存包。"""
@@ -1422,7 +1495,7 @@ def discard_staging(request: HttpRequest, staging_id: str) -> dict:
     return success_response(message='已丢弃')
 
 
-@admin_router.get('/articles/import/limits/', response=ApiResponse[dict], auth=staff_auth)
+@admin_router.get('/articles/import/limits/', response=ApiResponse[dict], auth=jwt_auth)
 def archive_limits_view(request: HttpRequest) -> dict:
     """把归档上限暴露给前端，便于上传前本地预检（避免白传 1GB）。"""
     lim = archive_limits()

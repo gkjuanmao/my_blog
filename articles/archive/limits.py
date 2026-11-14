@@ -33,6 +33,8 @@ class Limits:
     max_new_categories: int
     max_new_tags: int
     max_image_pixels: int
+    max_queued_tasks_per_user: int
+    max_staging_bytes_per_user: int
 
 
 def limits() -> Limits:
@@ -56,6 +58,8 @@ def limits() -> Limits:
         max_new_categories=int(settings.ARCHIVE_MAX_NEW_CATEGORIES),
         max_new_tags=int(settings.ARCHIVE_MAX_NEW_TAGS),
         max_image_pixels=int(settings.ARCHIVE_MAX_IMAGE_PIXELS),
+        max_queued_tasks_per_user=int(settings.ARCHIVE_MAX_QUEUED_TASKS_PER_USER),
+        max_staging_bytes_per_user=int(settings.ARCHIVE_MAX_STAGING_BYTES_PER_USER),
     )
 
 

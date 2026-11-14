@@ -537,9 +537,17 @@ class TestTaskPermissions:
         """TASK-019：匿名访问任务列表 401。"""
         assert api_client.get(TASKS_URL).status_code == 401
 
-    def test_non_staff_forbidden(self, api_client, plain_header):
-        """TASK-020：非 staff 登录用户 403。"""
-        assert api_client.get(TASKS_URL, **plain_header).status_code == 403
+    def test_plain_user_sees_only_own_tasks(self, api_client, plain_header, plain_user):
+        """TASK-020：普通用户也能用任务列表，但只看得到自己的（导入已对全员开放）。"""
+        from django.contrib.auth import get_user_model
+
+        other = get_user_model().objects.create_user(username='other-owner', password='x')
+        ArticleImportTask.objects.create(user=other, strategy='skip')
+        mine = ArticleImportTask.objects.create(user=plain_user, strategy='skip')
+
+        data = api_client.get(TASKS_URL, **plain_header).json()['data']
+        assert data['total'] == 1
+        assert data['items'][0]['id'] == str(mine.id)
 
     def test_other_staff_cannot_read_task(self, api_client, staff_header, staff_user):
         """TASK-021：别的 staff 读不到我的任务（403），超管可以。"""

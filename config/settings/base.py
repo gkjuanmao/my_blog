@@ -144,6 +144,10 @@ FILE_UPLOAD_TEMP_DIR = os.environ.get('FILE_UPLOAD_TEMP_DIR') or None
 ARCHIVE_STAGING_TTL_SECONDS = 1800  # 导入暂存有效期
 ARCHIVE_TICKET_TTL_SECONDS = 300  # 下载票据有效期
 ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60  # 同一用户两次导入的最小间隔
+# 同一用户同时排队的任务上限：开放多人导入后，一个人连提大包会把全局队列堵死
+ARCHIVE_MAX_QUEUED_TASKS_PER_USER = 2
+# 同一用户暂存包占用的总字节上限（2GB）：staging 在磁盘上，多人上传会吃满盘
+ARCHIVE_MAX_STAGING_BYTES_PER_USER = 2 * 1024**3
 ARCHIVE_LOCK_TTL_SECONDS = 900  # 导入锁最长持有时间（SIGKILL 后靠它自解）
 
 ARCHIVE_MAX_UPLOAD_BYTES = 1024**3  # 1GB（nginx 侧同限）

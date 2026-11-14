@@ -227,6 +227,15 @@ class ArticleImportTask(models.Model):
         related_name='import_tasks',
         verbose_name='提交者',
     )
+    # 导入后文章挂到谁名下：默认是提交者；超管代传时可指定别人
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='文章归属作者',
+    )
     # 暂存包被 purge 掉后任务仍要可查（历史记录比暂存行活得久）
     staging = models.ForeignKey(
         ArchiveStaging,

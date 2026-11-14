@@ -35,6 +35,24 @@ ADMIN_ENDPOINTS = [
 
 _ENDPOINT_IDS = [f'{method.upper()} {url}' for method, url in ADMIN_ENDPOINTS]
 
+#: 已对「任意登录用户」开放的归档导入端点（每个作者导自己的包）。
+#: 它们仍要求登录（匿名 401），但写域由 planner 的 author 作用域 + 非编辑强制草稿保证，
+#: 所以非 staff 不再 403。
+OPEN_TO_AUTHENTICATED = {
+    'GET /api/v1/admin/articles/import/limits/',
+    'POST /api/v1/admin/articles/import/stage/',
+    'POST /api/v1/admin/articles/import/tasks/',
+    # 文章读写对「作者本人」开放：staff 管全站，其他人只管自己的（越权一律 404）。
+    # 分类/标签/导出/传图/HTML 导入仍是编辑专属。
+    'GET /api/v1/admin/articles/',
+    'GET /api/v1/admin/articles/999999/',
+    'POST /api/v1/admin/articles/',
+    'PUT /api/v1/admin/articles/999999/',
+    'DELETE /api/v1/admin/articles/999999/',
+    'DELETE /api/v1/admin/articles/slug/not-exist/',
+    'POST /api/v1/admin/articles/bulk-delete/',
+}
+
 
 @pytest.mark.django_db
 class TestAdminPermissionMatrix:
@@ -46,8 +64,15 @@ class TestAdminPermissionMatrix:
 
     @pytest.mark.parametrize(('method', 'url'), ADMIN_ENDPOINTS, ids=_ENDPOINT_IDS)
     def test_non_staff_forbidden(self, api_client, plain_header, method, url):
-        """非 staff 的登录用户访问管理端点一律 403。"""
+        """非 staff 的登录用户访问**编辑类**管理端点一律 403。
+
+        归档导入是例外（见 OPEN_TO_AUTHENTICATED）：它按作者划分写域，
+        不靠「只给 staff」把关。
+        """
         response = getattr(api_client, method)(url, **plain_header)
+        if f'{method.upper()} {url}' in OPEN_TO_AUTHENTICATED:
+            assert response.status_code not in (401, 403)
+            return
         assert response.status_code == 403
 
     @pytest.mark.parametrize(('method', 'url'), ADMIN_ENDPOINTS, ids=_ENDPOINT_IDS)

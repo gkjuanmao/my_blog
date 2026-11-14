@@ -37,6 +37,11 @@ const emit = defineEmits<{
   queued: []
 }>()
 
+const { isStaff, isSuperuser, ensureMe } = useMe()
+/** 超管代传用的作者候选（普通用户只能导给自己，不显示这一项） */
+const authorOptions = ref<Array<{ id: number; username: string }>>([])
+const targetAuthorId = ref<number | null>(null)
+
 const uploadRef = ref<UploadInstance | null>(null)
 const fileList = ref<UploadUserFile[]>([])
 const limits = ref<ArchiveLimits | null>(null)
@@ -54,11 +59,28 @@ const report = ref<ArchiveReport | null>(null)
 const fileError = ref('')
 
 // 每次打开都复位，并（首次）取一次上限配置
-watch(visible, (open) => {
+watch(visible, async (open) => {
   if (!open) return
+  await ensureMe()
   resetImport()
   if (!limits.value) fetchLimits()
+  if (isSuperuser.value && !authorOptions.value.length) void fetchAuthors()
 })
+
+/** 超管代传：把包直接挂到某个作者名下（普通用户看不到这个下拉） */
+async function fetchAuthors() {
+  try {
+    const { data } = await useApi().get<{ items: Array<{ id: number; username: string, is_active: boolean }> }>(
+      '/admin/users/',
+      { page_size: 100, ordering: 'username' },
+    )
+    authorOptions.value = data.items
+      .filter(user => user.is_active)
+      .map(user => ({ id: user.id, username: user.username }))
+  } catch {
+    authorOptions.value = []
+  }
+}
 
 async function fetchLimits() {
   try {
@@ -76,8 +98,10 @@ function resetImport() {
   fileError.value = ''
   uploadPercent.value = 0
   strategy.value = 'skip'
-  autoCreateTaxonomy.value = true
-  asDraft.value = false
+  // 普通作者导入必须落草稿、且不能顺手造分类标签（后端会 403，这里直接把默认值设对）
+  autoCreateTaxonomy.value = isStaff.value
+  asDraft.value = !isStaff.value
+  targetAuthorId.value = null
 }
 
 /** 作废已暂存的结果（换文件 / 移除文件 / 关闭对话框时） */
@@ -220,6 +244,7 @@ async function doCommit() {
       as_draft: asDraft.value,
       // 把用户刚看过的预检数字带上：服务端据此判断「排队期间数据变了」
       preview_totals: report.value?.totals,
+      ...(isSuperuser.value && targetAuthorId.value ? { author_id: targetAuthorId.value } : {}),
     })
 
     // 同一个包重导时后端会给非阻断 warning：问一次再继续，避免无意义地再覆盖一遍
@@ -342,12 +367,39 @@ function skipReasonText(item: { skip_reason: string | null }): string {
         <el-radio-button value="create_new">导入为新文章</el-radio-button>
       </el-radio-group>
       <div class="flex flex-wrap gap-x-6 gap-y-2">
-        <el-checkbox v-model="autoCreateTaxonomy" :disabled="staging || committing">
+        <el-checkbox
+          v-model="autoCreateTaxonomy"
+          :disabled="staging || committing || !isStaff"
+        >
           自动创建缺失的分类与标签
         </el-checkbox>
-        <el-checkbox v-model="asDraft" :disabled="staging || committing">
+        <el-checkbox v-model="asDraft" :disabled="staging || committing || !isStaff">
           全部以草稿导入（仅对新建生效）
         </el-checkbox>
+      </div>
+      <!-- 普通作者的两条硬规则：只落草稿、不新建栏目。写清原因，别让它像bug -->
+      <p v-if="!isStaff" class="text-xs text-stone-500">
+        作者导入统一存为草稿，且不会新建分类/标签（需由编辑审核）。发布请交给编辑。
+      </p>
+      <div v-if="isSuperuser" class="mt-1">
+        <el-select
+          v-model="targetAuthorId"
+          clearable
+          filterable
+          placeholder="导入后的作者（默认：你自己）"
+          style="width: 100%"
+          :disabled="staging || committing"
+        >
+          <el-option
+            v-for="user in authorOptions"
+            :key="user.id"
+            :label="user.username"
+            :value="user.id"
+          />
+        </el-select>
+        <p class="text-xs text-stone-500" style="margin-top: 4px">
+          代传：把导入的文章直接挂到别人名下，省去事后逐篇转移。
+        </p>
       </div>
       <div v-if="replanning" class="text-xs text-stone-500">正在按新策略重新预检…</div>
     </div>

@@ -171,9 +171,16 @@ class TestPackageLevelRejection:
         assert response.status_code == 400
         assert 'article.json' in response.json()['message']
 
-    def test_requires_staff(self, api_client, plain_header, package):
-        response = api_client.post(STAGE_URL, {'file': _upload(package)}, **plain_header)
-        assert response.status_code == 403
+    def test_requires_login_only(self, api_client, plain_header, package, archive_settings):
+        """Stage 现在对**所有登录用户**开放（每个作者导自己的包），但仍要求登录。
+
+        写域由 planner 的 author 作用域 + 非编辑强制草稿来保证，不靠「只给 staff」。
+        """
+        assert api_client.post(STAGE_URL, {'file': _upload(package)}).status_code == 401
+        assert (
+            api_client.post(STAGE_URL, {'file': _upload(package)}, **plain_header).status_code
+            == 200
+        )
 
 
 # --------------------------------------------------------------------------- 条目级失败

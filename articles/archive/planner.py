@@ -2,6 +2,9 @@
 
 两阶段流程必须走同一个 planner，否则"预检看到的"与"实际执行的"会分叉。
 本模块**只读**数据库，不写任何数据。
+
+⚠️ 所有「已存在文章」的匹配都必须带 ``author=user``：导入是按作者划分写域的，
+全站匹配会让 A 的归档包覆盖 B 的同 slug 文章。
 """
 from dataclasses import dataclass, field
 
@@ -93,7 +96,7 @@ def _effective_action(entry: ArticleEntry, global_strategy: str) -> tuple[str, s
     return action, 'action_override'
 
 
-def _identical_article(entry: ArticleEntry) -> Article | None:
+def _identical_article(entry: ArticleEntry, *, author) -> Article | None:
     """内容完全相同判定：slug + 封面/附件**存储字节**哈希（附件可缺省）+ 正文。
 
     - 附件可选后不能要求"附件哈希必须存在"，否则无附件文章永远判不出 identical，
@@ -109,7 +112,8 @@ def _identical_article(entry: ArticleEntry) -> Article | None:
 
     cover_sha = entry.cover.stored_sha256 if entry.cover is not None else ''
     attachment_sha = entry.attachment.stored_sha256 if entry.attachment is not None else ''
-    candidates = Article.objects.filter(slug=parsed.slug).only(
+    # 按作者收窄：否则别人的同 slug 文章会被判成「内容已存在」，用户的包被静默跳过
+    candidates = Article.objects.filter(slug=parsed.slug, author=author).only(
         'id', 'slug', 'content', 'cover_image_sha256', 'file_sha256'
     )
     for article in candidates:
@@ -187,10 +191,12 @@ def build_plan(
             continue
 
         action, reason = _effective_action(entry, strategy)
-        existing = Article.objects.filter(slug=entry.parsed.slug).first()
+        # ⚠️ 必须按作者收窄：开放多人导入后，全站匹配会让 A 的包覆盖 B 的文章
+        # （update 策略）或把 B 的文章判成「已存在」（skip 策略）。
+        existing = Article.objects.filter(slug=entry.parsed.slug, author=user).first()
 
         if action == 'create_new':
-            identical = _identical_article(entry)
+            identical = _identical_article(entry, author=user)
             if identical is not None:
                 item.action, item.reason, item.target_id = 'skip', 'identical', identical.id
             else:
