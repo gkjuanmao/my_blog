@@ -15,15 +15,16 @@ import pytest
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from articles.archive import tasks as archive_tasks
 from articles.archive import validate as archive_validate
 from articles.archive.errors import PackageError
 from articles.archive.format import ARTICLE_JSON_NAME, MANIFEST_NAME, README_NAME, SCHEMA_ARCHIVE
-from articles.models import Article
+from articles.models import Article, ArticleImportTask
 
 pytestmark = pytest.mark.django_db
 
 STAGE_URL = '/api/v1/admin/articles/import/stage/'
-COMMIT_URL = '/api/v1/admin/articles/import/commit/'
+TASKS_URL = '/api/v1/admin/articles/import/tasks/'
 
 SEED_DEMO_PATH = Path(__file__).resolve().parents[1] / 'scripts' / 'seed_demo.py'
 
@@ -78,14 +79,19 @@ def _stage(api_client, staff_header, payload: bytes):
 
 
 def _commit(api_client, staff_header, staged_id):
+    """入队后直接同步执行（真实链路由 import_worker 异步跑，执行器是同一个）。"""
     response = api_client.post(
-        COMMIT_URL,
+        TASKS_URL,
         {'staged_id': staged_id, 'strategy': 'skip'},
         content_type='application/json',
         **staff_header,
     )
-    assert response.status_code == 200, response.json()
-    return response.json()['data']
+    assert response.status_code == 202, response.json()
+    task_id = response.json()['data']['id']
+    archive_tasks.run_import_task(task_id, worker_id='test')
+    task = ArticleImportTask.objects.get(pk=task_id)
+    assert task.status == ArticleImportTask.Status.SUCCEEDED, task.error_message
+    return dict(task.report or {})
 
 
 class TestPackageStructure:

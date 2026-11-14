@@ -4,6 +4,14 @@ interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: Record<string, unknown> | BodyInit | null
   params?: Record<string, unknown>
+  /**
+   * 单次请求的超时（毫秒），覆盖默认 {@link REQUEST_TIMEOUT_MS}。
+   *
+   * 只给「确实会更久但仍同步返回」的接口用（如归档按策略重新预检：要重解析整包）。
+   * 长任务别再靠调大这个值硬扛 —— 那正是导入改成异步队列的原因，
+   * 一旦超过网关/浏览器任何一层的超时，用户同样会看到「网络错误」。
+   */
+  timeoutMs?: number
 }
 
 const ACCESS_TOKEN_KEY = 'access_token'
@@ -133,7 +141,7 @@ export function useApi() {
         body: options.body,
         query: options.params,
         headers,
-        timeout: REQUEST_TIMEOUT_MS,
+        timeout: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
       })
       return data
     } catch (caught) {
@@ -236,11 +244,19 @@ export function useApi() {
     get<T = unknown>(url: string, params?: Record<string, unknown>) {
       return request<ApiResponse<T>>(url, { method: 'GET', params })
     },
-    post<T = unknown>(url: string, body?: Record<string, unknown> | BodyInit | null) {
-      return request<ApiResponse<T>>(url, { method: 'POST', body })
+    post<T = unknown>(
+      url: string,
+      body?: Record<string, unknown> | BodyInit | null,
+      options: { timeoutMs?: number } = {},
+    ) {
+      return request<ApiResponse<T>>(url, { method: 'POST', body, ...options })
     },
-    put<T = unknown>(url: string, body?: Record<string, unknown> | BodyInit | null) {
-      return request<ApiResponse<T>>(url, { method: 'PUT', body })
+    put<T = unknown>(
+      url: string,
+      body?: Record<string, unknown> | BodyInit | null,
+      options: { timeoutMs?: number } = {},
+    ) {
+      return request<ApiResponse<T>>(url, { method: 'PUT', body, ...options })
     },
     del<T = unknown>(url: string) {
       return request<ApiResponse<T>>(url, { method: 'DELETE' })

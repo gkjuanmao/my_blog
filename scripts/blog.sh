@@ -380,6 +380,8 @@ cmd_up() {
   fi
   compose up -d >/dev/null 2>&1 || die "容器启动失败" "${COMPOSE_CMD[*]} up -d  # 看完整输出"
   verify_container_image "$(app_container)" "$APP_IMAGE"
+  # worker 与 app 共用镜像但容器独立：不单独校验的话，它会带着旧代码跑导入任务
+  verify_container_image "$(container_of worker)" "$APP_IMAGE"
   ok "已按最新镜像重建"
 
   step "等待就绪"
@@ -478,8 +480,8 @@ cmd_logs() {
   for arg in "$@"; do
     case "$arg" in
       -f|--follow) follow="-f" ;;
-      app|nginx|front|redis) svc="$arg" ;;
-      *) die "未知服务：$arg" "可选：app | nginx | front | redis" ;;
+      app|nginx|front|redis|worker) svc="$arg" ;;
+      *) die "未知服务：$arg" "可选：app | nginx | front | redis | worker" ;;
     esac
   done
   local container
@@ -831,6 +833,7 @@ cmd_import() {
   if containers_exist; then compose down >/dev/null 2>&1 || true; fi
   compose up -d >/dev/null 2>&1 || die "容器启动失败" "${COMPOSE_CMD[*]} up -d"
   verify_container_image "$(app_container)" "$APP_IMAGE"
+  verify_container_image "$(container_of worker)" "$APP_IMAGE"
   ok
 
   step "等待就绪"; wait_ready

@@ -21,7 +21,11 @@ const baseNavItems = [
   { label: '文章', to: '/administrator/articles' },
   { label: '分类', to: '/administrator/categories' },
   { label: '标签', to: '/administrator/tags' },
+  { label: '任务', to: '/administrator/tasks' },
 ]
+
+// 有导入任务在跑时，导航上挂一个计数，避免用户不知道后台还在干活
+const { activeCount } = useImportTasks()
 
 // 用户管理只对超管开放（后端 /admin/users/** 同样只放超管），
 // 非超管看不到入口，避免点进去只收获一个 403。
@@ -114,6 +118,12 @@ useHead({
             :aria-current="isActive(item.to) ? 'page' : undefined"
           >
             {{ item.label }}
+            <span
+              v-if="item.to === '/administrator/tasks' && activeCount"
+              class="ad-rail__badge"
+              :aria-label="`${activeCount} 个导入任务进行中`"
+              >{{ activeCount }}</span
+            >
           </NuxtLink>
         </nav>
 
@@ -173,5 +183,8 @@ useHead({
     </div>
 
     <ChangePasswordDialog v-model="passwordOpen" />
+
+    <!-- 导入任务通知器：放外壳里，关掉导入弹窗或切页也能收到「任务完成」 -->
+    <ImportTaskWatcher />
   </div>
 </template>

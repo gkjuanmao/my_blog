@@ -213,6 +213,70 @@ export interface ArchiveReport {
     download_url: string
     expires_at: string
   } | null
+  /** 排队期间数据变化导致的「预检 vs 实况」差异（仅异步任务执行后可能带） */
+  plan_drift?: {
+    changed: Record<string, { preview: number; actual: number }>
+    message: string
+  } | null
+  task_id?: string
+}
+
+/** 任务状态：与后端 ArticleImportTask.Status 一一对应 */
+export type ImportTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+/** 任务阶段：waiting → validating → snapshotting → writing → done */
+export type ImportTaskPhase = 'waiting' | 'validating' | 'snapshotting' | 'writing' | 'done'
+
+export interface ImportTaskProgress {
+  total: number
+  processed: number
+  create: number
+  update: number
+  skip: number
+  failed: number
+  percent: number
+}
+
+/** 失败原因与指引（前端只展示，不做二次判断） */
+export interface ImportTaskError {
+  code: string
+  message: string
+  hint: string
+}
+
+/** 一个归档导入任务（列表项；详情额外带 report） */
+export interface ImportTask {
+  id: string
+  status: ImportTaskStatus
+  phase: ImportTaskPhase
+  phase_label: string
+  strategy: ArchiveStrategy
+  auto_create_taxonomy: boolean
+  as_draft: boolean
+  progress: ImportTaskProgress
+  /** 入队时的预检快照（用户当时看到的数字） */
+  preview: Partial<Record<'total' | 'create' | 'update' | 'skip' | 'failed', number>>
+  package: { sha256?: string; entries?: number; bytes?: number }
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  duration_ms: number | null
+  username: string
+  error: ImportTaskError | null
+  rollback_package: {
+    count: number
+    ticket: string
+    download_url: string
+    expires_at: string
+  } | null
+  /** 非阻断提示（如「这个包刚导过」） */
+  warning: { code: string; message: string } | null
+  queue_position: number
+}
+
+/** 任务详情：多一份完整执行报告 */
+export interface ImportTaskDetail extends ImportTask {
+  report: ArchiveReport | Record<string, never>
 }
 
 /** 导入上限（供前端上传递前本地预检） */

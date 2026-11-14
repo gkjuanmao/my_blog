@@ -776,6 +776,51 @@ last_login, last_seen_at, online, article_count`。`online` 由服务端按 `USE
 
 ---
 
+### 5.3.6 归档导入任务（异步执行）
+
+**为什么改成异步**：归档导入是分钟级长任务（重校验整包 → 覆盖模式打包回滚包 → 逐篇落库 + 处理封面）。
+原来的 `POST /admin/articles/import/commit/` 同步执行，而前端 `useApi` 对所有请求统一 15s 超时，
+于是必然出现「前端报『网络错误或服务不可用』，服务端却已把文章全部写入」——
+gunicorn 的 gthread worker 不会因客户端断开而中止，nginx 侧 `proxy_read_timeout` 也早放宽到 900s，
+只有浏览器这一端在说谎。调大超时不是解，只是把问题推远：导入耗时没有上界，任何一层的超时都会重新暴露它。
+
+现在链路是：**入队（毫秒级 202）→ 独立 worker 进程执行 → 前端轮询状态 → 右下角通知**。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| POST | `/api/v1/admin/articles/import/tasks/` | 入队，**202** + 任务对象（含 `warning`） |
+| GET | `/api/v1/admin/articles/import/tasks/` | 分页列表；默认只看自己，超管可 `?scope=all` |
+| GET | `/api/v1/admin/articles/import/tasks/{task_id}/` | 详情，额外带 `report`（items / plan_drift） |
+| POST | `/api/v1/admin/articles/import/tasks/{task_id}/cancel/` | 取消**排队中**的任务，其他状态 409 |
+
+状态机：`queued → running → succeeded | failed`，`queued → canceled`。执行中不提供取消
+（半途停下会留下「已写入一部分」，与回滚包「还原到执行前」的语义对不上）。
+
+失败统一落 `error_code` / `error_message` / `error_hint` 三件套，错误码：
+`staging_expired`、`package_invalid`、`limit_exceeded`、`disk_full`、`lock_unavailable`、
+`db_locked`、`worker_lost`（心跳超时）、`worker_stopped`（收到 SIGTERM）、`internal`。
+
+**四条设计铁律**（改这块前先读 `articles/archive/tasks.py` 的模块注释）：
+
+1. **计划不落库**：`build_plan` 是对数据库的实时快照，任务只存「意图」（staging + strategy + 开关），
+   worker 在执行前现算。排队任务的前置任务确实会改变结果——这恰恰是必须实时算的理由，
+   冻结一个必然过期的计划才是 bug。
+2. **逐篇事务**：沿用 `execute_plan` 的语义，单篇失败不影响其它条目；worker 内绝不把整包放进一个事务
+   （SQLite 单写者，会让 web 端全部写超时）。
+3. **进度落库要节流**：1000 篇逐篇 UPDATE 是 1000 次写事务，统一 2s 落一次，顺带刷新 `heartbeat_at`。
+4. **回滚包先于执行**：覆盖模式在执行前打包 + 出票据并挂到任务上，中途失败用户仍有还原点。
+
+**「预检」与「实况」的区别**：入队时前端把用户刚看过的 `totals` 作为 `preview_totals` 带上，
+worker 执行后比对，不一致就在 `report.plan_drift` 里记下 `{create: {preview: 50, actual: 20}}` 并由详情页
+显式提示「排队期间数据已变化」。同一个包被重复提交时不阻断，只在 202 响应里给 `warning`
+（`duplicate_package`），前端弹一次二次确认——把大包拆成多次导入是合法用法，不该被拒绝。
+
+**部署形态**：`docker-compose.yml` 里的独立 service `worker`（与 app **同镜像、不同 command**、
+共享 `db_data` / `media` / `archives` 卷，`SKIP_MIGRATE=1` 让迁移只由 app 容器执行）。
+必须**单副本**：串行执行、回滚包顺序、导入锁都建立在「全局只有一个执行者」之上。
+
+---
+
 ## 六、认证方案
 
 ### 6.1 技术选型

@@ -238,13 +238,18 @@ class ArticleCreateIn(Schema):
         return _normalize_tag_ids(value)
 
 
-class ArchiveImportCommitIn(Schema):
-    """归档导入第二阶段（commit）的请求体。"""
+class ArchiveImportTaskIn(Schema):
+    """归档导入任务入队请求体（原同步 commit 的参数 + 预检快照）。
+
+    ``preview_totals`` 前端填入「用户刚看过的预检结果」，服务端不重算——
+    卷土重来再解析一次整包会让入队从毫秒变成分钟，正是要摆脱的东西。
+    """
 
     staged_id: str
     strategy: str = 'skip'
     auto_create_taxonomy: bool = True
     as_draft: bool = False
+    preview_totals: dict[str, Any] | None = None
 
 
 class ArchiveImportPlanIn(Schema):
@@ -252,6 +257,73 @@ class ArchiveImportPlanIn(Schema):
 
     staged_id: str
     strategy: str = 'skip'
+
+
+class ImportTaskProgressOut(Schema):
+    """任务进度（总数/已处理/四类结果/百分比）。"""
+
+    total: int = 0
+    processed: int = 0
+    create: int = 0
+    update: int = 0
+    skip: int = 0
+    failed: int = 0
+    percent: int = 0
+
+
+class ImportTaskErrorOut(Schema):
+    """失败原因与处理指引（前端直接呈现，不做二次判断）。"""
+
+    code: str
+    message: str
+    hint: str = ''
+
+
+class ImportRollbackOut(Schema):
+    """回滚包（覆盖模式下执行前生成，失败也能下载）。"""
+
+    count: int
+    ticket: str
+    download_url: str
+    expires_at: str
+
+
+class ImportTaskWarningOut(Schema):
+    """非阻断提示（如「这个包刚导过」），前端弹二次确认。"""
+
+    code: str
+    message: str
+
+
+class ImportTaskOut(Schema):
+    """任务列表项（**不含** report，列表页不需要几百条明细）。"""
+
+    id: str
+    status: str
+    phase: str
+    phase_label: str = ''
+    strategy: str = 'skip'
+    auto_create_taxonomy: bool = True
+    as_draft: bool = False
+    progress: ImportTaskProgressOut
+    preview: dict[str, Any] = {}
+    package: dict[str, Any] = {}
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: int | None = None
+    username: str = ''
+    error: ImportTaskErrorOut | None = None
+    rollback_package: ImportRollbackOut | None = None
+    warning: ImportTaskWarningOut | None = None
+    #: 队列位置（1 = 下一个就轮到你），前端显示「前面还有 N 个任务」
+    queue_position: int = 1
+
+
+class ImportTaskDetailOut(ImportTaskOut):
+    """任务详情：额外带完整执行报告（items / plan_drift）。"""
+
+    report: dict[str, Any] = {}
 
 
 class BulkDeleteIn(Schema):

@@ -39,7 +39,7 @@ class TestArchiveRouting:
             '/api/v1/admin/articles/export/',
             '/api/v1/admin/articles/export/estimate/',
             '/api/v1/admin/articles/import/stage/',
-            '/api/v1/admin/articles/import/commit/',
+            '/api/v1/admin/articles/import/tasks/',
             '/api/v1/admin/articles/import/limits/',
         ],
     )

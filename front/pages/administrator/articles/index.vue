@@ -22,6 +22,14 @@ const categories = ref<Category[]>([])
 
 const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleList()
 
+// 导入改成异步任务后，本页拿不到「导入完成」事件（弹窗提交完就关了）。
+// 任务终态时单例把 finishedTick +1，这里据此刷新列表——只在本页可见时才刷。
+const { finishedTick } = useImportTasks()
+watch(finishedTick, () => {
+  if (import.meta.client && document.hidden) return
+  void fetchArticles()
+})
+
 /** 当前勾选的文章 id（切换分页时清空） */
 const selectedIds = ref<number[]>([])
 const importVisible = ref(false)
@@ -269,6 +277,6 @@ onMounted(() => {
       :page-sizes="[10, 20, 50]"
     />
 
-    <ArticleImportDialog v-model="importVisible" @imported="fetchArticles" />
+    <ArticleImportDialog v-model="importVisible" />
   </div>
 </template>

@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -294,15 +295,30 @@ def execute_plan(
     options: ImportOptions,
     package: dict,
     package_path: str | os.PathLike[str] | None = None,
+    on_item: Callable[[int, dict], None] | None = None,
 ) -> ImportReport:
     """真正执行计划。逐篇独立，失败不影响其它条目。
 
     ``package_path`` 为暂存包路径：校验阶段不驻留媒体字节，这里需要重开它取字节。
+    ``on_item`` 是单篇结束后的回调 ``(序号, item_dict)``，异步任务用它上报进度；
+    同步调用方（含测试）不传即可。回调异常会被吞掉并记日志——进度上报失败
+    不该让一次已经写成功的导入变成失败。
     """
     lim = plan.limits
     assert lim is not None
     user = options.user
     report = ImportReport()
+    index = 0
+
+    def _notify(item_dict: dict) -> None:
+        nonlocal index
+        index += 1
+        if on_item is None:
+            return
+        try:
+            on_item(index, item_dict)
+        except Exception:  # noqa: BLE001 - 进度上报失败不影响导入结果
+            logger.warning('导入进度回调异常', exc_info=True)
 
     zf = zipfile.ZipFile(package_path) if package_path is not None else None
     try:
@@ -311,11 +327,13 @@ def execute_plan(
 
             if item.action == 'failed':
                 report.items.append(item.to_dict())
+                _notify(item.to_dict())
                 continue
             if item.action == 'skip':
                 if zf is not None:
                     _materialize_skipped_images(item, zf, lim)
                 report.items.append(item.to_dict())
+                _notify(item.to_dict())
                 continue
             if zf is None:
                 raise ItemError('缺少暂存包路径，无法读取媒体字节')
@@ -376,6 +394,7 @@ def execute_plan(
                 # 事务提交后再删除被替换掉的旧文件（插图不删：可能被别的文章共用）
                 _delete_files(stale)
                 report.items.append(item.to_dict())
+                _notify(item.to_dict())
             except Exception as exc:
                 _delete_files(written)
                 logger.warning(
@@ -384,6 +403,7 @@ def execute_plan(
                 item.action = 'failed'
                 item.errors.append(f'导入失败: {type(exc).__name__}')
                 report.items.append(item.to_dict())
+                _notify(item.to_dict())
     finally:
         if zf is not None:
             zf.close()

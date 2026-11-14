@@ -683,6 +683,98 @@
   box-shadow: inset 0 0 0 1px var(--hp-accent);
 }
 
+/* 导航计数徽标（有导入任务在跑时） */
+.ad-rail__badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: var(--hp-accent-lume);
+  color: #1e3d3a;
+  font: 500 11px/1.4 var(--hp-font-mono);
+  text-align: center;
+}
+
+/* 任务进度条：细、无圆角内衬，失败时用赭红而不是金色（一眼区分「跑完」与「出事」） */
+.ad-taskbar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(30, 61, 58, 0.1);
+  overflow: hidden;
+}
+.ad-taskbar i {
+  display: block;
+  height: 100%;
+  background: var(--hp-brand);
+  transition: width 0.3s var(--ad-ease);
+}
+.ad-taskbar i.is-bad {
+  background: var(--hp-danger);
+}
+.ad-status--wait i {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hp-ink-3);
+}
+.ad-status--run i {
+  background: var(--hp-accent);
+}
+.ad-status--bad i {
+  background: var(--hp-danger);
+}
+
+/* 任务详情：键值表（两列，移动端塌成一列） */
+.ad-taskdetail .ad-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 24px;
+  margin: 0;
+  font-size: 13px;
+}
+.ad-taskdetail .ad-kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hp-line);
+}
+.ad-taskdetail .ad-kv dt {
+  color: var(--hp-ink-3);
+}
+.ad-taskdetail .ad-kv dd {
+  margin: 0;
+  font-family: var(--hp-font-mono);
+  word-break: break-all;
+  text-align: right;
+}
+
+/* 右下角任务通知：与编辑部台账同色系（纸底 + 墨青标题 + 左侧色条） */
+.ad-task-toast.el-notification {
+  background: var(--hp-bg, #f6f7f4);
+  border: 1px solid rgba(30, 61, 58, 0.14);
+  border-left: 3px solid var(--hp-brand);
+  border-radius: var(--ad-r-ctl);
+}
+.ad-task-toast .el-notification__title {
+  font-family: var(--hp-font-serif);
+  font-weight: 500;
+  color: var(--hp-ink);
+}
+.ad-task-toast .el-notification__content {
+  color: var(--hp-ink-2);
+  white-space: pre-line;
+}
+.ad-task-toast.el-notification.is-error {
+  border-left-color: var(--hp-danger);
+}
+.ad-task-toast.el-notification.is-warning {
+  border-left-color: var(--hp-accent);
+}
+@media (max-width: 640px) {
+  .ad-taskdetail .ad-kv {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* 印章 */
 .ad-seal {
   display: grid;

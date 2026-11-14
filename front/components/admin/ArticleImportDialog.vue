@@ -3,7 +3,7 @@
  * 归档导入对话框（FE-09 从 `pages/administrator/articles/index.vue` 拆出）。
  *
  * 自包含：上传/预检/重新预检/提交的整套状态与请求都在这里，页面只需
- * `v-model` 控制开关，并在 `imported` 事件里刷新列表。
+ * `v-model` 控制开关；提交后只负责「入队」，执行进度与结果交给任务页与右下角通知。
  */
 import type {
   UploadFile,
@@ -14,7 +14,13 @@ import type {
   UploadUserFile,
 } from 'element-plus'
 
-import type { ApiError, ArchiveLimits, ArchiveReport, ArchiveStrategy } from '~/types/api'
+import type {
+  ApiError,
+  ArchiveLimits,
+  ArchiveReport,
+  ArchiveStrategy,
+  ImportTask,
+} from '~/types/api'
 import { formatBytes } from '~/utils/format'
 
 /** el-upload 的 onError 回调参数类型（element-plus 未从根导出该类型） */
@@ -22,13 +28,13 @@ type UploadErrorEvent = Parameters<NonNullable<UploadRequestOptions['onError']>>
 
 const STAGE_URL = '/admin/articles/import/stage/'
 const PLAN_URL = '/admin/articles/import/plan/'
-const COMMIT_URL = '/admin/articles/import/commit/'
+const TASKS_URL = '/admin/articles/import/tasks/'
 
 const visible = defineModel<boolean>({ required: true })
 
 const emit = defineEmits<{
-  /** 导入成功（未被消费的暂存包不退；页面据此刷新列表） */
-  imported: []
+  /** 已入队（页面据此提示，真正的完成通知由 writer 之外的 watcher 负责） */
+  queued: []
 }>()
 
 const uploadRef = ref<UploadInstance | null>(null)
@@ -45,7 +51,6 @@ const stagedId = ref('')
 /** 已成功预检的那个文件的 uid，用于区分“状态变化”与“换了文件” */
 const stagedFileUid = ref<number | null>(null)
 const report = ref<ArchiveReport | null>(null)
-const committed = ref(false)
 const fileError = ref('')
 
 // 每次打开都复位，并（首次）取一次上限配置
@@ -79,7 +84,6 @@ function resetImport() {
 function invalidateStaged() {
   stagedId.value = ''
   report.value = null
-  committed.value = false
   stagedFileUid.value = null
 }
 
@@ -144,7 +148,6 @@ async function doStageUpload(options: UploadRequestOptions) {
     options.onSuccess?.(data)
     stagedId.value = data.staged_id ?? ''
     stagedFileUid.value = options.file?.uid ?? null
-    committed.value = false
     if (!stagedId.value) {
       // 防御：宁可报错，也不要出现“提示预检完成但无法确认导入”的迷惑状态
       fileError.value = '预检响应缺少 staged_id，请重试'
@@ -183,10 +186,15 @@ async function onStrategyChange() {
   if (!stagedId.value) return
   replanning.value = true
   try {
-    const { data } = await useApi().post<ArchiveReport>(PLAN_URL, {
-      staged_id: stagedId.value,
-      strategy: strategy.value,
-    })
+    // 改策略要**重新解析整包**（几百篇的包可能十几秒），默认 15s 会误报网络错误
+    const { data } = await useApi().post<ArchiveReport>(
+      PLAN_URL,
+      {
+        staged_id: stagedId.value,
+        strategy: strategy.value,
+      },
+      { timeoutMs: 60000 },
+    )
     report.value = data
   } catch (e) {
     ElMessage.error(errorMessage(e, '重新预检失败'))
@@ -195,20 +203,46 @@ async function onStrategyChange() {
   }
 }
 
+/**
+ * 确认导入：只入队，不等执行。
+ *
+ * 关键变化（原先这里同步等 `POST /commit/` 返回）：导入是分钟级长任务，
+ * 而 `useApi` 对所有请求统一 15s 超时 —— 同步链路下前端必然先报「网络错误」，
+ * 服务端却还在写库。入队后 HTTP 立刻 202，进度由任务页/右下角通知跟进。
+ */
 async function doCommit() {
   committing.value = true
   try {
-    const { data } = await useApi().post<ArchiveReport>(COMMIT_URL, {
+    const response = await useApi().post<ImportTask>(TASKS_URL, {
       staged_id: stagedId.value,
       strategy: strategy.value,
       auto_create_taxonomy: autoCreateTaxonomy.value,
       as_draft: asDraft.value,
+      // 把用户刚看过的预检数字带上：服务端据此判断「排队期间数据变了」
+      preview_totals: report.value?.totals,
     })
-    report.value = data
-    committed.value = true
+
+    // 同一个包重导时后端会给非阻断 warning：问一次再继续，避免无意义地再覆盖一遍
+    const warning = response.data?.warning
+    if (warning) {
+      try {
+        await ElMessageBox.confirm(warning.message, '这个包导入过', {
+          confirmButtonText: '仍然导入',
+          cancelButtonText: '取消',
+          type: 'warning',
+        })
+      } catch {
+        committing.value = false
+        return
+      }
+    }
+
+    useImportTasks().pushTask(response.data)
+    void useImportTasks().startPolling({ silent: true })
     stagedId.value = '' // 已被消费
-    ElMessage.success('导入完成')
-    emit('imported')
+    ElMessage.success('已加入队列，完成后会在这里提示')
+    emit('queued')
+    visible.value = false
   } catch (e) {
     const status = (e as ApiError)?.status
     const hint =
@@ -218,16 +252,11 @@ async function doCommit() {
           ? '该暂存包已被执行或已过期，请重新上传'
           : status === 503
             ? '导入锁不可用（缓存/Redis 未就绪），请稍后重试'
-            : errorMessage(e, '导入失败')
+            : errorMessage(e, '提交导入任务失败')
     ElMessage.error(hint)
   } finally {
     committing.value = false
   }
-}
-
-function downloadRollback() {
-  const url = report.value?.rollback_package?.download_url
-  if (url) useApi().openUrl(url)
 }
 
 function actionLabel(action: string): string {
@@ -347,21 +376,10 @@ function skipReasonText(item: { skip_reason: string | null }): string {
         </el-tag>
       </div>
 
-      <el-alert
-        v-if="committed"
-        :type="report.totals.failed ? 'warning' : 'success'"
-        :closable="false"
-        class="mb-3"
-      >
+      <el-alert type="info" :closable="false" class="mb-3">
         <template #title>
-          导入完成：新建 {{ report.totals.create }}、覆盖 {{ report.totals.update }}、跳过
-          {{ report.totals.skip }}、失败 {{ report.totals.failed }}。
-        </template>
-        <template #default>
-          <span v-if="report.rollback_package">
-            已生成回滚包（{{ report.rollback_package.count }} 篇，含覆盖前的内容）——
-            <el-link type="primary" @click="downloadRollback">下载回滚包</el-link>
-          </span>
+          以上是<b>预检快照</b>（按当前数据估算）。实际执行在后台进行，
+          排队期间若有其他导入先完成，实际结果会以任务详情里的执行报告为准。
         </template>
       </el-alert>
 
@@ -418,7 +436,7 @@ function skipReasonText(item: { skip_reason: string | null }): string {
         :disabled="!stagedId || staging || replanning || committing"
         @click="doCommit"
       >
-        确认导入
+        加入队列并开始导入
       </el-button>
     </template>
   </el-dialog>

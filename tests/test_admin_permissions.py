@@ -20,7 +20,7 @@ ADMIN_ENDPOINTS = [
     ('get', '/api/v1/admin/articles/export/estimate/'),
     ('get', '/api/v1/admin/articles/import/limits/'),
     ('post', '/api/v1/admin/articles/import/stage/'),
-    ('post', '/api/v1/admin/articles/import/commit/'),
+    ('post', '/api/v1/admin/articles/import/tasks/'),
     ('post', '/api/v1/admin/articles/images/'),
     ('post', '/api/v1/admin/articles/convert-html/'),
     ('post', '/api/v1/admin/categories/'),

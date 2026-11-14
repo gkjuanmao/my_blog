@@ -49,6 +49,41 @@ services:
       timeout: 5s
       retries: 3
 
+  # 归档导入任务的执行进程（见 DESIGN 5.3.6）。
+  # 与 app 同镜像、同卷、不同 command：导入是分钟级长任务，放在请求线程里会占着
+  # HTTP 连接（前端 15s 超时先报「网络错误」），放在 app 容器后台则收不到 SIGTERM。
+  #
+  # ⚠️ 必须单副本：串行执行、回滚包顺序、导入锁都建立在「全局只有一个执行者」上。
+  #    不要 docker compose up --scale worker=2。
+  worker:
+    build: .
+    image: my_blog_app:latest
+    command: ["python", "manage.py", "import_worker"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 迁移/collectstatic/清扫由 app 容器独占执行，worker 跳过（见 entrypoint.sh）
+      - SKIP_MIGRATE=1
+      - REDIS_URL=redis://redis:6379/0
+      - ARCHIVE_ROOT=/app/private_archives
+      - FILE_UPLOAD_TEMP_DIR=/app/tmp
+    volumes:
+      # 必须与 app 完全一致：暂存包在 archives 卷、封面/附件落 media 卷、
+      # 任务表与文章在同一份 db_data 上——少挂一个就报「暂存包不存在」。
+      - media:/app/media
+      - ./db_data:/app/db_data:z
+      - archives:/app/private_archives
+      - apptmp:/app/tmp
+    depends_on:
+      # 等 app 的 migrate 跑完（healthcheck start_period 60s 已覆盖首次启动）
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # 默认 10s 不够把「任务被中断」的状态写完
+    stop_grace_period: 30s
+
   nginx:
     image: nginx:1.27
     volumes:

@@ -8,14 +8,15 @@ import pytest
 from django.utils import timezone
 from PIL import Image
 
-from articles.models import Article, Category, Tag
+from articles.archive import tasks as archive_tasks
+from articles.models import Article, ArticleImportTask, Category, Tag
 from articles.utils import generate_slug
 
 pytestmark = pytest.mark.django_db
 
 EXPORT_URL = '/api/v1/admin/articles/export/'
 STAGE_URL = '/api/v1/admin/articles/import/stage/'
-COMMIT_URL = '/api/v1/admin/articles/import/commit/'
+TASKS_URL = '/api/v1/admin/articles/import/tasks/'
 
 
 def export_zip(api_client, staff_header, ids, zip_bytes):
@@ -40,10 +41,49 @@ def stage(api_client, staff_header, payload: bytes, strategy='skip'):
     return response
 
 
+class _TaskResult:
+    """把「入队 + 同步执行」包装成旧 commit 响应的形状（.status_code / .json()）。
+
+    真实链路是「入队 → import_worker 异步执行」，测试里直接调 ``run_import_task``
+    把活干完：语义等价（同一个执行器），还不用起后台进程。
+    """
+
+    def __init__(self, status_code: int, payload: dict) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+
 def commit(api_client, staff_header, staged_id, **options):
-    """第二阶段：执行导入。"""
+    """第二阶段：入队并立即执行，返回与旧同步 commit 同构的报告。"""
     body = {'staged_id': staged_id, 'strategy': 'skip', **options}
-    return api_client.post(COMMIT_URL, body, content_type='application/json', **staff_header)
+    response = api_client.post(TASKS_URL, body, content_type='application/json', **staff_header)
+    if response.status_code != 202:
+        return _TaskResult(response.status_code, response.json())
+
+    task_id = response.json()['data']['id']
+    archive_tasks.run_import_task(task_id, worker_id='test')
+    task = ArticleImportTask.objects.get(pk=task_id)
+    report = dict(task.report or {})
+    data = {
+        **report,
+        'task_id': str(task.pk),
+        'status': task.status,
+        'error': (
+            {
+                'code': task.error_code,
+                'message': task.error_message,
+                'hint': task.error_hint,
+            }
+            if task.error_code
+            else None
+        ),
+    }
+    if task.status != ArticleImportTask.Status.SUCCEEDED:
+        return _TaskResult(400, {'code': 400, 'message': task.error_message, 'data': data})
+    return _TaskResult(200, {'code': 200, 'message': '导入完成', 'data': data})
 
 
 def make_webp_cover(size: tuple[int, int] = (40, 30)) -> bytes:

@@ -21,14 +21,13 @@ from ninja.responses import Status
 
 from articles.archive import errors as archive_errors
 from articles.archive import export as archive_export
-from articles.archive import format as archive_format
-from articles.archive import importer as archive_importer
 from articles.archive import planner as archive_planner
 from articles.archive import staging as archive_staging
 from articles.archive import validate as archive_validate
 from articles.archive.limits import ensure_free_space
 from articles.archive.limits import limits as archive_limits
-from articles.archive.locks import enforce_min_interval, import_lock
+from articles.archive.locks import enforce_min_interval
+from articles.archive.report import package_info_dict, plan_report
 from common.net import client_ip
 from common.responses import success_response
 from common.schemas import ApiResponse, PageData
@@ -41,12 +40,20 @@ from .covers import CoverError, ProcessedCover
 from .covers import process_cover as process_cover_image
 from .defaults import DEFAULT_CATEGORY_SLUG, DEFAULT_TAG_SLUG, ensure_defaults
 from .images import InlineImageError, process_inline_image, store_inline_image
-from .models import ArchiveStaging, Article, Category, Tag, cover_upload_path, file_upload_path
+from .models import (
+    ArchiveStaging,
+    Article,
+    ArticleImportTask,
+    Category,
+    Tag,
+    cover_upload_path,
+    file_upload_path,
+)
 from .rendering import render_markdown
 from .schemas import (
     AdminArticleDetailOut,
-    ArchiveImportCommitIn,
     ArchiveImportPlanIn,
+    ArchiveImportTaskIn,
     ArticleCreateIn,
     ArticleDetailOut,
     ArticleOut,
@@ -56,6 +63,8 @@ from .schemas import (
     CategoryIn,
     CategoryOut,
     CategoryUpdateIn,
+    ImportTaskDetailOut,
+    ImportTaskOut,
     TagIn,
     TagOut,
     TagUpdateIn,
@@ -890,26 +899,6 @@ def _parse_ids(raw: str) -> list[int]:
     return out
 
 
-def _package_info_dict(info: archive_validate.PackageInfo) -> dict:
-    """报告里的包级信息（不透传原始异常文本）。"""
-    return {
-        'entries': info.entries_count,
-        'bytes_uncompressed': info.uncompressed_bytes,
-        'sha256': info.sha256,
-    }
-
-
-def _plan_report(plan: archive_planner.Plan, *, dry_run: bool, package: dict) -> dict:
-    """预检/执行统一的报告结构（同一 planner 产出）。"""
-    return {
-        'dry_run': dry_run,
-        'schema': archive_format.REPORT_SCHEMA,
-        'package': package,
-        'totals': plan.totals(),
-        'items': [item.to_dict() for item in plan.items],
-    }
-
-
 @admin_router.get('/archives/{ticket}/', auth=None)
 def download_archive(request: HttpRequest, ticket: str):
     """一次性票据下载（能力 URL：auth=None，凭票据本身授权）。
@@ -997,7 +986,7 @@ def stage_import(
         entries=info.entries_count,
         expires_at=timezone.now() + timedelta(seconds=lim.staging_ttl),
     )
-    report = _plan_report(plan, dry_run=True, package=_package_info_dict(info))
+    report = plan_report(plan, dry_run=True, package=package_info_dict(info))
     report['staged_id'] = str(staging.id)
     return success_response(report)
 
@@ -1031,16 +1020,23 @@ def plan_import(request: HttpRequest, payload: ArchiveImportPlanIn) -> dict:
     except archive_errors.ArchiveError as exc:
         raise _archive_error(exc) from None
 
-    report = _plan_report(plan, dry_run=True, package=_package_info_dict(info))
+    report = plan_report(plan, dry_run=True, package=package_info_dict(info))
     report['staged_id'] = str(staging.id)
     return success_response(report)
 
 
-@admin_router.post('/articles/import/commit/', response=ApiResponse[dict], auth=staff_auth)
-def commit_import(request: HttpRequest, payload: ArchiveImportCommitIn) -> dict:
-    """第二阶段：凭 staged_id 执行（**重新解析原包**，保证与预检一致）。"""
-    from .models import ArchiveTicket
+@admin_router.post(
+    '/articles/import/tasks/', response={202: ApiResponse[ImportTaskOut]}, auth=staff_auth
+)
+def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
+    """入队一个导入任务（**202**）：立刻返回任务号，真正的执行在 worker 进程里。
 
+    为什么改异步：``POST /commit/`` 是分钟级同步任务，前端 15s 超时会先于服务端
+    完成，用户看到「网络错误」而文章其实已写入。改成入队后 HTTP 只表达意图。
+
+    顺序纪律：先校验 → 限流 → **最后**原子消费 staged_id。被 429 挡掉时暂存包
+    必须仍可用，否则用户得为一次失败白传一个 1GB 的包。
+    """
     lim = archive_limits()
     if payload.strategy not in archive_planner.STRATEGIES:
         raise HttpError(400, 'strategy 取值非法')
@@ -1053,73 +1049,197 @@ def commit_import(request: HttpRequest, payload: ArchiveImportCommitIn) -> dict:
 
     now = timezone.now()
     try:
-        # 顺序很重要：先取锁与限流，**最后**才消费 staged_id。
-        # 否则被 429/409 挡掉时暂存包已被标记消费，用户得白传一次（含 1GB 包）。
-        with import_lock(lim):
-            enforce_min_interval(user.id, lim)
+        enforce_min_interval(user.id, lim)
+        # 「消费暂存包 + 建任务」必须同事务：只消费不建任务的话，暂存包就永久作废，
+        # 用户得重新上传一个可能 1GB 的包（冒烟时真踩到：迁移没跑，建任务失败，
+        # 暂存包被消费掉，用户手上啥也没了）。
+        with transaction.atomic():
+            # 入队时延长有效期：任务可能在队列里等前一个任务跑完，按原 TTL 会被 sweep 掉
+            expires_at = max(staging.expires_at, now + timedelta(seconds=lim.staging_ttl))
             claimed = ArchiveStaging.objects.filter(
                 pk=staging.pk, consumed_at__isnull=True, expires_at__gt=now
-            ).update(consumed_at=now, lease_until=now + timedelta(seconds=600))
+            ).update(
+                consumed_at=now,
+                expires_at=expires_at,
+                lease_until=expires_at,
+            )
             if claimed != 1:
                 raise HttpError(409, '该暂存包已被执行或已过期，请重新上传')
-
-            package_path = archive_staging.staging_archive_path(staging)
-            info = archive_validate.validate_package(package_path, limits_override=lim)
-            plan = archive_planner.build_plan(
-                info.entries, strategy=payload.strategy, user=user, lim=lim
-            )
-
-            rollback = None
-            if plan.has_overwrite:
-                affected = list(
-                    Article.objects.filter(pk__in=plan.touched_ids)
-                    .select_related('author', 'category')
-                    .prefetch_related('tags')
-                )
-                if affected:
-                    archive_staging.ensure_subdirs()
-                    out_path = (
-                        archive_staging.archive_root()
-                        / archive_staging.ROLLBACKS_DIR
-                        / f'{uuid.uuid4().hex}.zip'
-                    )
-                    archive_export.build_rollback_archive(affected, out_path, lim=lim)
-                    ticket = archive_staging.create_ticket(
-                        user=user,
-                        kind=ArchiveTicket.Kind.ROLLBACK,
-                        path=out_path,
-                        filename=f'rollback-{archive_export.export_filename()}',
-                        size=out_path.stat().st_size,
-                    )
-                    rollback = {
-                        'count': len(affected),
-                        'ticket': str(ticket.id),
-                        'download_url': f'/api/v1/admin/archives/{ticket.id}/',
-                        'expires_at': ticket.expires_at.isoformat(),
-                    }
-
-            options = archive_importer.ImportOptions(
+            task = ArticleImportTask.objects.create(
+                user=user,
+                staging=staging,
                 strategy=payload.strategy,
                 auto_create_taxonomy=payload.auto_create_taxonomy,
                 as_draft=payload.as_draft,
-                user=user,
+                package={
+                    'sha256': staging.sha256,
+                    'entries': staging.entries,
+                    'bytes': staging.bytes,
+                },
+                preview_totals=payload.preview_totals or {},
             )
-            report = archive_importer.execute_plan(
-                plan,
-                options=options,
-                package=_package_info_dict(info),
-                package_path=package_path,
-            )
-            data = report.to_dict(
-                dry_run=False, plan=plan, package=_package_info_dict(info)
-            )
-            data['rollback_package'] = rollback
     except archive_errors.ArchiveError as exc:
         raise _archive_error(exc) from None
-    finally:
-        ArchiveStaging.objects.filter(pk=staging.pk).update(lease_until=None)
 
-    return success_response(data)
+    ahead = ArticleImportTask.objects.filter(
+        status=ArticleImportTask.Status.QUEUED, created_at__lt=task.created_at
+    ).count()
+    data = _task_dict(task)
+    data['queue_position'] = ahead + 1
+    if ahead:
+        data['phase_label'] = f'排队中（前面还有 {ahead} 个任务）'
+    data['warning'] = _duplicate_package_warning(user, staging)
+    return Status(202, success_response(data, message='已加入队列', code=202))
+
+
+@admin_router.get(
+    '/articles/import/tasks/', response=ApiResponse[PageData[ImportTaskOut]], auth=staff_auth
+)
+def list_import_tasks(
+    request: HttpRequest,
+    status: str | None = None,
+    scope: str = Query('mine'),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict:
+    """任务列表。默认只看自己提交的；超管可 ``?scope=all`` 看全员。"""
+    user = cast(User, request.auth)  # type: ignore[attr-defined]
+    queryset = ArticleImportTask.objects.select_related('user', 'rollback_ticket')
+    if scope != 'all' or not user.is_superuser:
+        queryset = queryset.filter(user=user)
+    if status:
+        if status not in ArticleImportTask.Status.values:
+            raise HttpError(400, 'status 取值非法')
+        queryset = queryset.filter(status=status)
+    total = queryset.count()
+    offset = (page - 1) * page_size
+    items = [_task_dict(task) for task in queryset[offset : offset + page_size]]
+    return success_response({
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+    })
+
+
+@admin_router.get(
+    '/articles/import/tasks/{task_id}/',
+    response=ApiResponse[ImportTaskDetailOut],
+    auth=staff_auth,
+)
+def get_import_task(request: HttpRequest, task_id: str) -> dict:
+    """任务详情：带完整执行报告（items / plan_drift）与回滚包。"""
+    task = _get_visible_task(request, task_id)
+    return success_response(_task_dict(task, detail=True))
+
+
+@admin_router.post(
+    '/articles/import/tasks/{task_id}/cancel/',
+    response=ApiResponse[ImportTaskOut],
+    auth=staff_auth,
+)
+def cancel_import_task(request: HttpRequest, task_id: str) -> dict:
+    """取消**排队中**的任务。
+
+    执行中的不提供取消：半途停下会留下「已写入一部分」的状态，而回滚包的语义
+    是「还原到执行前」，中途取消会让两者对不上。跑到一半只能等它结束。
+    """
+    task = _get_visible_task(request, task_id)
+    now = timezone.now()
+    canceled = ArticleImportTask.objects.filter(
+        pk=task.pk, status=ArticleImportTask.Status.QUEUED
+    ).update(
+        status=ArticleImportTask.Status.CANCELED,
+        phase=ArticleImportTask.Phase.DONE,
+        phase_label='已取消',
+        finished_at=now,
+        error_code='canceled',
+        error_message='任务已取消，未执行任何导入',
+        error_hint='暂存包已作废，如需导入请重新上传',
+    )
+    if canceled != 1:
+        raise HttpError(409, '只有排队中的任务可以取消')
+    task.refresh_from_db()
+    return success_response(_task_dict(task), message='已取消')
+
+
+def _get_visible_task(request: HttpRequest, task_id: str) -> ArticleImportTask:
+    """取任务：staff 只能看自己的，超管可以看全部（与列表口径一致）。"""
+    if not archive_staging.is_uuid(task_id):
+        raise HttpError(404, '任务不存在')
+    user = cast(User, request.auth)  # type: ignore[attr-defined]
+    queryset = ArticleImportTask.objects.select_related('user', 'rollback_ticket')
+    task = queryset.filter(pk=task_id).first()
+    if task is None:
+        raise HttpError(404, '任务不存在')
+    if task.user_id != user.id and not user.is_superuser:
+        raise HttpError(403, '无权查看该任务')
+    return task
+
+
+def _duration_ms(task: ArticleImportTask) -> int | None:
+    if task.started_at is None:
+        return None
+    end = task.finished_at or timezone.now()
+    return max(0, int((end - task.started_at).total_seconds() * 1000))
+
+
+def _task_dict(task: ArticleImportTask, *, detail: bool = False) -> dict:
+    """任务序列化（列表瘦身：不带 report）。"""
+    data: dict = {
+        'id': str(task.id),
+        'status': task.status,
+        'phase': task.phase,
+        'phase_label': task.phase_label,
+        'strategy': task.strategy,
+        'auto_create_taxonomy': task.auto_create_taxonomy,
+        'as_draft': task.as_draft,
+        'progress': task.progress(),
+        'preview': task.preview_totals or {},
+        'package': task.package or {},
+        'created_at': task.created_at.isoformat(),
+        'started_at': task.started_at.isoformat() if task.started_at else None,
+        'finished_at': task.finished_at.isoformat() if task.finished_at else None,
+        'duration_ms': _duration_ms(task),
+        'username': task.user.username if task.user_id else '',
+        'error': None,
+        'rollback_package': (task.report or {}).get('rollback_package'),
+        'warning': None,
+    }
+    if task.error_code:
+        data['error'] = {
+            'code': task.error_code,
+            'message': task.error_message,
+            'hint': task.error_hint,
+        }
+    if detail:
+        data['report'] = task.report or {}
+    return data
+
+
+def _duplicate_package_warning(user: User, staging: ArchiveStaging) -> dict | None:
+    """同一个包重复导入的防呆提示（**不阻断**，前端弹二次确认）。
+
+    为什么只提示不拒绝：把大包拆成几个分片先后导入是合法用法，一刀切拒绝会堵死它。
+    """
+    previous = (
+        ArticleImportTask.objects.filter(
+            user=user,
+            package__sha256=staging.sha256,
+            status=ArticleImportTask.Status.SUCCEEDED,
+        )
+        .order_by('-created_at')
+        .first()
+    )
+    if previous is None:
+        return None
+    ended = previous.finished_at or previous.created_at
+    minutes = max(1, int((timezone.now() - ended).total_seconds() // 60))
+    sid = str(previous.id)[:8]
+    return {
+        'code': 'duplicate_package',
+        'message': f'该包在 {minutes} 分钟前已成功导入过（任务 {sid}），确认再导一次？',
+    }
 
 
 @admin_router.delete(

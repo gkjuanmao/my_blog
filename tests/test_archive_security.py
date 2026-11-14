@@ -14,7 +14,7 @@ from articles.models import ArchiveStaging, Article
 pytestmark = pytest.mark.django_db
 
 STAGE_URL = '/api/v1/admin/articles/import/stage/'
-COMMIT_URL = '/api/v1/admin/articles/import/commit/'
+TASKS_URL = '/api/v1/admin/articles/import/tasks/'
 
 
 def _upload(payload: bytes, name='pkg.zip'):
@@ -373,14 +373,14 @@ class TestConcurrencyAndLimits:
     def test_second_commit_is_conflict(self, api_client, staff_header, package, archive_settings):
         staged_id = self._staged_id(api_client, staff_header, package)
         first = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
-        assert first.status_code == 200
+        assert first.status_code == 202
         second = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
@@ -391,41 +391,54 @@ class TestConcurrencyAndLimits:
         staged_id = self._staged_id(api_client, staff_header, package)
         ArchiveStaging.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
         response = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
         assert response.status_code == 409
 
-    def test_import_lock_conflict(self, api_client, staff_header, package, archive_settings):
-        """别人正持锁 → 409（不是静默并发写入）。"""
+    def test_import_lock_busy_fails_task(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """别人正持锁时任务不能硬写：执行期拿到 lock_unavailable 失败。
+
+        异步化后锁从「入队时」挪到了「执行时」，所以这里验的是任务状态而不是 HTTP 码。
+        """
+        from articles.archive import tasks as archive_tasks
         from articles.archive.locks import import_lock
+        from articles.models import ArticleImportTask
 
         staged_id = self._staged_id(api_client, staff_header, package)
+        response = api_client.post(
+            TASKS_URL,
+            {'staged_id': staged_id, 'strategy': 'skip'},
+            content_type='application/json',
+            **staff_header,
+        )
+        assert response.status_code == 202
+        task_id = response.json()['data']['id']
+
         with import_lock():
-            response = api_client.post(
-                COMMIT_URL,
-                {'staged_id': staged_id, 'strategy': 'skip'},
-                content_type='application/json',
-                **staff_header,
-            )
-        assert response.status_code == 409
-        assert '导入任务' in response.json()['message']
+            archive_tasks.run_import_task(task_id, worker_id='test')
+
+        task = ArticleImportTask.objects.get(pk=task_id)
+        assert task.status == ArticleImportTask.Status.FAILED
+        assert task.error_code == 'lock_unavailable'
 
     def test_min_interval_rate_limit(self, api_client, staff_header, package, settings):
         settings.ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60
         first_id = self._staged_id(api_client, staff_header, package)
         second_id = self._staged_id(api_client, staff_header, package)
         ok = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': first_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
-        assert ok.status_code == 200
+        assert ok.status_code == 202
         blocked = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': second_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
@@ -439,16 +452,16 @@ class TestConcurrencyAndLimits:
         settings.ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60
         staged_id = self._staged_id(api_client, staff_header, package)
         first = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
-        assert first.status_code == 200
+        assert first.status_code == 202
 
         second_id = self._staged_id(api_client, staff_header, package)
         blocked = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': second_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
@@ -461,17 +474,24 @@ class TestConcurrencyAndLimits:
 
         cache.delete(INTERVAL_KEY.format(user_id=staff_user.id))
         retry = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': second_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
-        assert retry.status_code == 200
+        assert retry.status_code == 202
 
     def test_cache_failure_is_fail_closed(
         self, api_client, staff_header, package, archive_settings, monkeypatch
     ):
-        """缓存（prod 为 Redis）不可用时必须 503，而不是放行并发导入。"""
+        """缓存（prod 为 Redis）不可用时入队必须 503，而不是放行。
+
+        异步化后导入锁在**执行期**才取（失败会落到任务状态），但入队仍要过
+        「同一用户导入最小间隔」这道缓存闸；缓存挂了就必须 fail-closed，
+        否则多 worker 下限流被静默放大。
+        """
+        # 间隔置 0 会短路掉缓存访问，这里必须有间隔才验得到 fail-closed
+        archive_settings.ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60
         staged_id = self._staged_id(api_client, staff_header, package)
 
         def _boom(*args, **kwargs):
@@ -479,12 +499,14 @@ class TestConcurrencyAndLimits:
 
         monkeypatch.setattr(cache, 'add', _boom)
         response = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **staff_header,
         )
         assert response.status_code == 503
+        # 被 503 挡掉时暂存包必须仍可用（用户不必为一次失败重传大包）
+        assert ArchiveStaging.objects.get(pk=staged_id).consumed_at is None
 
     def test_staging_owner_is_enforced(
         self, api_client, staff_header, package, db, archive_settings
@@ -503,7 +525,7 @@ class TestConcurrencyAndLimits:
             'HTTP_AUTHORIZATION': f'Bearer {RefreshToken.for_user(other).access_token}'
         }
         response = api_client.post(
-            COMMIT_URL,
+            TASKS_URL,
             {'staged_id': staged_id, 'strategy': 'skip'},
             content_type='application/json',
             **other_header,
