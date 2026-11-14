@@ -19,6 +19,8 @@ const props = defineProps<{
   categories: Category[]
   tags: Tag[]
   loading?: boolean
+  /** 作者候选（只有超管会传；传入即显示「作者」下拉，用于纠正代传文章的归属） */
+  authorOptions?: Array<{ id: number; username: string }>
 }>()
 
 const emit = defineEmits<{ submit: [formData: FormData] }>()
@@ -42,6 +44,7 @@ const form = reactive({
   category_id: (props.initial?.category?.id as number | null) ?? null,
   tag_ids: (props.initial?.tags?.map((t) => t.id) ?? []) as number[],
   is_published: props.initial?.is_published ?? false,
+  author_id: (props.initial?.author_id as number | null) ?? null,
 })
 
 /** 内联校验：表单很短，直接给字段错误，不引入 el-form 的 label 结构 */
@@ -351,6 +354,10 @@ function buildFormData(): FormData {
   if (form.category_id != null) fd.append('category_id', String(form.category_id))
   fd.append('tag_ids', JSON.stringify(form.tag_ids))
   fd.append('is_published', form.is_published ? 'true' : 'false')
+  // 只有超管能看到作者下拉；不传就不动归属（后端也只在 author_id 变化时才校验权限）
+  if (props.authorOptions?.length && form.author_id != null) {
+    fd.append('author_id', String(form.author_id))
+  }
   if (coverFile.value) fd.append('cover', coverFile.value)
   if (attachmentFile.value) fd.append('attachment', attachmentFile.value)
   return fd
@@ -500,6 +507,19 @@ function formatSize(bytes?: number): string {
             @change="errors.publish_time = ''"
           />
           <span v-if="errors.publish_time" class="ad-error">{{ errors.publish_time }}</span>
+        </div>
+
+        <div v-if="authorOptions?.length" class="ad-aside-field">
+          <p class="ad-efield__label">作者</p>
+          <el-select v-model="form.author_id" placeholder="选择作者" style="width: 100%">
+            <el-option
+              v-for="u in authorOptions"
+              :key="u.id"
+              :label="u.username"
+              :value="u.id"
+            />
+          </el-select>
+          <p class="ad-efield__hint">改这里会把这篇稿子划给别人（仅超级管理员可见）</p>
         </div>
 
         <div class="ad-aside-field">

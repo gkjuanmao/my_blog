@@ -90,7 +90,7 @@ function toggleSort() {
           </td>
           <td class="ad-table__title">
             <NuxtLink :to="`/administrator/articles/edit/${row.id}`">{{ row.title }}</NuxtLink>
-            <span class="ad-table__slug">{{ row.slug }}</span>
+            <span class="ad-table__slug">{{ row.slug }} · {{ row.author_name }}</span>
           </td>
           <td>
             <span v-if="row.category" class="ad-chip">{{ row.category.name }}</span>

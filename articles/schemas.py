@@ -364,6 +364,13 @@ class BulkDeleteIn(Schema):
     ids: list[int]
 
 
+class BulkAuthorIn(Schema):
+    """批量转移文章归属的请求体（仅超管）。"""
+
+    ids: list[int]
+    author_id: int
+
+
 class ArticlePreviewIn(Schema):
     """编辑器预览请求体：只渲染正文，不落库。"""
 
@@ -382,6 +389,8 @@ class ArticleUpdateIn(Schema):
     category_id: int | None = None
     tag_ids: list[int] | None = None
     is_published: bool | None = None
+    #: 转移作者归属（**仅超管**：能改别人的稿不等于能把别人的稿划走）
+    author_id: int | None = None
 
     @field_validator('publish_time')
     @classmethod

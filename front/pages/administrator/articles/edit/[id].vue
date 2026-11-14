@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AdminArticleDetail, Category, Tag } from '~/types/api'
+import type { AdminArticleDetail, AdminUser, Category, Tag } from '~/types/api'
 
 definePageMeta({ layout: 'admin' })
 
@@ -10,6 +10,9 @@ const id = computed(() => Number(route.params.id))
 
 const article = ref<AdminArticleDetail | null>(null)
 const categories = ref<Category[]>([])
+/** 作者候选：只给超管拉（转移归属是超管专属操作，后端同样校验） */
+const authorOptions = ref<Array<{ id: number; username: string }>>([])
+const { isSuperuser, ensureMe } = useMe()
 const tags = ref<Tag[]>([])
 const loading = ref(true)
 const submitting = ref(false)
@@ -30,6 +33,22 @@ async function loadData() {
     article.value = artRes.data
     categories.value = catRes.data
     tags.value = tagRes.data
+
+    await ensureMe()
+    if (isSuperuser.value) {
+      // 只在超管下多取一次用户列表；失败不影响编辑（顶多不显示作者下拉）
+      try {
+        const usersRes = await useApi().get<{ items: AdminUser[] }>('/admin/users/', {
+          page_size: 100,
+          ordering: 'username',
+        })
+        authorOptions.value = usersRes.data.items
+          .filter(u => u.is_active)
+          .map(u => ({ id: u.id, username: u.username }))
+      } catch {
+        authorOptions.value = []
+      }
+    }
   } catch (e) {
     if (!guard.isLatest(seq)) return
     errorMsg.value = errorMessage(e, '文章不存在')
@@ -83,6 +102,7 @@ const meta = computed(() => {
       submit-label="保存修改"
       :categories="categories"
       :tags="tags"
+      :author-options="authorOptions"
       :loading="submitting"
       @submit="handleSubmit"
     />

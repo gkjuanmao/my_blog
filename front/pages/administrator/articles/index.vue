@@ -34,6 +34,9 @@ watch(finishedTick, () => {
 const selectedIds = ref<number[]>([])
 const importVisible = ref(false)
 const bulkDeleting = ref(false)
+/** 转移归属：超管专属（后端 /admin/articles/bulk-author/ 同样是超级管理员鉴权） */
+const transferVisible = ref(false)
+const { isSuperuser, ensureMe } = useMe()
 
 /** 抬头里的筛选说明：只说当前生效的条件 */
 const filterSummary = computed(() => {
@@ -181,6 +184,7 @@ watch([page, pageSize], fetchArticles)
 onMounted(() => {
   fetchCategories()
   fetchArticles()
+  void ensureMe()
 })
 </script>
 
@@ -228,6 +232,14 @@ onMounted(() => {
 
     <div v-if="selectedIds.length" class="ad-selbar">
       <p>已选 <b>{{ selectedIds.length }}</b> 篇</p>
+      <button
+        v-if="isSuperuser"
+        class="ad-link"
+        type="button"
+        @click="transferVisible = true"
+      >
+        转移归属
+      </button>
       <button
         class="ad-link ad-link--danger"
         type="button"
@@ -278,5 +290,11 @@ onMounted(() => {
     />
 
     <ArticleImportDialog v-model="importVisible" />
+    <AuthorTransferDialog
+      v-if="isSuperuser"
+      v-model="transferVisible"
+      :ids="selectedIds"
+      @done="clearSelection(); fetchArticles()"
+    />
   </div>
 </template>

@@ -88,6 +88,16 @@ class Article(models.Model):
         on_delete=models.CASCADE,
         verbose_name='作者',
     )
+    # 归属变更审计：谁在什么时候把这篇划给了别人（只有超管能改，见 articles/api.py）
+    author_changed_at = models.DateTimeField(null=True, blank=True, verbose_name='归属变更时间')
+    author_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='归属变更人',
+    )
     category = models.ForeignKey(
         Category,
         on_delete=models.SET_NULL,

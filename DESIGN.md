@@ -151,6 +151,11 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 ### 4.2 博客文章 (articles.Article)
 
+> **归属审计（2026-11 新增）**：`author_changed_at` / `author_changed_by`（FK→User, SET_NULL）。
+> 只有超管能改 `author`（见 5.3.3），改了才写这两列；「提交了与当前相同的 author_id」不算转移、不写审计。
+> 批量转移走 `QuerySet.update()`（不触发 post_save 信号），因此端点里显式调
+> `invalidate_public_cache()`，否则首页作者名最多旧 60s。
+
 | 字段 | 类型 | 约束 | 说明 |
 | :--- | :--- | :--- | :--- |
 | id | BigAutoField | PK | 主键 |
@@ -261,7 +266,9 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 
 | 方法 | 路径 | 认证 | 说明 |
 | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/admin/articles/` | ✅ | 文章列表 (含未发布草稿，分页，可按 `is_published`/`keyword`/`category_slug` 过滤，`ordering` 排序) |
+| GET | `/api/v1/admin/articles/` | ✅ | 文章列表 (含未发布草稿，分页，可按 `is_published`/`keyword`/`category_slug`/`author` 过滤，`ordering` 排序) |
+| PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章；`author_id` **仅超管**可改（归属转移） |
+| POST | `/api/v1/admin/articles/bulk-author/` | ✅🔒 | 批量转移归属（仅超管，单次 ≤200 篇） |
 | POST | `/api/v1/admin/articles/` | ✅ | 创建文章 (含封面+附件上传) |
 | PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章 |
 | DELETE | `/api/v1/admin/articles/{id}/` | ✅ | 按 id 删除文章 (含草稿) |
@@ -559,6 +566,12 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 ### 5.3.3 文章模块 · 管理接口 (admin)
 
 > 本小节所有接口均需认证 ✅：`Authorization: Bearer <access_token>`；未认证返回 401。
+
+**归属转移（2026-11 新增）**：`PUT /admin/articles/{id}/` 的 `author_id` 与
+`POST /admin/articles/bulk-author/` 都属于「能动别人东西」的操作，鉴权抬到 **超管**
+（`SuperUserJWTAuth`，staff 一律 403）。目标作者必须是**启用中**的用户，否则 400。
+场景是代传：导入的文章先挂在代传者名下，事后划回真正的作者；单篇在编辑台的「作者」下拉里改
+（仅超管可见），批量在文章列表勾选后点「转移归属」。
 
 #### GET `/api/v1/admin/articles/` (管理文章列表)
 

@@ -32,10 +32,10 @@ from articles.archive.report import package_info_dict, plan_report
 from common.net import client_ip
 from common.responses import success_response
 from common.schemas import ApiResponse, PageData
-from users.authentication import StaffJWTAuth
+from users.authentication import StaffJWTAuth, SuperUserJWTAuth
 from users.models import User
 
-from .caching import cached_public
+from .caching import cached_public, invalidate_public_cache
 from .convert import ConvertError, html_to_markdown
 from .covers import CoverError, ProcessedCover
 from .covers import process_cover as process_cover_image
@@ -62,6 +62,7 @@ from .schemas import (
     ArticleUpdateIn,
     AuthorListOut,
     AuthorOut,
+    BulkAuthorIn,
     BulkDeleteIn,
     CategoryIn,
     CategoryOut,
@@ -92,6 +93,8 @@ BULK_DELETE_MAX_IDS = 200
 # 管理端点统一要求 staff：导出/导入/传图/HTML 导入与文章、分类、标签的 CRUD 同权。
 # （本项目无公开注册，账号只能在 admin 创建；管理端点不应允许普通登录用户越权管理。）
 staff_auth = StaffJWTAuth()
+# 归属转移是「能动别人东西」的操作，门槛抬到超管（同 /admin/users/**）
+superuser_auth = SuperUserJWTAuth()
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +388,7 @@ def list_admin_articles(
     is_published: bool | None = Query(None, description='按发布状态过滤'),
     keyword: str = Query('', description='标题关键词搜索'),
     category_slug: str = Query('', description='按分类别名过滤'),
+    author: int | None = Query(None, ge=1, description='按作者用户 id 过滤'),
     ordering: str = Query(
         '',
         description='排序字段：publish_time 升序 / -publish_time 降序；不传用默认排序',
@@ -398,6 +402,8 @@ def list_admin_articles(
         qs = qs.filter(title__icontains=keyword)
     if category_slug:
         qs = qs.filter(category__slug=category_slug)
+    if author is not None:
+        qs = qs.filter(author_id=author)
     if ordering:
         field = ordering.lstrip('-')
         if field not in ADMIN_ARTICLE_ORDERING_FIELDS:
@@ -524,6 +530,56 @@ def bulk_delete_articles(request: HttpRequest, payload: BulkDeleteIn) -> dict:
     return success_response({
         'requested': len(unique_ids),
         'deleted': len(existing),
+        'not_found': missing,
+    })
+
+
+@admin_router.post('/articles/bulk-author/', response=ApiResponse[dict], auth=superuser_auth)
+def bulk_transfer_author(request: HttpRequest, payload: BulkAuthorIn) -> dict:
+    """批量转移文章归属（**仅超管**）。
+
+    为什么需要它：代传场景下，导入的文章会挂在代传者名下，事后要一次性划回正确的
+    作者。逐篇 PUT 既慢又容易漏，且每次都触发一次封面/附件的表单往返。
+
+    - 用 ``update()`` 而非逐篇 ``save()``：这里只改 author 与审计两列，
+      不需要触发 FileField/信号（封面附件与作者无关），也避免 N 次 UPDATE；
+      但 ``updated_at`` 是 auto_now，必须在 update 里显式写。
+    - 公开缓存由 ``articles/signals.py`` 的 post_save 触发——**QuerySet.update()
+      不触发信号**，所以这里显式失效一次。
+    - 幂等友好：已不存在的 id 不算错误，单独在 ``not_found`` 里回显。
+
+    ⚠️ 本路由必须注册在 ``/articles/{article_id}/`` 之前（同 bulk-delete / preview）。
+    """
+    ids = payload.ids
+    if not ids:
+        raise HttpError(400, 'ids 不能为空')
+    if len(ids) > BULK_DELETE_MAX_IDS:
+        raise HttpError(400, f'单次最多转移 {BULK_DELETE_MAX_IDS} 篇')
+
+    current_user = cast(User, request.auth)  # type: ignore[attr-defined]
+    target = User.objects.filter(pk=payload.author_id, is_active=True).first()
+    if target is None:
+        raise HttpError(400, '目标作者不存在或已停用')
+
+    unique_ids = sorted({int(value) for value in ids})
+    existing = list(Article.objects.filter(pk__in=unique_ids).values_list('id', flat=True))
+    missing = [value for value in unique_ids if value not in set(existing)]
+    moved = 0
+    if existing:
+        with transaction.atomic():
+            moved = Article.objects.filter(pk__in=existing).update(
+                author=target,
+                author_changed_at=timezone.now(),
+                author_changed_by=current_user,
+                updated_at=timezone.now(),
+            )
+        invalidate_public_cache()
+
+    return success_response({
+        'requested': len(unique_ids),
+        'moved': moved,
+        'author_id': target.id,
+        'author_name': target.username,
         'not_found': missing,
     })
 
@@ -742,6 +798,19 @@ def update_article(
             raise HttpError(400, '分类不存在')
         article.category = category
         update_fields.add('category')
+
+    # 归属转移只对超管开放：staff 能改别人的稿，不等于能把别人的稿划到自己名下
+    if payload.author_id is not None and payload.author_id != article.author_id:
+        current_user = cast(User, request.auth)  # type: ignore[attr-defined]
+        if not current_user.is_superuser:
+            raise HttpError(403, '只有超级管理员可以转移文章归属')
+        new_author = User.objects.filter(pk=payload.author_id, is_active=True).first()
+        if new_author is None:
+            raise HttpError(400, '目标作者不存在或已停用')
+        article.author = new_author
+        article.author_changed_at = timezone.now()
+        article.author_changed_by = current_user
+        update_fields.update({'author', 'author_changed_at', 'author_changed_by'})
 
     tag_ids: list[int] | None = None
     if payload.tag_ids is not None:
