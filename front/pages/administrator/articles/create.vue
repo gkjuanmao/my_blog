@@ -31,7 +31,7 @@ async function handleSubmit(fd: FormData) {
 </script>
 
 <template>
-  <div>
+  <div class="ad-editor-page">
     <AdminMasthead
       eyebrow="稿件"
       eyebrow-en="New entry"

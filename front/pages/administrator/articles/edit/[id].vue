@@ -80,7 +80,7 @@ const meta = computed(() => {
 </script>
 
 <template>
-  <div>
+  <div class="ad-editor-page">
     <AdminMasthead eyebrow="稿件" eyebrow-en="Manuscript" title="编辑文章" :meta="meta">
       <template #actions>
         <NuxtLink class="ad-btn ad-btn--ghost" to="/administrator/articles">返回列表</NuxtLink>
