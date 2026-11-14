@@ -1,0 +1,17 @@
+/** 后台图标名（与 components/admin/AdminIcon.vue 的 ICONS 一一对应） */
+export type AdminIconName =
+  | 'grid'
+  | 'doc'
+  | 'folder'
+  | 'hash'
+  | 'clock'
+  | 'users'
+  | 'search'
+  | 'plus'
+  | 'menu'
+  | 'ext'
+  | 'key'
+  | 'out'
+  | 'close'
+  | 'download'
+  | 'refresh'

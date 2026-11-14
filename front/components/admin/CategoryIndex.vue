@@ -3,7 +3,7 @@
  * 分类（栏目）台账：左侧带印章的索引列 + 右侧常驻设置面板。
  *
  * 数据层仍由 `useCrudTable` 负责（列表 / 新增 / 更新 / 删除），
- * 本组件只管面板状态与表单校验。
+ * 本组件只管面板状态与表单校验。索引列里点线引线把栏目与稿件数连起来（见 CSS）。
  */
 import type { CrudRow } from '~/composables/useCrudTable'
 
@@ -27,6 +27,9 @@ const form = reactive({ name: '', slug: '', description: '' })
 
 const panelTitle = computed(() => (editing.value ? editing.value.name : '新建栏目'))
 const panelEyebrow = computed(() => (editing.value ? '编辑栏目' : '栏目设置'))
+const panelHint = computed(() =>
+  editing.value ? `${editing.value.slug} · ${props.counts[editing.value.id] ?? 0} 篇稿件` : '留空 slug 时按名称生成拼音',
+)
 const emptyCount = computed(() => props.list.filter(row => (props.counts[row.id] ?? 0) === 0).length)
 
 function resetForm() {
@@ -93,32 +96,27 @@ async function handleDelete(row: CrudRow) {
 </script>
 
 <template>
-  <div class="ad-columns" style="margin-top: 28px">
-    <section class="ad-block" aria-labelledby="ad-catlist-title">
-      <div class="ad-block__head">
-        <h2 id="ad-catlist-title">全部栏目</h2>
-        <span class="ad-block__count">{{ list.length }} 个</span>
-      </div>
-
-      <div v-if="loading" class="ad-loading" style="padding: 40px 0; color: var(--hp-ink-3)">
-        正在加载栏目…
-      </div>
-      <p v-else-if="!list.length" class="ad-block__note">
+  <div class="ad-split ad-split--wide">
+    <div class="ad-split__col ad-split__col--flush">
+      <p v-if="loading" class="ad-block__note" style="padding: 20px 0">正在加载栏目…</p>
+      <p v-else-if="!list.length" class="ad-block__note" style="padding: 20px 0">
         还没有栏目 —— 在右侧新建第一个，稿件才有地方归档。
       </p>
-      <ul v-else class="ad-catlist">
-        <li v-for="row in list" :key="row.id" class="ad-cat-row">
+      <template v-else>
+        <div v-for="row in list" :key="row.id" class="ad-catitem">
           <span class="ad-seal" aria-hidden="true">{{ row.name.charAt(0) }}</span>
-          <div>
-            <p class="ad-cat-row__name">
+          <div class="ad-catitem__body">
+            <p class="ad-catitem__name">
               {{ row.name }}
               <span v-if="row.slug === DEFAULT_SLUG" class="ad-chip ad-chip--sys">系统</span>
             </p>
-            <p class="ad-cat-row__slug">{{ row.slug }}</p>
-            <p class="ad-cat-row__desc">{{ row.description || '暂无描述' }}</p>
+            <p class="ad-catitem__slug">{{ row.slug }}</p>
+            <p class="ad-catitem__desc">{{ row.description || '暂无描述' }}</p>
           </div>
-          <p class="ad-cat-row__count"><b>{{ counts[row.id] ?? 0 }}</b><span>篇</span></p>
-          <div class="ad-cat-row__acts">
+          <p class="ad-catitem__count">
+            {{ counts[row.id] ?? 0 }}<small>篇</small>
+          </p>
+          <div class="ad-catitem__acts">
             <button class="ad-link" type="button" @click="openEdit(row)">编辑</button>
             <button
               v-if="row.slug !== DEFAULT_SLUG"
@@ -128,20 +126,19 @@ async function handleDelete(row: CrudRow) {
             >
               删除
             </button>
-            <span v-else class="is-locked">不可删除</span>
+            <span v-else class="ad-hint">不可删除</span>
           </div>
-        </li>
-      </ul>
-      <p v-if="!loading && list.length" class="ad-block__note">
-        {{ emptyCount ? `${emptyCount} 个栏目还没有稿件。` : '每个栏目都有稿件了。' }}
-      </p>
-    </section>
+        </div>
+        <p class="ad-block__note">
+          {{ emptyCount ? `${emptyCount} 个栏目还没有稿件。` : '每个栏目都有稿件了。' }}
+        </p>
+      </template>
+    </div>
 
-    <aside class="ad-panel" aria-labelledby="ad-cat-panel-title">
-      <div class="ad-panel__head">
-        <p class="ad-panel__eyebrow">{{ panelEyebrow }}</p>
-        <h2 id="ad-cat-panel-title" class="ad-panel__title">{{ panelTitle }}</h2>
-      </div>
+    <aside class="ad-split__aside ad-split__aside--flush">
+      <p class="ad-panel__eyebrow">{{ panelEyebrow }}</p>
+      <h2 class="ad-panel__title">{{ panelTitle }}</h2>
+      <p class="ad-panel__hint">{{ panelHint }}</p>
 
       <form class="ad-form" @submit.prevent="handleSave">
         <label class="ad-field">
@@ -161,15 +158,27 @@ async function handleDelete(row: CrudRow) {
           <button class="ad-btn ad-btn--primary" type="submit" :disabled="saving">
             {{ saving ? '保存中…' : '保存栏目' }}
           </button>
-          <button v-if="editing" class="ad-btn ad-btn--text" type="button" @click="resetForm">
+          <button v-if="editing" class="ad-btn ad-btn--ghost" type="button" @click="resetForm">
             取消编辑
           </button>
         </div>
       </form>
 
-      <p class="ad-form__note">
+      <div v-if="editing && editing.slug !== DEFAULT_SLUG" class="ad-panel__danger">
+        <p>
+          删除后，这个栏目下的 {{ counts[editing.id] ?? 0 }} 篇文章会回到「默认分类」，
+          文章本身不会丢失。
+        </p>
+        <div class="ad-form__acts" style="margin-top: 10px">
+          <button class="ad-btn ad-btn--danger ad-btn--sm" type="button" @click="handleDelete(editing)">
+            删除栏目
+          </button>
+        </div>
+      </div>
+
+      <p class="ad-panel__note">
         删除栏目不会删除文章；栏目下的文章会回到「默认分类」。<br>
-        Slug 用于前台地址，留空时按名称生成拼音。
+        Slug 用于前台地址，留空时按名称生成拼音；改动会影响前台链接，慎改。
       </p>
     </aside>
   </div>

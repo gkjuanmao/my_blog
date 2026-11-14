@@ -26,13 +26,15 @@ const emit = defineEmits<{
       class="ad-mcard"
       :class="{ 'is-selected': selectedIds.includes(row.id) }"
     >
-      <el-checkbox
-        :model-value="selectedIds.includes(row.id)"
+      <input
+        type="checkbox"
+        class="ad-check"
+        :checked="selectedIds.includes(row.id)"
         :aria-label="`选择《${row.title}》`"
         @change="emit('toggleSelect', row.id)"
-      />
+      >
       <img v-if="row.cover_image_url" :src="row.cover_image_url" alt="">
-      <span v-else />
+      <span v-else aria-hidden="true" />
       <div>
         <p class="ad-mcard__title">{{ row.title }}</p>
         <p class="ad-mcard__meta">

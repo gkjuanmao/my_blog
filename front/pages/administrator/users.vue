@@ -82,68 +82,53 @@ function onSearch() {
 </script>
 
 <template>
-  <div>
+  <div class="ad-page">
     <AdminMasthead eyebrow="用户" eyebrow-en="Accounts" title="用户管理" :meta="meta">
       <template #actions>
         <button class="ad-btn ad-btn--ghost" type="button" :disabled="loading" @click="fetchUsers">
-          刷新
+          <AdminIcon name="refresh" :size="14" />刷新
         </button>
       </template>
     </AdminMasthead>
 
-    <div class="ad-filters">
-      <label class="ad-field" style="max-width: 260px">
-        <span>搜索</span>
+    <div class="ad-toolbar">
+      <label class="ad-tool" style="width: 220px">
+        <AdminIcon name="search" :size="14" />
         <input
           v-model="keyword"
           type="search"
           placeholder="用户名或邮箱"
+          aria-label="搜索账号"
           @keyup.enter="onSearch"
         >
       </label>
+
       <div class="ad-segs" role="group" aria-label="按启用状态筛选">
-        <button
-          class="ad-seg"
-          type="button"
-          :aria-pressed="activeFilter === 'all'"
-          @click="changeFilter('all')"
-        >
+        <button class="ad-seg" type="button" :aria-pressed="activeFilter === 'all'" @click="changeFilter('all')">
           全部
         </button>
-        <button
-          class="ad-seg"
-          type="button"
-          :aria-pressed="activeFilter === 'yes'"
-          @click="changeFilter('yes')"
-        >
+        <button class="ad-seg" type="button" :aria-pressed="activeFilter === 'yes'" @click="changeFilter('yes')">
           启用中
         </button>
-        <button
-          class="ad-seg"
-          type="button"
-          :aria-pressed="activeFilter === 'no'"
-          @click="changeFilter('no')"
-        >
+        <button class="ad-seg" type="button" :aria-pressed="activeFilter === 'no'" @click="changeFilter('no')">
           已停用
         </button>
       </div>
-      <div class="ad-filters__acts">
-        <button class="ad-btn ad-btn--sm" type="button" @click="onSearch">查询</button>
-      </div>
+
+      <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" @click="onSearch">查询</button>
+
+      <span class="ad-toolbar__spacer" />
+      <span class="ad-toolbar__note">在线判定：最近 15 分钟有操作 · 每 30 秒刷新</span>
     </div>
 
-    <p v-if="errorMsg" class="ad-error" role="alert" style="margin-top: 20px">
-      {{ errorMsg }}
-    </p>
+    <div v-if="errorMsg" class="ad-void" style="flex: 1">
+      <p class="ad-error" role="alert">{{ errorMsg }}</p>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" @click="fetchUsers">重试</button>
+    </div>
 
-    <UserDirectory
-      v-if="!errorMsg"
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :users="users"
-      :total="total"
-      :loading="loading"
-      @changed="fetchUsers"
-    />
+    <template v-else>
+      <UserDirectory :users="users" :total="total" :loading="loading" @changed="fetchUsers" />
+      <AdminPager v-model:page="page" v-model:page-size="pageSize" :total="total" unit="个" />
+    </template>
   </div>
 </template>

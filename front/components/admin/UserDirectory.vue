@@ -19,14 +19,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changed: [] }>()
 
-const page = defineModel<number>('page', { required: true })
-const pageSize = defineModel<number>('pageSize', { required: true })
-
 const api = useApi()
 
 type Role = 'viewer' | 'editor' | 'owner'
 
-const ROLE_OPTIONS: Array<{ value: Role, label: string, hint: string }> = [
+const ROLE_OPTIONS: Array<{ value: Role; label: string; hint: string }> = [
   { value: 'viewer', label: '普通用户', hint: '只能登录，看不到管理台' },
   { value: 'editor', label: '编辑', hint: '可管理文章、分类、标签' },
   { value: 'owner', label: '超级管理员', hint: '可管理账号（等同于你）' },
@@ -184,30 +181,24 @@ function handleTransferAndDelete(user: AdminUser) {
 </script>
 
 <template>
-  <div class="ad-columns" style="margin-top: 28px">
-    <section class="ad-block" aria-labelledby="ad-users-title">
-      <div class="ad-block__head">
-        <h2 id="ad-users-title">全部账号</h2>
-        <span class="ad-block__count">{{ total }} 个</span>
-      </div>
-
-      <div
-        class="ad-tablewrap"
-        :class="{ 'ad-loading': loading }"
-        :aria-busy="loading ? 'true' : 'false'"
-      >
-        <table class="ad-table">
+  <div class="ad-split ad-split--wide">
+    <div
+      class="ad-split__col ad-split__col--flush"
+      style="display: flex; flex-direction: column; min-height: 0"
+    >
+      <div class="ad-tablewrap" style="padding: 0" :class="{ 'ad-loading': loading }" :aria-busy="loading ? 'true' : 'false'">
+        <table class="ad-table ad-table--acts">
           <caption class="ad-sr">
-            用户列表，共 {{ total }} 个账号，当前第 {{ page }} 页
+            用户列表，共 {{ total }} 个账号
           </caption>
           <thead>
             <tr>
               <th>账号</th>
-              <th>角色</th>
-              <th>状态</th>
-              <th>最近活跃</th>
-              <th class="num">稿件</th>
-              <th class="ad-table__acts">操作</th>
+              <th style="width: 106px">角色</th>
+              <th style="width: 92px">状态</th>
+              <th class="ad-col-md" style="width: 110px">最近活跃</th>
+              <th class="num r" style="width: 62px">稿件</th>
+              <th style="width: 72px"><span class="ad-sr">操作</span></th>
             </tr>
           </thead>
           <tbody>
@@ -216,25 +207,34 @@ function handleTransferAndDelete(user: AdminUser) {
               :key="user.id"
               :class="{ 'is-selected': selectedId === user.id }"
             >
-              <td class="ad-table__title">
-                {{ user.username }}
-                <span class="ad-table__slug">{{ user.email || '未填邮箱' }}</span>
+              <td>
+                <div class="ad-u-cell">
+                  <span class="ad-u-avatar" :class="{ 'is-on': user.online && user.is_active }" aria-hidden="true">
+                    {{ user.username.charAt(0) }}
+                  </span>
+                  <span style="min-width: 0">
+                    <span class="ad-u-name">{{ user.username }}</span>
+                    <span class="ad-u-mail">{{ user.email || '未填邮箱' }}</span>
+                  </span>
+                </div>
               </td>
               <td>
-                <span v-if="user.is_superuser" class="ad-chip">超级管理员</span>
-                <span v-else>{{ roleLabel(user) }}</span>
+                <span :class="{ 'ad-role--pine': user.is_superuser }">{{ roleLabel(user) }}</span>
               </td>
               <td>
                 <span
                   class="ad-status"
-                  :class="{ 'ad-status--draft': !user.online || !user.is_active }"
+                  :class="{
+                    'ad-status--off': user.is_active && !user.online,
+                    'ad-status--stop': !user.is_active,
+                  }"
                 >
                   <i aria-hidden="true" />
                   {{ !user.is_active ? '已停用' : user.online ? '在线' : '离线' }}
                 </span>
               </td>
-              <td class="ad-table__date">{{ formatRelativeTime(user.last_seen_at) }}</td>
-              <td class="num">{{ user.article_count }}</td>
+              <td class="ad-table__date ad-col-md">{{ formatRelativeTime(user.last_seen_at) }}</td>
+              <td class="num r">{{ user.article_count }}</td>
               <td class="ad-table__acts">
                 <button class="ad-link" type="button" @click.stop="select(user.id)">
                   {{ selectedId === user.id ? '收起' : '管理' }}
@@ -252,24 +252,28 @@ function handleTransferAndDelete(user: AdminUser) {
         </table>
       </div>
 
-      <AdminPager v-model:page="page" v-model:page-size="pageSize" :total="total" />
-    </section>
+      <div v-if="users.length" class="ad-void">
+        <p>账号按最近活跃排序，每 30 秒自动刷新。</p>
+        <span>本项目没有公开注册入口，账号都在右侧创建</span>
+      </div>
+    </div>
 
-    <aside class="ad-panel" aria-labelledby="ad-user-panel-title">
+    <aside class="ad-split__aside ad-split__aside--flush">
       <template v-if="selected">
-        <div class="ad-panel__head">
-          <p class="ad-panel__eyebrow">账号设置</p>
-          <h2 id="ad-user-panel-title" class="ad-panel__title">{{ selected.username }}</h2>
-        </div>
+        <p class="ad-panel__eyebrow">账号设置</p>
+        <h2 class="ad-panel__title">{{ selected.username }}</h2>
+        <p class="ad-panel__hint">
+          {{ roleLabel(selected) }} · {{ !selected.is_active ? '已停用' : selected.online ? '在线' : '离线' }}
+        </p>
 
-        <div class="ad-user-facts">
-          <p>角色：{{ roleLabel(selected) }}</p>
-          <p>注册：{{ formatDateCompact(selected.date_joined) }}</p>
-          <p>最近登录：{{ formatRelativeTime(selected.last_login) }}</p>
-          <p>名下稿件：{{ selected.article_count }} 篇</p>
-        </div>
+        <dl class="ad-facts">
+          <div><dt>注册时间</dt><dd>{{ formatDateCompact(selected.date_joined) }}</dd></div>
+          <div><dt>最近登录</dt><dd>{{ formatRelativeTime(selected.last_login) }}</dd></div>
+          <div><dt>最近活跃</dt><dd>{{ formatRelativeTime(selected.last_seen_at) }}</dd></div>
+          <div><dt>名下稿件</dt><dd>{{ selected.article_count }} 篇</dd></div>
+        </dl>
 
-        <form class="ad-form" @submit.prevent="handleResetPassword">
+        <form class="ad-form" style="margin-top: 18px" @submit.prevent="handleResetPassword">
           <label class="ad-field">
             <span>重置密码</span>
             <input
@@ -280,6 +284,7 @@ function handleTransferAndDelete(user: AdminUser) {
               @input="resetError = ''"
             >
             <span v-if="resetError" class="ad-error">{{ resetError }}</span>
+            <span class="ad-hint">保存后该账号已签发的令牌立即失效</span>
           </label>
           <div class="ad-form__acts">
             <button class="ad-btn ad-btn--primary" type="submit" :disabled="resetting || busy">
@@ -289,11 +294,11 @@ function handleTransferAndDelete(user: AdminUser) {
         </form>
 
         <div v-if="selected.article_count" class="ad-panel__danger">
-          <p class="ad-form__note" style="margin-top: 0; padding-top: 0; border-top: 0">
-            该账号名下有 {{ selected.article_count }} 篇稿件。直接删除会连带删除这些文章，
-            建议先把稿件转给其他人。
+          <p>
+            该账号名下有 {{ selected.article_count }} 篇稿件。直接把稿件转给其他人再删除，
+            比强制删掉更安全。
           </p>
-          <label class="ad-field">
+          <label class="ad-field" style="margin-top: 10px">
             <span>转移稿件给</span>
             <select v-model="transferTarget">
               <option :value="null">选择账号</option>
@@ -302,9 +307,9 @@ function handleTransferAndDelete(user: AdminUser) {
               </option>
             </select>
           </label>
-          <div class="ad-form__acts">
+          <div class="ad-form__acts" style="margin-top: 10px">
             <button
-              class="ad-btn ad-btn--danger"
+              class="ad-btn ad-btn--danger ad-btn--sm"
               type="button"
               :disabled="busy"
               @click="handleTransferAndDelete(selected)"
@@ -314,30 +319,32 @@ function handleTransferAndDelete(user: AdminUser) {
           </div>
         </div>
 
-        <div class="ad-panel__danger">
-          <button
-            class="ad-btn ad-btn--danger"
-            type="button"
-            :disabled="busy"
-            @click="handleDelete(selected)"
-          >
-            删除该账号
-          </button>
+        <div v-if="!selected.article_count" class="ad-panel__danger">
+          <p>删除后无法恢复，该账号的登录状态会立即失效。</p>
+          <div class="ad-form__acts" style="margin-top: 10px">
+            <button
+              class="ad-btn ad-btn--danger ad-btn--sm"
+              type="button"
+              :disabled="busy"
+              @click="handleDelete(selected)"
+            >
+              删除该账号
+            </button>
+          </div>
         </div>
 
-        <p class="ad-form__note">
+        <p class="ad-panel__note">
           重置密码后，对方已签发的令牌立即失效，需要用新密码重新登录。<br>
           删除或停用当前登录的账号会被服务端拒绝 —— 这是防止把自己锁在门外。
         </p>
       </template>
 
       <template v-else>
-        <div class="ad-panel__head">
-          <p class="ad-panel__eyebrow">新建账号</p>
-          <h2 id="ad-user-panel-title" class="ad-panel__title">开一个新账号</h2>
-        </div>
+        <p class="ad-panel__eyebrow">新建账号</p>
+        <h2 class="ad-panel__title">开一个新账号</h2>
+        <p class="ad-panel__hint">本项目没有公开注册，账号只能在这里创建</p>
 
-        <form class="ad-form" @submit.prevent="handleCreate">
+        <form class="ad-form" style="margin-top: 16px" @submit.prevent="handleCreate">
           <label class="ad-field">
             <span>用户名</span>
             <input
@@ -375,10 +382,8 @@ function handleTransferAndDelete(user: AdminUser) {
                 {{ option.label }}
               </option>
             </select>
+            <span class="ad-hint">{{ ROLE_OPTIONS.find(option => option.value === form.role)?.hint }}</span>
           </label>
-          <p class="ad-hint" style="margin-top: -6px">
-            {{ ROLE_OPTIONS.find(option => option.value === form.role)?.hint }}
-          </p>
           <span v-if="createError" class="ad-error">{{ createError }}</span>
           <div class="ad-form__acts">
             <button class="ad-btn ad-btn--primary" type="submit" :disabled="creating">
@@ -387,8 +392,7 @@ function handleTransferAndDelete(user: AdminUser) {
           </div>
         </form>
 
-        <p class="ad-form__note">
-          本项目没有公开注册，账号只能在这里创建。<br>
+        <p class="ad-panel__note">
           选中左侧任一账号可重置密码、转移稿件或删除。
         </p>
       </template>

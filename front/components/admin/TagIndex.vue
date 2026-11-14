@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
- * 标签台账：索引卡网格（名称 + slug 直接可读）+ 右侧编辑面板。
- * 数据层仍由 `useCrudTable` 负责。
+ * 标签台账：1px 缝的索引卡网格（名称 + slug + 使用数）+ 右侧编辑面板。
+ * 数据层仍由 `useCrudTable` 负责；筛选与排序在页面里做（工具带在页面级）。
  */
 import type { CrudRow } from '~/composables/useCrudTable'
 
 const props = defineProps<{
   list: CrudRow[]
   loading: boolean
+  /** 每条形如挂在多少篇文章上（页面用文章列表统计） */
+  counts: Record<number, number>
   submit: (payload: Record<string, string>, editing: CrudRow | null) => Promise<void>
   remove: (row: CrudRow) => Promise<void>
 }>()
@@ -20,23 +22,17 @@ const selected = ref<CrudRow | null>(null)
 const creating = ref(false)
 const saving = ref(false)
 const nameError = ref('')
-const query = ref('')
 const form = reactive({ name: '', slug: '' })
-
-const filtered = computed(() => {
-  const word = query.value.trim().toLowerCase()
-  if (!word) return props.list
-  return props.list.filter(
-    row =>
-      row.name.toLowerCase().includes(word) || row.slug.toLowerCase().includes(word),
-  )
-})
 
 const panelTitle = computed(() => {
   if (creating.value) return '新建标签'
   return selected.value?.name ?? '新标签'
 })
-const panelEyebrow = computed(() => (creating.value ? '标签设置' : '标签设置'))
+const panelHint = computed(() => {
+  if (creating.value) return '留空 slug 时按名称生成拼音'
+  if (!selected.value) return '先在左侧点一格'
+  return `${selected.value.slug} · 挂在 ${props.counts[selected.value.id] ?? 0} 篇文章上`
+})
 
 /** 列表加载完成后默认选中第一条，面板不至于空着 */
 watch(
@@ -120,87 +116,113 @@ async function handleDelete() {
     ElMessage.error(errorMessage(e, '删除失败'))
   }
 }
+
+/* 索引卡铺满整栏：按当前列数补齐末行空格子，否则末尾会露出一条灰绿空带 */
+const gridRef = ref<HTMLElement | null>(null)
+const fillers = ref(0)
+let observer: ResizeObserver | null = null
+
+function measure() {
+  const el = gridRef.value
+  if (!el) return
+  const columns = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length
+  const cells = props.list.length + 1 // + 「新建标签」那一格
+  fillers.value = columns > 1 ? (columns - (cells % columns)) % columns : 0
+}
+
+onMounted(() => {
+  measure()
+  if (gridRef.value && typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(measure)
+    observer.observe(gridRef.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+})
+
+watch(
+  () => props.list.length,
+  () => nextTick(measure),
+)
 </script>
 
 <template>
-  <div>
-    <div class="ad-toolbar" style="margin-bottom: 22px">
-      <label class="ad-field" style="max-width: 300px; flex: 1">
-        <span>搜索标签</span>
-        <input v-model="query" type="search" placeholder="输入名称或 slug…" autocomplete="off">
-      </label>
-      <span class="ad-toolbar__spacer" />
+  <div class="ad-split ad-split--wide">
+    <div
+      class="ad-split__col ad-split__col--flush"
+      style="display: flex; flex-direction: column; min-height: 0"
+    >
+      <p v-if="loading" class="ad-block__note" style="padding: 20px 0">正在加载标签…</p>
+      <p v-else-if="!list.length" class="ad-block__note" style="padding: 20px 0">
+        还没有标签 —— 点「新建标签」，给文章一个可检索的入口。
+      </p>
+      <div v-else ref="gridRef" class="ad-taggrid">
+        <button
+          v-for="row in list"
+          :key="row.id"
+          class="ad-tagcell"
+          type="button"
+          :aria-pressed="!creating && selected?.id === row.id"
+          @click="openEdit(row)"
+        >
+          <span class="ad-tagcell__hash" aria-hidden="true">#</span>
+          <span class="ad-tagcell__body">
+            <span class="ad-tagcell__name">{{ row.name }}</span>
+            <span class="ad-tagcell__slug">{{ row.slug }}</span>
+          </span>
+          <span class="ad-tagcell__num">{{ counts[row.id] ?? 0 }}</span>
+        </button>
+
+        <button class="ad-tagcell ad-tagcell--new" type="button" @click="startCreate">
+          <AdminIcon name="plus" :size="13" />新建标签
+        </button>
+
+        <div v-for="n in fillers" :key="`void-${n}`" class="ad-tagcell ad-tagcell--void" />
+      </div>
     </div>
 
-    <div class="ad-columns" style="margin-top: 0">
-      <section class="ad-block" aria-labelledby="ad-tagall-title">
-        <div class="ad-block__head">
-          <h2 id="ad-tagall-title">全部标签</h2>
-          <span class="ad-block__count">{{ list.length }} 条</span>
-          <span class="ad-block__count" style="margin-left: auto">选中一条，右侧编辑</span>
-        </div>
+    <aside class="ad-split__aside ad-split__aside--flush">
+      <p class="ad-panel__eyebrow">标签设置</p>
+      <h2 class="ad-panel__title">{{ panelTitle }}</h2>
+      <p class="ad-panel__hint">{{ panelHint }}</p>
 
-        <div v-if="loading" class="ad-loading" style="padding: 40px 0; color: var(--hp-ink-3)">
-          正在加载标签…
+      <form class="ad-form" @submit.prevent="handleSave">
+        <label class="ad-field">
+          <span>名称</span>
+          <input v-model="form.name" type="text" placeholder="如：自驾" @input="nameError = ''">
+          <span v-if="nameError" class="ad-error">{{ nameError }}</span>
+        </label>
+        <label class="ad-field">
+          <span>Slug</span>
+          <input v-model="form.slug" type="text" placeholder="留空自动生成拼音">
+        </label>
+        <div class="ad-form__acts">
+          <button class="ad-btn ad-btn--primary" type="submit" :disabled="saving">
+            {{ saving ? '保存中…' : '保存标签' }}
+          </button>
+          <button v-if="creating" class="ad-btn ad-btn--ghost" type="button" @click="creating = false">
+            取消
+          </button>
         </div>
-        <template v-else-if="filtered.length">
-          <ul class="ad-tagcards">
-            <li v-for="row in filtered" :key="row.id">
-              <button
-                class="ad-tagcard"
-                type="button"
-                :aria-pressed="!creating && selected?.id === row.id"
-                @click="openEdit(row)"
-              >
-                <span class="ad-tagcard__name">{{ row.name }}</span>
-                <span class="ad-tagcard__slug">{{ row.slug }}</span>
-              </button>
-            </li>
-          </ul>
-        </template>
-        <p v-else class="ad-block__note">
-          {{ query ? '没有匹配的标签 —— 清空搜索，或者新建一条。' : '还没有标签 —— 在右侧新建第一条。' }}
+      </form>
+
+      <div v-if="!creating && selected" class="ad-panel__danger">
+        <p v-if="selected.slug !== DEFAULT_SLUG">
+          删除只解除它和 {{ counts[selected.id] ?? 0 }} 篇文章的关联，文章本身不受影响。
         </p>
-      </section>
-
-      <aside class="ad-panel" aria-labelledby="ad-tag-panel-title">
-        <div class="ad-panel__head">
-          <p class="ad-panel__eyebrow">{{ panelEyebrow }}</p>
-          <h2 id="ad-tag-panel-title" class="ad-panel__title">{{ panelTitle }}</h2>
-        </div>
-
-        <form class="ad-form" @submit.prevent="handleSave">
-          <label class="ad-field">
-            <span>名称</span>
-            <input v-model="form.name" type="text" placeholder="如：自驾" @input="nameError = ''">
-            <span v-if="nameError" class="ad-error">{{ nameError }}</span>
-          </label>
-          <label class="ad-field">
-            <span>Slug</span>
-            <input v-model="form.slug" type="text" placeholder="留空自动生成拼音">
-          </label>
-          <div class="ad-form__acts">
-            <button class="ad-btn ad-btn--primary" type="submit" :disabled="saving">
-              {{ saving ? '保存中…' : '保存标签' }}
-            </button>
-          </div>
-        </form>
-
-        <div v-if="!creating && selected" class="ad-panel__danger">
-          <button
-            v-if="selected.slug !== DEFAULT_SLUG"
-            class="ad-link ad-link--danger"
-            type="button"
-            @click="handleDelete"
-          >
+        <p v-else>「默认标签」是系统标签，受保护，不可删除。</p>
+        <div v-if="selected.slug !== DEFAULT_SLUG" class="ad-form__acts" style="margin-top: 10px">
+          <button class="ad-btn ad-btn--danger ad-btn--sm" type="button" @click="handleDelete">
             删除此标签
           </button>
-          <span v-else class="ad-hint">「默认标签」受保护，不可删除。</span>
-          <p class="ad-form__note" style="border: 0; padding-top: 8px; margin-top: 0">
-            删除标签只解除它与文章的关联，文章本身不受影响。
-          </p>
         </div>
-      </aside>
-    </div>
+      </div>
+
+      <p class="ad-panel__note">
+        标签宜少不宜多：超过 30 条就开始互相重叠，前台标签页也会变成长列表。
+      </p>
+    </aside>
   </div>
 </template>

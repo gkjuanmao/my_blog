@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 后台页面抬头：eyebrow（中文 + 英文小字）→ 书法体标题 → 等宽 meta → 1px 线 + 48px 金段。
- * 四页与编辑页共用，保证「一页一个抬头」的节奏一致。
+ * 后台页面抬头：eyebrow（中文 + 英文小字）→ 宋体标题 → 等宽 meta → 1px 线 + 62px 金段。
+ * 六个页面与编辑页共用，保证「一页一个抬头」的节奏一致。
  */
 withDefaults(
   defineProps<{
@@ -18,20 +18,22 @@ withDefaults(
 </script>
 
 <template>
-  <header class="ad-masthead">
+  <header class="ad-mast">
     <p class="ad-eyebrow">
       {{ eyebrow }}
-      <span v-if="eyebrowEn" class="ad-eyebrow__en">{{ eyebrowEn }}</span>
+      <em v-if="eyebrowEn" class="ad-eyebrow__en">{{ eyebrowEn }}</em>
     </p>
-    <div class="ad-masthead__row">
-      <h1>{{ title }}</h1>
-      <div v-if="$slots.actions" class="ad-masthead__actions">
+    <div class="ad-mast__row">
+      <div>
+        <h1>{{ title }}</h1>
+        <p v-if="meta || $slots.meta" class="ad-mast__meta">
+          <slot name="meta">{{ meta }}</slot>
+        </p>
+      </div>
+      <div v-if="$slots.actions" class="ad-mast__acts">
         <slot name="actions" />
       </div>
     </div>
-    <p v-if="meta || $slots.meta" class="ad-masthead__meta">
-      <slot name="meta">{{ meta }}</slot>
-    </p>
-    <div class="ad-rule" aria-hidden="true"><i /></div>
+    <div class="ad-rule" aria-hidden="true" />
   </header>
 </template>

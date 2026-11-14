@@ -109,67 +109,57 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="ad-page">
     <AdminMasthead eyebrow="任务" eyebrow-en="Tasks" title="导入任务" :meta="meta">
       <template #actions>
         <button class="ad-btn ad-btn--ghost" type="button" :disabled="loading" @click="refresh">
-          刷新
+          <AdminIcon name="refresh" :size="14" />刷新
         </button>
       </template>
     </AdminMasthead>
 
-    <div class="ad-filters">
+    <div class="ad-toolbar">
       <div class="ad-segs" role="group" aria-label="按状态筛选">
         <button class="ad-seg" type="button" :aria-pressed="filter === 'all'" @click="filter = 'all'">
           全部
         </button>
-        <button
-          class="ad-seg"
-          type="button"
-          :aria-pressed="filter === 'active'"
-          @click="filter = 'active'"
-        >
+        <button class="ad-seg" type="button" :aria-pressed="filter === 'active'" @click="filter = 'active'">
           进行中
         </button>
-        <button
-          class="ad-seg"
-          type="button"
-          :aria-pressed="filter === 'failed'"
-          @click="filter = 'failed'"
-        >
+        <button class="ad-seg" type="button" :aria-pressed="filter === 'failed'" @click="filter = 'failed'">
           失败
         </button>
       </div>
+
+      <span v-if="queueTotal" class="ad-toolbar__note">{{ queueTotalHint }}</span>
+      <span class="ad-toolbar__spacer" />
+      <span class="ad-toolbar__note">{{ filtered.length }} 条</span>
     </div>
 
-    <p v-if="error" class="ad-note ad-note--bad">{{ error }}</p>
-    <!-- 队列是全局串行的：不写清这一点，用户会疑惑「前面还有 1 个」但列表里只有自己 -->
-    <p v-if="queueTotal" class="ad-note">{{ queueTotalHint }}</p>
+    <p v-if="error" class="ad-note ad-note--bad" style="padding: 12px var(--ad-gutter) 0">
+      {{ error }}
+    </p>
 
-    <div
-      class="ad-tablewrap"
-      :class="{ 'ad-loading': loading }"
-      :aria-busy="loading ? 'true' : 'false'"
-    >
-      <table class="ad-table">
+    <div class="ad-tablearea">
+      <table class="ad-table ad-table--acts">
         <caption class="ad-sr">
           导入任务列表，共 {{ filtered.length }} 条
         </caption>
         <thead>
           <tr>
             <th>任务</th>
-            <th>状态</th>
-            <th>进度</th>
-            <th>结果</th>
-            <th class="num">耗时</th>
-            <th class="ad-table__acts">操作</th>
+            <th style="width: 156px">状态</th>
+            <th style="width: 168px">进度</th>
+            <th class="ad-col-md" style="width: 210px">结果</th>
+            <th class="ad-col-md num r" style="width: 96px">耗时</th>
+            <th style="width: 110px"><span class="ad-sr">操作</span></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="task in filtered" :key="task.id">
-            <td class="ad-table__title">
-              {{ strategyLabel(task) }}
-              <span class="ad-table__slug">
+            <td>
+              <p class="ad-t-title">{{ strategyLabel(task) }}</p>
+              <span class="ad-t-sub">
                 {{ task.id.slice(0, 8) }} · {{ task.username || '—' }} ·
                 {{ formatRelativeTime(task.created_at) }}
               </span>
@@ -179,26 +169,26 @@ onMounted(() => {
                 <i aria-hidden="true" />
                 {{ statusLabel(task) }}
               </span>
-              <div v-if="task.status === 'running' || task.status === 'queued'" class="ad-table__slug">
+              <div v-if="task.status === 'running' || task.status === 'queued'" class="ad-t-sub">
                 {{ taskStatusText(task) }}
               </div>
-              <div v-else-if="task.status === 'failed'" class="ad-table__slug">
+              <div v-else-if="task.status === 'failed'" class="ad-t-sub">
                 {{ task.error?.message }}
               </div>
             </td>
-            <td style="min-width: 140px">
+            <td>
               <div class="ad-taskbar" :title="`${task.progress.processed}/${task.progress.total}`">
                 <i
                   :style="{ width: `${percentOf(task)}%` }"
                   :class="{ 'is-bad': task.status === 'failed' }"
                 />
               </div>
-              <span class="ad-table__slug">
-                {{ task.progress.processed }}/{{ task.progress.total || '—' }}
-              </span>
+              <span class="ad-t-sub">{{ task.progress.processed }}/{{ task.progress.total || '—' }}</span>
             </td>
-            <td class="ad-table__date">{{ taskResultSummary(task) }}</td>
-            <td class="num">{{ durationText(task) }}</td>
+            <td class="ad-col-md">
+              <span class="ad-table__date">{{ taskResultSummary(task) }}</span>
+            </td>
+            <td class="num r ad-col-md">{{ durationText(task) }}</td>
             <td class="ad-table__acts">
               <button class="ad-link" type="button" @click="openDetail(task)">详情</button>
               <button
@@ -211,18 +201,26 @@ onMounted(() => {
               </button>
             </td>
           </tr>
-          <tr v-if="!filtered.length">
-            <td colspan="6">
-              <p class="ad-rows-empty">
-                {{ loading ? '正在加载任务…' : '还没有导入任务。从「文章 → 导入」提交后，这里会出现记录。' }}
-              </p>
-            </td>
-          </tr>
         </tbody>
       </table>
+
+      <div v-if="!filtered.length" class="ad-void">
+        <p>{{ loading ? '正在加载任务…' : '这里还没有导入任务。' }}</p>
+        <span>从「文章 → 导入归档」提交后，记录会出现在这里</span>
+      </div>
+      <div v-else class="ad-void">
+        <p>队列串行执行，一次只跑一个导入任务。</p>
+        <span>失败的任务不会中断已写入的部分，回滚包可在详情里下载</span>
+      </div>
     </div>
 
-    <el-drawer v-model="detailOpen" title="导入任务详情" size="min(680px, 94vw)">
+    <div class="ad-footbar">
+      <span>共 {{ filtered.length }} 条 · 保留最近 30 天</span>
+      <span class="ad-toolbar__spacer" />
+      <span>回滚包保留 7 天</span>
+    </div>
+
+    <el-drawer v-model="detailOpen" title="导入任务详情" size="min(480px, 94vw)">
       <div v-if="detailLoading" class="ad-note">正在加载…</div>
       <p v-else-if="detailError" class="ad-note ad-note--bad">{{ detailError }}</p>
       <div v-else-if="detail" class="ad-taskdetail">

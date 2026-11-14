@@ -14,9 +14,9 @@ import { useArticleList } from '~/composables/useArticleList'
 definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
-const keyword = ref('')
+const keyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const categorySlug = ref(typeof route.query.category === 'string' ? route.query.category : '')
-const status = ref('') // '' | 'true' | 'false'
+const status = ref(typeof route.query.status === 'string' ? route.query.status : '') // '' | 'true' | 'false'
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const categories = ref<Category[]>([])
 
@@ -189,13 +189,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
+  <div class="ad-page">
     <AdminMasthead eyebrow="稿件" eyebrow-en="Manuscripts" title="文章管理" :meta="filterSummary">
       <template #actions>
         <button class="ad-btn ad-btn--ghost" type="button" @click="importVisible = true">
           导入归档
         </button>
-        <button class="ad-btn ad-btn--primary" type="button" @click="goCreate">新建文章</button>
+        <button class="ad-btn ad-btn--primary" type="button" @click="goCreate">
+          <AdminIcon name="plus" :size="14" />新建文章
+        </button>
       </template>
     </AdminMasthead>
 
@@ -207,55 +209,25 @@ onMounted(() => {
       :categories="categories"
       @change="applyFilters"
       @search="applyFilters"
-    />
+    >
+      <template #right>
+        <div class="ad-toolbar__group">
+          <ArticleExportBar
+            :keyword="keyword"
+            :category-slug="categorySlug"
+            :status="status"
+            :selected-ids="selectedIds"
+          />
+          <button class="ad-btn ad-btn--text ad-btn--sm" type="button" @click="resetFilters">
+            重置筛选
+          </button>
+        </div>
+      </template>
+    </ArticleAdminFilters>
 
-    <div class="ad-toolbar">
-      <ArticleExportBar
-        :keyword="keyword"
-        :category-slug="categorySlug"
-        :status="status"
-        :selected-ids="selectedIds"
-      />
-      <button class="ad-btn ad-btn--text ad-btn--sm" type="button" @click="resetFilters">
-        重置筛选
-      </button>
-      <span class="ad-toolbar__spacer" />
-      <button
-        v-if="articles.length"
-        class="ad-btn ad-btn--text ad-btn--sm"
-        type="button"
-        @click="toggleSelectAllOnPage"
-      >
-        {{ allSelectedOnPage ? '取消全选本页' : '全选本页' }}
-      </button>
-    </div>
-
-    <div v-if="selectedIds.length" class="ad-selbar">
-      <p>已选 <b>{{ selectedIds.length }}</b> 篇</p>
-      <button
-        v-if="isSuperuser"
-        class="ad-link"
-        type="button"
-        @click="transferVisible = true"
-      >
-        转移归属
-      </button>
-      <button
-        class="ad-link ad-link--danger"
-        type="button"
-        :disabled="bulkDeleting"
-        @click="doBulkDelete"
-      >
-        {{ bulkDeleting ? '正在删除…' : '批量删除' }}
-      </button>
-      <button class="ad-link ad-selbar__clear" type="button" @click="clearSelection">
-        清空选择
-      </button>
-    </div>
-
-    <div v-if="errorMsg" role="alert" style="padding: 40px 0">
-      <p class="ad-error">{{ errorMsg }}</p>
-      <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" style="margin-top: 14px" @click="fetchArticles">
+    <div v-if="errorMsg" class="ad-void" style="flex: 1">
+      <p class="ad-error" role="alert">{{ errorMsg }}</p>
+      <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" @click="fetchArticles">
         重试
       </button>
     </div>
@@ -281,13 +253,28 @@ onMounted(() => {
       />
     </template>
 
-    <AdminPager
-      v-if="total > 0"
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50]"
-    />
+    <AdminPager v-model:page="page" v-model:page-size="pageSize" :total="total" :page-sizes="[10, 20, 50]">
+      <template #extra>
+        <button
+          v-if="articles.length"
+          class="ad-link ad-link--mute"
+          type="button"
+          @click="toggleSelectAllOnPage"
+        >
+          {{ allSelectedOnPage ? '取消全选本页' : '全选本页' }}
+        </button>
+      </template>
+    </AdminPager>
+
+    <div v-if="selectedIds.length" class="ad-selbar" role="status">
+      <p>已选 <b>{{ selectedIds.length }}</b> 篇</p>
+      <span class="ad-selbar__div" aria-hidden="true" />
+      <button v-if="isSuperuser" type="button" @click="transferVisible = true">转移归属</button>
+      <button class="is-danger" type="button" :disabled="bulkDeleting" @click="doBulkDelete">
+        {{ bulkDeleting ? '正在删除…' : '批量删除' }}
+      </button>
+      <button type="button" @click="clearSelection">清空</button>
+    </div>
 
     <ArticleImportDialog v-model="importVisible" />
     <AuthorTransferDialog
