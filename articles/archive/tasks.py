@@ -19,12 +19,13 @@ HTTP 连接，前端 15s 超时先于服务端完成，用户看到「网络错�
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 from django.db import OperationalError
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from articles.models import ArchiveStaging, ArchiveTicket, Article, ArticleImportTask
@@ -48,6 +49,13 @@ PROGRESS_FLUSH_SECONDS = 2.0
 HEARTBEAT_STALE_SECONDS = 180
 #: 错误信息落库前的截断长度（CharField 255）
 MAX_MESSAGE_LEN = 255
+
+#: 锁被别人占着时的重排队间隔（秒）。不能太短：真正的持锁者可能在跑十分钟，
+#: 每 2s 撞一次锁等于让 worker 空转、并把重试次数白白烧光。
+LOCK_RETRY_BACKOFF_SECONDS = 60
+#: 锁冲突最多重排几次。60s × 16 ≈ 16 分钟，略长于 lock_ttl(900s)，
+#: 这样「上一个执行者被 SIGKILL、锁靠 TTL 自解」的情况下仍等得到。
+MAX_LOCK_ATTEMPTS = 16
 
 #: 错误码 → （默认文案, 处理指引）。前端只展示，不参与判断。
 ERROR_HINTS: dict[str, tuple[str, str]] = {
@@ -83,9 +91,18 @@ class _Progress:
     也不会有「读到旧快照再整行写回」的丢更新问题（与文章 views 计数的教训同源）。
     """
 
-    def __init__(self, task_id, *, interval: float = PROGRESS_FLUSH_SECONDS) -> None:
+    def __init__(
+        self,
+        task_id,
+        *,
+        interval: float = PROGRESS_FLUSH_SECONDS,
+        on_tick: Callable[[], None] | None = None,
+    ) -> None:
         self.task_id = task_id
         self.interval = interval
+        # 顺带做的事（目前是给导入锁续租）：导入可能跑超过 lock_ttl，
+        # 不续租的话锁会半路自解，第二个执行者就能同时写库
+        self.on_tick = on_tick
         self.phase: str = ArticleImportTask.Phase.WAITING
         self.label = ''
         self.total = 0
@@ -115,6 +132,8 @@ class _Progress:
             return
         ArticleImportTask.objects.filter(pk=self.task_id).update(**self.snapshot())
         self._last = time.monotonic()
+        if self.on_tick is not None:
+            self.on_tick()
 
     def freeze(self) -> None:
         """进入终态后停止再写进度，避免把失败的 phase_label 覆盖回去。"""
@@ -146,16 +165,21 @@ class _Progress:
 
 
 def claim_next(worker_id: str) -> ArticleImportTask | None:
-    """取队首任务并原子置为 running（``update() == 1`` 才算抢到）。"""
+    """取队首任务并原子置为 running（``update() == 1`` 才算抢到）。
+
+    跳过 ``next_attempt_at`` 还没到的任务：那是锁冲突后延迟重排的，提前抢会
+    让两个执行者在锁上空转（每 2s 抢一次、失败一次）。
+    """
+    now = timezone.now()
     while True:
         candidate = (
             ArticleImportTask.objects.filter(status=ArticleImportTask.Status.QUEUED)
+            .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
             .order_by('created_at')
             .first()
         )
         if candidate is None:
             return None
-        now = timezone.now()
         claimed = ArticleImportTask.objects.filter(
             pk=candidate.pk, status=ArticleImportTask.Status.QUEUED
         ).update(
@@ -164,12 +188,56 @@ def claim_next(worker_id: str) -> ArticleImportTask | None:
             phase_label='正在校验压缩包…',
             started_at=now,
             heartbeat_at=now,
+            attempts=F('attempts') + 1,
+            next_attempt_at=None,
             worker_id=worker_id[:64],
         )
         if claimed == 1:
             candidate.refresh_from_db()
             return candidate
         # 极端情况下被另一个执行者抢走：重来一轮（正常情况下永远走不到）
+
+
+def _requeue_after_lock_conflict(task: ArticleImportTask) -> ArticleImportTask:
+    """锁被别的执行者占着：**退回去排队**，而不是把任务判死。
+
+    为什么不再直接失败：单 worker 下永远不该冲突，会冲突只有两种原因——
+    有人手工跑了第二个 ``import_worker``（排障时很常见），或误用了
+    ``--scale worker=2``。这两种都属于「等一会儿就能好」，判死等于平白丢掉一次
+    导入（暂存包已消费，用户得重传）。冲突始终发生在**任何写入之前**（锁包住整个
+    执行段），所以重排是安全的、不会重复建文。
+
+    重排用 ``next_attempt_at`` 延迟，避免两个 worker 每 2s 互撞空转；
+    超过 :data:`MAX_LOCK_ATTEMPTS` 次仍然冲突才判失败（意味着锁真的卡住了）。
+    """
+    if task.attempts >= MAX_LOCK_ATTEMPTS:
+        return fail_task(
+            task,
+            'lock_unavailable',
+            message=f'等待导入锁超过 {MAX_LOCK_ATTEMPTS} 次重试（约 {MAX_LOCK_ATTEMPTS} 分钟）',
+            hint='检查是否误起了第二个 worker（必须单副本），或稍后重新上传导入',
+        )
+    now = timezone.now()
+    ArticleImportTask.objects.filter(
+        pk=task.pk, status=ArticleImportTask.Status.RUNNING
+    ).update(
+        status=ArticleImportTask.Status.QUEUED,
+        phase=ArticleImportTask.Phase.WAITING,
+        phase_label=f'等待前一个导入结束（第 {task.attempts} 次重试）',
+        started_at=None,
+        heartbeat_at=None,
+        worker_id='',
+        next_attempt_at=now + timedelta(seconds=LOCK_RETRY_BACKOFF_SECONDS),
+    )
+    logger.warning(
+        'import-task %s 导入锁被占用，%ds 后重试（第 %d/%d 次）',
+        task.pk,
+        LOCK_RETRY_BACKOFF_SECONDS,
+        task.attempts,
+        MAX_LOCK_ATTEMPTS,
+    )
+    task.refresh_from_db()
+    return task
 
 
 def fail_task(
@@ -353,6 +421,8 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
             status=ArticleImportTask.Status.RUNNING,
             started_at=timezone.now(),
             heartbeat_at=timezone.now(),
+            attempts=F('attempts') + 1,
+            next_attempt_at=None,
             worker_id=worker_id[:64],
         )
         task.refresh_from_db()
@@ -362,6 +432,7 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
         return task
 
     lim = archive_limits()
+    # 进度上报顺带续租导入锁（拿到锁之后再把 extend 挂上去）
     progress = _Progress(task.pk)
     staging: ArchiveStaging | None = task.staging
 
@@ -374,7 +445,9 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
         if not Path(package_path).exists():
             return fail_task(task, 'staging_expired')
 
-        with import_lock(lim):
+        with import_lock(lim) as lock:
+            # 大包导入可能跑超过 lock_ttl，靠每次进度落库顺带续租，防止锁半路自解
+            progress.on_tick = lock.extend
             progress.start_phase(ArticleImportTask.Phase.VALIDATING, '正在校验压缩包…')
             info = archive_validate.validate_package(package_path, limits_override=lim)
             plan = archive_planner.build_plan(
@@ -426,6 +499,10 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
                 progress.skipped,
                 progress.failed,
             )
+    except archive_errors.ConflictError:
+        # 锁被别的执行者占着：退回队列等下一轮（见 _requeue_after_lock_conflict）
+        progress.freeze()
+        _requeue_after_lock_conflict(task)
     except Exception as exc:  # noqa: BLE001 - worker 绝不能被单任务打挂
         code, detail = _error_code(exc)
         if code == 'internal':
@@ -440,8 +517,11 @@ def run_import_task(task_id, *, worker_id: str = '') -> ArticleImportTask | None
             message=f'{default_message}：{detail}' if detail and code != 'internal' else None,
         )
     finally:
-        # 释放暂存包租约，否则 purge 永远跳过它（磁盘只涨不降）
-        if staging is not None:
+        # 释放暂存包租约，否则 purge 永远跳过它（磁盘只涨不降）。
+        # ⚠️ 只有终态才释放：锁冲突会被**退回队列**（任务还活着），此时清租约等于
+        # 让 purge 有机会在两次尝试之间把暂存包扫掉，下一轮就变成 staging_expired。
+        task.refresh_from_db()
+        if staging is not None and task.is_terminal:
             ArchiveStaging.objects.filter(pk=staging.pk).update(lease_until=None)
         progress.write()
 

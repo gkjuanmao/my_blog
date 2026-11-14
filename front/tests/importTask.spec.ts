@@ -33,6 +33,8 @@ function makeTask(patch: Partial<ImportTask> = {}): ImportTask {
     rollback_package: null,
     warning: null,
     queue_position: 1,
+    queue_total: 1,
+    attempts: 1,
     ...patch,
   }
 }
@@ -67,6 +69,14 @@ describe('importTask utils', () => {
     expect(taskStatusText(makeTask({ status: 'queued', queue_position: 3 }))).toBe(
       '排队中（前面还有 2 个）',
     )
+    // 被锁冲突推迟时后端给的 phase_label 更有信息量，优先显示
+    expect(
+      taskStatusText(
+        makeTask({ status: 'queued', queue_position: 1, phase_label: '等待前一个导入结束（第 2 次重试）' }),
+      ),
+    ).toBe('等待前一个导入结束（第 2 次重试）')
+    // 位置缺失（不在排队中）时也不能出现「前面还有 -1 个」
+    expect(taskStatusText(makeTask({ status: 'queued', queue_position: null }))).toBe('排队中')
     expect(taskStatusText(makeTask({ status: 'running', phase_label: '写入文章 42/180' }))).toBe(
       '写入文章 42/180',
     )

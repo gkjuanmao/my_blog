@@ -26,11 +26,19 @@ export function taskPercent(task: Pick<ImportTask, 'status' | 'progress'>): numb
   return task.progress.percent
 }
 
-/** 状态文案（排队时附带队列位置，执行中直接用后端的 phase_label） */
+/**
+ * 状态文案。
+ *
+ * 排队时优先用后端给的 `phase_label`（锁冲突被推迟时那里会写「等待前一个导入结束
+ * （第 N 次重试）」，比位置数字更有信息量），没有再回落到队列位置。
+ */
 export function taskStatusText(task: ImportTask): string {
   switch (task.status) {
-    case 'queued':
-      return task.queue_position > 1 ? `排队中（前面还有 ${task.queue_position - 1} 个）` : '排队中'
+    case 'queued': {
+      if (task.phase_label) return task.phase_label
+      const ahead = (task.queue_position ?? 1) - 1
+      return ahead > 0 ? `排队中（前面还有 ${ahead} 个）` : '排队中'
+    }
     case 'running':
       return task.phase_label || '执行中'
     case 'succeeded':
@@ -40,6 +48,12 @@ export function taskStatusText(task: ImportTask): string {
     case 'canceled':
       return '已取消'
   }
+}
+
+/** 队列说明：全局串行，别人的任务也占位（空队列返回空串，不占版面） */
+export function queueHint(task: Pick<ImportTask, 'queue_total'>): string {
+  if (!task.queue_total) return ''
+  return `队列共 ${task.queue_total} 个任务，全局串行执行（其他账号的任务同样占位）`
 }
 
 /** 结果摘要：`新建 3 · 覆盖 1 · 跳过 2`，失败数有值才追加（避免遍地 0） */

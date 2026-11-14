@@ -398,12 +398,14 @@ class TestConcurrencyAndLimits:
         )
         assert response.status_code == 409
 
-    def test_import_lock_busy_fails_task(
+    def test_import_lock_busy_requeues_task(
         self, api_client, staff_header, package, archive_settings
     ):
-        """别人正持锁时任务不能硬写：执行期拿到 lock_unavailable 失败。
+        """别人正持锁时不硬写、也不判死：任务退回队列等下一轮。
 
-        异步化后锁从「入队时」挪到了「执行时」，所以这里验的是任务状态而不是 HTTP 码。
+        异步化后锁从「入队时」挪到了「执行时」。冲突只可能来自「误起了第二个
+        worker」（手工跑 `import_worker --once` 或 `--scale 2`），那属于等一会儿
+        就能好的情况，判死等于白丢一次导入（暂存包已消费）。
         """
         from articles.archive import tasks as archive_tasks
         from articles.archive.locks import import_lock
@@ -423,8 +425,18 @@ class TestConcurrencyAndLimits:
             archive_tasks.run_import_task(task_id, worker_id='test')
 
         task = ArticleImportTask.objects.get(pk=task_id)
-        assert task.status == ArticleImportTask.Status.FAILED
-        assert task.error_code == 'lock_unavailable'
+        assert task.status == ArticleImportTask.Status.QUEUED
+        assert task.attempts == 1
+        assert task.next_attempt_at is not None  # 延迟重排，避免空转抢锁
+        assert '重试' in task.phase_label
+        # 暂存包租约必须保住：任务还活着，租约一清就可能被 purge 扫掉
+        from articles.models import ArchiveStaging
+
+        assert ArchiveStaging.objects.get(pk=staged_id).lease_until is not None
+        # 没有任何文章被写入
+        from articles.models import Article
+
+        assert not Article.objects.exists()
 
     def test_min_interval_rate_limit(self, api_client, staff_header, package, settings):
         settings.ARCHIVE_IMPORT_MIN_INTERVAL_SECONDS = 60

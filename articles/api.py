@@ -1081,13 +1081,8 @@ def create_import_task(request: HttpRequest, payload: ArchiveImportTaskIn):
     except archive_errors.ArchiveError as exc:
         raise _archive_error(exc) from None
 
-    ahead = ArticleImportTask.objects.filter(
-        status=ArticleImportTask.Status.QUEUED, created_at__lt=task.created_at
-    ).count()
+    # 位置/总长在序列化里统一算（与列表同一口径），这里只补「重复包」提示
     data = _task_dict(task)
-    data['queue_position'] = ahead + 1
-    if ahead:
-        data['phase_label'] = f'排队中（前面还有 {ahead} 个任务）'
     data['warning'] = _duplicate_package_warning(user, staging)
     return Status(202, success_response(data, message='已加入队列', code=202))
 
@@ -1113,7 +1108,10 @@ def list_import_tasks(
         queryset = queryset.filter(status=status)
     total = queryset.count()
     offset = (page - 1) * page_size
-    items = [_task_dict(task) for task in queryset[offset : offset + page_size]]
+    queue = _queue_snapshot()
+    items = [
+        _task_dict(task, queue=queue) for task in queryset[offset : offset + page_size]
+    ]
     return success_response({
         'items': items,
         'total': total,
@@ -1184,8 +1182,29 @@ def _duration_ms(task: ArticleImportTask) -> int | None:
     return max(0, int((end - task.started_at).total_seconds() * 1000))
 
 
-def _task_dict(task: ArticleImportTask, *, detail: bool = False) -> dict:
+def _queue_snapshot() -> list:
+    """队列里所有排队任务的 id（按 created_at 升序），用于算「真实排队位置」。
+
+    为什么必须算全局位置：导入队列是**全局串行**的（只有一个 worker），别人的
+    任务同样会占位。若按「自己的任务」算，用户会看到「前面还有 1 个」却在自己的
+    列表里找不到那个任务。代价是一次轻量查询——排队中的任务数永远是个位数。
+    """
+    return list(
+        ArticleImportTask.objects.filter(status=ArticleImportTask.Status.QUEUED)
+        .order_by('created_at')
+        .values_list('id', flat=True)
+    )
+
+
+def _task_dict(
+    task: ArticleImportTask, *, detail: bool = False, queue: list | None = None
+) -> dict:
     """任务序列化（列表瘦身：不带 report）。"""
+    # 排队位置/队尾长度来自同一份队列快照：列表接口每页传一次，避免 N+1
+    snapshot = _queue_snapshot() if queue is None else queue
+    position = None
+    if task.status == ArticleImportTask.Status.QUEUED and task.id in snapshot:
+        position = snapshot.index(task.id) + 1
     data: dict = {
         'id': str(task.id),
         'status': task.status,
@@ -1205,6 +1224,10 @@ def _task_dict(task: ArticleImportTask, *, detail: bool = False) -> dict:
         'error': None,
         'rollback_package': (task.report or {}).get('rollback_package'),
         'warning': None,
+        'queue_position': position,
+        # 队列总长（全局）：前端据此说明「队列共 N 个任务，全局串行」
+        'queue_total': len(snapshot),
+        'attempts': task.attempts,
     }
     if task.error_code:
         data['error'] = {

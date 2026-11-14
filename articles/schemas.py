@@ -316,8 +316,13 @@ class ImportTaskOut(Schema):
     error: ImportTaskErrorOut | None = None
     rollback_package: ImportRollbackOut | None = None
     warning: ImportTaskWarningOut | None = None
-    #: 队列位置（1 = 下一个就轮到你），前端显示「前面还有 N 个任务」
-    queue_position: int = 1
+    #: 全局排队位置（1 = 下一个就轮到你）；不在排队中时为 null
+    #: 注意这是**全局**口径：导入队列串行，其他账号的任务同样占位
+    queue_position: int | None = None
+    #: 队列总长（全局），前端据此说明「队列共 N 个任务」
+    queue_total: int = 0
+    #: 已领取次数（>1 说明曾被锁冲突推迟过，详情里可作为诊断线索）
+    attempts: int = 0
 
 
 class ImportTaskDetailOut(ImportTaskOut):

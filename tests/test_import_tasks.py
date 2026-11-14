@@ -325,6 +325,59 @@ class TestListAndCancel:
         still_mine = api_client.get(f'{TASKS_URL}?scope=all', **staff_header).json()['data']
         assert still_mine['total'] == 1
 
+    def test_queue_position_is_global_but_list_is_mine(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-027：排队位置是全局的（别人的任务也占位），列表却只给自己看。
+
+        这正是原来的缺陷：按「自己的任务」算位置，用户会看到「前面还有 1 个」
+        却在列表里找不到那个任务。现在位置/总长都按全局队列算，并且都下发。
+        """
+        from django.contrib.auth import get_user_model
+        from ninja_jwt.tokens import RefreshToken
+
+        other = get_user_model().objects.create_user(
+            username='queue-mate', password='x', is_staff=True
+        )
+        other_header = {'HTTP_AUTHORIZATION': f'Bearer {RefreshToken.for_user(other).access_token}'}
+
+        # 别人的任务先入队（占位）
+        other_id = enqueue(
+            api_client, other_header, stage(api_client, other_header, package)['staged_id']
+        ).json()['data']['id']
+
+        mine = enqueue(
+            api_client, staff_header, stage(api_client, staff_header, package)['staged_id']
+        ).json()['data']
+        assert mine['queue_position'] == 2
+        assert mine['queue_total'] == 2
+
+        listed = api_client.get(TASKS_URL, **staff_header).json()['data']
+        assert listed['total'] == 1  # 只看得到自己的
+        assert listed['items'][0]['id'] == mine['id']
+        assert listed['items'][0]['queue_position'] == 2
+        assert listed['items'][0]['queue_total'] == 2
+
+        # 别人排完（跑掉）后，我的位置升到 1
+        archive_tasks.run_import_task(other_id, worker_id='test')
+        after = api_client.get(TASKS_URL, **staff_header).json()['data']['items'][0]
+        assert after['queue_position'] == 1
+        assert after['queue_total'] == 1
+
+    def test_running_task_has_no_queue_position(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-028：不在排队中的任务 queue_position 为 null，前端不该显示「第 0 个」。"""
+        task_id = enqueue(
+            api_client, staff_header, stage(api_client, staff_header, package)['staged_id']
+        ).json()['data']['id']
+        archive_tasks.claim_next('tester')
+
+        detail = api_client.get(task_url(task_id), **staff_header).json()['data']
+        assert detail['status'] == 'running'
+        assert detail['queue_position'] is None
+        assert detail['queue_total'] == 0
+
     def test_cancel_queued_task(self, api_client, staff_header, package, archive_settings):
         """TASK-015：排队中可以取消；已开始执行的不许取消（409）。"""
         staged_id = stage(api_client, staff_header, package)['staged_id']
@@ -391,6 +444,92 @@ class TestListAndCancel:
         task = ArticleImportTask.objects.get(pk=task_id)
         assert task.status == ArticleImportTask.Status.SUCCEEDED
         assert socket.gethostname()
+
+
+class TestLockConflict:
+    """锁冲突的重排队语义（缺陷修复：误起第二个 worker 不该把任务判死）。"""
+
+    def _enqueue(self, api_client, staff_header, package):
+        staged_id = stage(api_client, staff_header, package)['staged_id']
+        response = enqueue(api_client, staff_header, staged_id)
+        assert response.status_code == 202, response.json()
+        return response.json()['data']['id']
+
+    def test_lock_conflict_requeues_with_backoff(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-023：锁被占 → 退回 queued、attempts+1、延迟到 next_attempt_at。"""
+        from articles.archive.locks import import_lock
+
+        task_id = self._enqueue(api_client, staff_header, package)
+        with import_lock():
+            archive_tasks.run_import_task(task_id, worker_id='test')
+
+        task = ArticleImportTask.objects.get(pk=task_id)
+        assert task.status == ArticleImportTask.Status.QUEUED
+        assert task.attempts == 1
+        assert task.next_attempt_at is not None
+        assert task.next_attempt_at > timezone.now()
+        assert task.progress()['processed'] == 0
+        assert not Article.objects.exists()
+
+    def test_backoff_task_is_not_claimed_early(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-024：延迟未到期的任务不会被 claim（否则两个 worker 互相空转）。"""
+        from articles.archive.locks import import_lock
+
+        task_id = self._enqueue(api_client, staff_header, package)
+        with import_lock():
+            archive_tasks.run_import_task(task_id, worker_id='test')
+
+        # 手上没有其他任务时，claim_next 应拿不到（唯一那个还在退避期）
+        assert archive_tasks.claim_next('tester') is None
+
+        # 把退避时间拨到过去 → 立刻可领
+        ArticleImportTask.objects.filter(pk=task_id).update(
+            next_attempt_at=timezone.now() - timedelta(seconds=1)
+        )
+        claimed = archive_tasks.claim_next('tester')
+        assert claimed is not None
+        assert claimed.attempts == 2
+
+    def test_lock_conflict_gives_up_after_max_attempts(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-025：锁一直拿不到 → 到上限才判失败，且原因/指引可读。"""
+        from articles.archive.locks import import_lock
+
+        task_id = self._enqueue(api_client, staff_header, package)
+        ArticleImportTask.objects.filter(pk=task_id).update(
+            attempts=archive_tasks.MAX_LOCK_ATTEMPTS - 1
+        )
+
+        with import_lock():
+            archive_tasks.run_import_task(task_id, worker_id='test')
+
+        task = ArticleImportTask.objects.get(pk=task_id)
+        assert task.status == ArticleImportTask.Status.FAILED
+        assert task.error_code == 'lock_unavailable'
+        assert '重试' in task.error_message
+        assert '单副本' in task.error_hint
+
+    def test_lock_is_renewed_during_long_run(
+        self, api_client, staff_header, package, archive_settings
+    ):
+        """TASK-026：执行期进度落库顺带续租，否则锁会在长导入中途自解。
+
+        直接验 ``LockHandle.extend`` 的行为：只有 token 还是自己的才续，
+        被别人接管后不能把它改成自己的 TTL。
+        """
+        from django.core.cache import cache
+
+        from articles.archive.locks import GLOBAL_LOCK_KEY, import_lock
+
+        with import_lock() as lock:
+            cache.set(GLOBAL_LOCK_KEY, 'someone-else', 30)
+            lock.extend()  # 不该覆盖别人的锁
+            assert cache.get(GLOBAL_LOCK_KEY) == 'someone-else'
 
 
 class TestTaskPermissions:

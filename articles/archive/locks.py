@@ -41,16 +41,39 @@ def _release(key: str, token: str) -> None:
 
 
 @contextmanager
-def import_lock(lim: Limits | None = None) -> Iterator[None]:
-    """全局单写者导入锁（带 TTL，进程被杀后自动过期）。"""
+def import_lock(lim: Limits | None = None) -> Iterator['LockHandle']:
+    """全局单写者导入锁（带 TTL，进程被杀后自动过期）。
+
+    产出的句柄提供 :meth:`LockHandle.extend`：长导入（超过 ``lock_ttl`` 900s 的
+    大包完全可能）需要**续租**，否则锁会在任务跑到一半时自解，此时若恰好有第二个
+    执行者（误起第二个 worker / 手工 `import_worker --once`），它就能拿到锁并同时
+    往 SQLite 写——正是这把锁要防的事。
+    """
     cfg = lim or limits()
     token = uuid.uuid4().hex
     if not _acquire(GLOBAL_LOCK_KEY, token, cfg.lock_ttl):
         raise ConflictError('已有导入任务在进行中，请稍后重试')
     try:
-        yield
+        yield LockHandle(GLOBAL_LOCK_KEY, token, cfg.lock_ttl)
     finally:
         _release(GLOBAL_LOCK_KEY, token)
+
+
+class LockHandle:
+    """已持有的锁：只允许续租，不暴露 token（避免被别的代码误释放）。"""
+
+    def __init__(self, key: str, token: str, ttl: int) -> None:
+        self._key = key
+        self._token = token
+        self._ttl = ttl
+
+    def extend(self) -> None:
+        """续租一次（比对 token 后再写，避免把别人的锁改成自己的 TTL）。"""
+        try:
+            if cache.get(self._key) == self._token:
+                cache.set(self._key, self._token, self._ttl)
+        except Exception:  # pragma: no cover - 缓存故障时交给原 TTL 自解
+            logger.warning('归档锁续租失败，将由原 TTL 自动过期', exc_info=True)
 
 
 def enforce_min_interval(user_id: int, lim: Limits | None = None) -> None:

@@ -274,6 +274,13 @@ class ArticleImportTask(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
     # 心跳用于判定「进程被杀掉后遗留的 running」：见 tasks.sweep_stale
     heartbeat_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='心跳')
+    # 已领取次数（每次 claim +1）。锁被别的执行者占用时靠它做重试上限，
+    # 避免误起第二个 worker 就把任务判死（见 tasks._requeue_after_lock_conflict）
+    attempts = models.IntegerField(default=0, verbose_name='执行尝试次数')
+    # 下次可被领取的时间：锁冲突后延迟重排，避免两个 worker 每 2s 互相空转抢锁
+    next_attempt_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name='下次可执行时间'
+    )
 
     class Meta:
         verbose_name = '归档导入任务'

@@ -271,7 +271,12 @@ export interface ImportTask {
   } | null
   /** 非阻断提示（如「这个包刚导过」） */
   warning: { code: string; message: string } | null
-  queue_position: number
+  /** 全局排队位置（1 = 下一个就轮到你）；不在排队中为 null */
+  queue_position: number | null
+  /** 队列总长（全局）：导入串行，其他账号的任务同样占位 */
+  queue_total: number
+  /** 已领取次数：>1 说明曾被锁冲突推迟过 */
+  attempts: number
 }
 
 /** 任务详情：多一份完整执行报告 */

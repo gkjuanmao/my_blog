@@ -33,6 +33,9 @@ const filtered = computed(() => {
   return tasks.value
 })
 
+const queueTotal = computed(() => tasks.value.find(t => t.queue_total)?.queue_total ?? 0)
+const queueTotalHint = computed(() => queueHint({ queue_total: queueTotal.value }))
+
 const meta = computed(() => {
   const active = tasks.value.filter(t => t.status === 'queued' || t.status === 'running').length
   const failed = tasks.value.filter(t => t.status === 'failed').length
@@ -140,6 +143,8 @@ onMounted(() => {
     </div>
 
     <p v-if="error" class="ad-note ad-note--bad">{{ error }}</p>
+    <!-- 队列是全局串行的：不写清这一点，用户会疑惑「前面还有 1 个」但列表里只有自己 -->
+    <p v-if="queueTotal" class="ad-note">{{ queueTotalHint }}</p>
 
     <div
       class="ad-tablewrap"
