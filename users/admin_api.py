@@ -30,6 +30,15 @@ superuser_auth = SuperUserJWTAuth()
 
 User = get_user_model()
 
+# 用户的展示信息（用户名 / 头像）会出现在公开的 /authors/ 与文章卡片上，
+# 所以改完要顺手让公开缓存失效，否则首页最多显示 60s 的旧名字。
+# 直接 import 而不是发信号：users 与 articles 本来就互相依赖，且这里的调用点很明确。
+def _invalidate_public_cache() -> None:
+    from articles.caching import invalidate_public_cache
+
+    invalidate_public_cache()
+
+
 # 排序白名单：与 Django 字段名一致，非法值返回 400（对齐文章列表的口径）
 ADMIN_USER_ORDERING_FIELDS = frozenset(
     {'username', 'date_joined', 'last_login', 'last_seen_at', 'is_active'}
@@ -182,6 +191,7 @@ def update_user(request: HttpRequest, user_id: int, payload: UserUpdateIn) -> di
     user.is_staff = payload.is_staff or payload.is_superuser
     user.is_active = payload.is_active
     user.save(update_fields=['email', 'is_staff', 'is_superuser', 'is_active'])
+    _invalidate_public_cache()
 
     return success_response(_to_out(_get_user_or_404(user.pk)).model_dump(), message='用户已更新')
 
@@ -256,6 +266,7 @@ def delete_user(
     else:
         user.delete()
 
+    _invalidate_public_cache()
     return success_response(
         {'username': user.username, 'reassigned_articles': reassigned},
         message='用户已删除',

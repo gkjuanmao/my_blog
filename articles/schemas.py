@@ -170,6 +170,27 @@ class TagUpdateIn(Schema):
         return name
 
 
+class AuthorOut(Schema):
+    """公开作者条目（首页作者筛选器用）。
+
+    **字段白名单**：故意不用 ``UserOut``——那个 schema 带 email / is_staff /
+    is_superuser / date_joined，挂到公网等于把全员邮箱和权限结构交出去。
+    这里只给公开展示真正需要的东西。
+    """
+
+    id: int
+    username: str
+    #: 已发布文章数（草稿不计入）
+    article_count: int
+    avatar_url: str | None = None
+
+
+class AuthorListOut(Schema):
+    """作者列表（不分页：站点作者是个位数）。"""
+
+    items: list[AuthorOut] = []
+
+
 class ArticleOut(Schema):
     """文章列表响应：不含正文，附文件完整访问 URL。"""
 
@@ -189,6 +210,12 @@ class ArticleOut(Schema):
     views: int
     created_at: datetime
     updated_at: datetime
+    #: 作者维度：列表卡片要显示「谁写的」，也是首页按作者筛选的键。
+    #: 用 id 而非用户名做键，因为用户名可被超管改（改完所有分享链接就失效）。
+    author_id: int
+    #: 展示用名字。目前只有 username 这一个人类可读字段（avatar_name 是文件名，
+    #: 不是昵称）；将来加昵称字段时只改这一处映射。
+    author_name: str
 
 
 class ArticleDetailOut(ArticleOut):
@@ -414,6 +441,8 @@ def article_to_out(request, article: Article) -> ArticleOut:
         views=article.views,
         created_at=article.created_at,
         updated_at=article.updated_at,
+        author_id=article.author_id,
+        author_name=article.author.username,
     )
 
 

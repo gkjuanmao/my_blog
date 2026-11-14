@@ -1,6 +1,7 @@
 """博客文章 API：公开文章浏览与管理接口。"""
 import hashlib
 import logging
+import re
 import shutil
 import uuid
 from datetime import timedelta
@@ -11,7 +12,7 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import F, Q
+from django.db.models import Count, F, Q
 from django.db.models.query import QuerySet
 from django.http import FileResponse, HttpRequest
 from django.utils import timezone
@@ -59,6 +60,8 @@ from .schemas import (
     ArticleOut,
     ArticlePreviewIn,
     ArticleUpdateIn,
+    AuthorListOut,
+    AuthorOut,
     BulkDeleteIn,
     CategoryIn,
     CategoryOut,
@@ -191,12 +194,31 @@ def _resolve_category_and_tags(
 
 
 def _published_articles() -> QuerySet[Article]:
-    """仅已发布文章；分类走 select_related、标签走 prefetch_related。"""
+    """仅已发布文章；分类与作者走 select_related、标签走 prefetch_related。
+
+    ``author`` 必须进 select_related：``ArticleOut`` 现在带 ``author_name``，
+    漏了就是每行一次查询（一页 10 条变 11 次）。
+    """
     return (
         Article.objects.filter(is_published=True)
-        .select_related('category')
+        .select_related('category', 'author')
         .prefetch_related('tags')
     )
+
+
+#: slug 入参的白名单：只允许出现后端会生成的字符集。
+#: 校验它有两个原因：① 非法 slug 拼进缓存键时，冒号会让不同查询撞同一个键
+#: （``?category_slug=x:y`` 与 ``?category_slug=x&tag_slug=y`` 同码），命中别人的缓存；
+#: ② 顺手挡住超长入参把缓存键撑爆。
+_SLUG_RE = re.compile(r'^[a-z0-9-]{1,100}$')
+
+
+def _clean_slug(raw: str, field: str) -> str:
+    """校验并归一化 slug 型 query 参数（空串 = 不筛选）。"""
+    value = (raw or '').strip()
+    if value and not _SLUG_RE.match(value):
+        raise HttpError(422, f'{field} 取值非法（只允许小写字母、数字与连字符）')
+    return value
 
 
 @router.get('/categories/', response=ApiResponse[list[CategoryOut]])
@@ -222,22 +244,70 @@ def list_tags(request: HttpRequest) -> dict:
     return success_response(cached_public('tags', build))
 
 
+@router.get('/authors/', response=ApiResponse[AuthorListOut])
+def list_authors(request: HttpRequest) -> dict:
+    """公开作者列表：只包含**有已发布文章**的用户，供首页作者筛选器使用。
+
+    为什么只列有文章的人：作者筛选器里出现「点了没结果」的项就是噪音
+    （Ghost 的定义同样是 authors 是 users 的子集）。
+
+    实现刻意不走 ``User.objects.annotate(Count('article'))``：那是 User 全表
+    LEFT JOIN 后分组。改成「Article 按 author 分组」+ ``in_bulk`` 两条查询，
+    都走索引，数据量涨了也不会突然变慢。
+    """
+
+    def build() -> dict:
+        rows = list(
+            Article.objects.filter(is_published=True)
+            .values('author_id')
+            .annotate(count=Count('id'))
+        )
+        users = User.objects.in_bulk([row['author_id'] for row in rows])
+        items: list[dict] = []
+        for row in rows:
+            user = users.get(row['author_id'])
+            if user is None:  # 外键是 CASCADE，正常不会出现；纯防御
+                continue
+            items.append(
+                AuthorOut(
+                    id=user.id,
+                    username=user.username,
+                    article_count=row['count'],
+                    avatar_url=user.avatar.url if user.avatar else None,
+                ).model_dump()
+            )
+        # 文章多的排前面（筛选器第一屏就是「最该点的人」），同数按用户名稳定排序
+        items.sort(key=lambda item: (-item['article_count'], item['username']))
+        return {'items': items}
+
+    return success_response(cached_public('authors', build))
+
+
 @router.get('/articles/', response=ApiResponse[PageData[ArticleOut]])
 def list_articles(
     request: HttpRequest,
-    page: int = Query(1, ge=1, description='页码'),
+    page: int = Query(1, ge=1, le=500, description='页码'),
     page_size: int = Query(10, ge=1, le=100, description='每页数量'),
     category_slug: str = Query('', description='按分类别名过滤'),
     tag_slug: str = Query('', description='按标签别名过滤'),
+    author: int | None = Query(None, ge=1, description='按作者用户 id 过滤；不传为全部作者'),
 ) -> dict:
-    """文章列表（分页），可按 category_slug / tag_slug 过滤，仅返回已发布文章。"""
+    """文章列表（分页）：可按分类 / 标签 / 作者过滤，仅返回已发布文章。
+
+    作者不存在时返回**空列表**而不是 404，与 ``category_slug`` 的口径一致——
+    筛选器传了个失效 id 不该让页面报错，也不该成为「哪些 id 有效」的探测信号。
+    """
+    clean_category = _clean_slug(category_slug, 'category_slug')
+    clean_tag = _clean_slug(tag_slug, 'tag_slug')
 
     def build() -> dict:
         qs = _published_articles()
-        if category_slug:
-            qs = qs.filter(category__slug=category_slug)
-        if tag_slug:
-            qs = qs.filter(tags__slug=tag_slug)
+        if clean_category:
+            qs = qs.filter(category__slug=clean_category)
+        if clean_tag:
+            qs = qs.filter(tags__slug=clean_tag)
+        if author is not None:
+            qs = qs.filter(author_id=author)
         total = qs.count()
         start = (page - 1) * page_size
         items = [
@@ -246,7 +316,9 @@ def list_articles(
         ]
         return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
 
-    key = f'articles:{category_slug}:{tag_slug}:{page}:{page_size}'
+    # cache_key 必须包含每一个筛选维度（含 author）：cached_public 只认字符串键，
+    # 少一个维度就会把「别人的筛选结果」原样返回，连 total 都是错的。
+    key = f'articles:{author or 0}:{clean_category}:{clean_tag}:{page}:{page_size}'
     return success_response(cached_public(key, build))
 
 
@@ -319,7 +391,7 @@ def list_admin_articles(
     ),
 ) -> dict:
     """管理文章列表：返回全部文章（含未发布草稿），供后台管理与定位。"""
-    qs = Article.objects.select_related('category').prefetch_related('tags')
+    qs = Article.objects.select_related('category', 'author').prefetch_related('tags')
     if is_published is not None:
         qs = qs.filter(is_published=is_published)
     if keyword:

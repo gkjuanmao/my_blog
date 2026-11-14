@@ -246,7 +246,8 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/categories/` | ❌ | 获取所有分类 |
 | GET | `/api/v1/tags/` | ❌ | 获取所有标签 |
-| GET | `/api/v1/articles/` | ❌ | 文章列表 (分页, 可按 category_slug 过滤) |
+| GET | `/api/v1/authors/` | ❌ | 作者列表（仅含**有已发布文章**的用户），供首页作者筛选器 |
+| GET | `/api/v1/articles/` | ❌ | 文章列表 (分页, 可按 `category_slug` / `tag_slug` / `author` 过滤) |
 | GET | `/api/v1/articles/{slug}/` | ❌ | 文章详情 (views +1) |
 | GET | `/api/v1/articles/search/?keyword=xxx` | ❌ | 按标题关键词搜索（分页） |
 
@@ -452,15 +453,45 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 }
 ```
 
+#### GET `/api/v1/authors/` (作者列表)
+
+**认证**：❌　只返回**有已发布文章**的用户（`authors` 是 `users` 的子集），供首页作者筛选器使用；
+没有文章的账号不进列表，避免筛选器里出现「点了没结果」的项。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { "items": [
+    { "id": 3, "username": "gkjuanmao", "article_count": 28, "avatar_url": "/media/avatars/2026/11/x.webp" }
+  ] }
+}
+```
+
+- 排序：`article_count` 降序 → `username`（筛选器第一屏就是最该点的人）
+- 不分页：站点作者是个位数
+- **字段白名单**：只出 `id` / `username` / `article_count` / `avatar_url`。刻意**不复用** `UserOut`
+  ——那个 schema 带 `email` / `is_staff` / `is_superuser` / `date_joined`，挂到公网等于交出全员邮箱与权限结构；
+  `tests/test_authors.py::test_aut_005_field_whitelist` 钉住了这一点。
+- 实现：`Article` 按 `author_id` 分组 + `User.objects.in_bulk()`，两条查询都走索引
+  （不用 `User.annotate(Count('article'))` 那种 User 全表 LEFT JOIN 分组）
+- 缓存：`cached_public('authors', …)`，文章/分类/标签写操作与用户资料变更后失效
+
 #### GET `/api/v1/articles/` (文章列表)
 
 **认证**：❌　仅返回已发布文章。
 
 | 参数 | 类型 | 必填 | 说明 |
 | :--- | :--- | :- | :--- |
-| page | int | ❌ | 页码，默认 1，≥1 |
+| page | int | ❌ | 页码，默认 1，1~500（上限防 `?page=99999` 变成大 OFFSET 慢查询） |
 | page_size | int | ❌ | 每页数量，默认 10，1~100 |
-| category_slug | string | ❌ | 按分类别名过滤 |
+| category_slug | string | ❌ | 按分类别名过滤；只允许 `[a-z0-9-]{1,100}` |
+| tag_slug | string | ❌ | 按标签别名过滤；同上 |
+| author | int | ❌ | 按作者用户 id 过滤；**作者不存在返回空列表而非 404** |
+
+筛选之间是「与」关系。**缓存键必须覆盖全部筛选维度**
+（`articles:{author}:{category_slug}:{tag_slug}:{page}:{page_size}`）——
+`cached_public` 只认字符串键，少一个维度就会把别人的筛选结果连同 `total` 一起返回。
 
 **响应** (200)：
 ```json
@@ -468,7 +499,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   "code": 200,
   "message": "success",
   "data": {
-    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z" } ],
+    "items": [ { "id": 1, "title": "我的第一篇博客", "slug": "my-first-post", "summary": "这是摘要...", "publish_time": "2026-08-09T14:00:00Z", "location": "北京", "category": null, "tags": [], "cover_image_name": "封面.jpg", "cover_image_url": "/media/covers/2026/08/a1b2c3.jpg", "file_name": "附件.pdf", "file_url": "/media/files/2026/08/d4e5f6.pdf", "is_published": true, "views": 0, "created_at": "2026-08-09T10:30:00Z", "updated_at": "2026-08-09T10:30:00Z", "author_id": 1, "author_name": "gkjuanmao" } ],
     "total": 1,
     "page": 1,
     "page_size": 10
@@ -476,7 +507,11 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 }
 ```
 
-**错误**：422：`page`/`page_size` 非法取值（如 `page=0`，`detail` 格式）
+**错误**：422：`page`/`page_size`/`author` 非法取值（如 `page=0`、`author=0`），或 slug 含白名单外字符
+
+> `author_id` / `author_name` 是 2026-11 新增：列表卡片要显示「谁写的」，也是首页按作者筛选的键。
+> 用 id 而非用户名做键，因为用户名可被超管改（改完分享链接就失效）；
+> `author_name` 目前取 `username`（`avatar_name` 是文件名不是昵称），将来加昵称只改这一处映射。
 
 #### GET `/api/v1/articles/{slug}/` (文章详情)
 
