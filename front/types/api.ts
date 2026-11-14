@@ -125,6 +125,19 @@ export interface Article {
   views: number
   created_at: string
   updated_at: string
+  /** 作者用户 id：首页按作者筛选的键（用户名可被改，id 不会） */
+  author_id: number
+  /** 展示用作者名（目前即 username） */
+  author_name: string
+}
+
+/** 公开作者条目（articles/schemas.py AuthorOut）：只有公开展示需要的字段 */
+export interface Author {
+  id: number
+  username: string
+  /** 已发布文章数（草稿不计入） */
+  article_count: number
+  avatar_url: string | null
 }
 
 /** 文章详情（articles/schemas.py ArticleDetailOut）：正文为服务端渲染并消毒后的 HTML */

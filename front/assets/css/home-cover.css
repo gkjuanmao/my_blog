@@ -1145,6 +1145,84 @@ html.dark .cv-hero__grain {
   background: var(--hp-accent);
 }
 
+/* 作者筛选器（chips）：放在区块标题与栅格之间。
+   纪律同首页其它元件——金色只做细节（hover/focus），选中态用墨青实底。 */
+.cv-author {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.cv-author__chip {
+  padding: 6px 14px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  letter-spacing: 0.02em;
+  color: var(--hp-ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.14s var(--hp-ease-state),
+    color 0.14s var(--hp-ease-state),
+    background-color 0.14s var(--hp-ease-state);
+}
+
+.cv-author__chip:hover {
+  border-color: var(--hp-accent);
+  color: var(--hp-ink);
+}
+
+.cv-author__chip[aria-pressed='true'] {
+  background: var(--hp-brand);
+  border-color: var(--hp-brand);
+  color: var(--hp-on-brand);
+}
+
+.cv-author__chip:focus-visible {
+  outline: 2px solid var(--hp-accent);
+  outline-offset: 2px;
+}
+
+.cv-author__chip--more {
+  border-style: dashed;
+}
+
+/* 时间线页复用同一套 chips，但那个页面是独立画廊（tl-* 令牌），
+   所以只调间距，不重写配色（继承 --hp-*，两处一致）。 */
+.tl-authors {
+  margin-top: 14px;
+}
+
+/* 卡片上的作者名：只在「按作者筛选」生效时出现。
+   颜色继承父级——卡片脚注是压在照片上的浅色文字，写死 --hp-ink-3 会看不清。 */
+.cv-card__author {
+  font-family: var(--hp-font-sans);
+  font-size: var(--hp-fs-xs);
+  color: inherit;
+  opacity: 0.92;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 移动端：chips 允许横向滚动而不是换成三行，避免把首屏推下去 */
+@media (max-width: 640px) {
+  .cv-author {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cv-author__chip {
+    flex: none;
+  }
+}
+
 /* ==========================================================================
    8. 12 列栅格
    ========================================================================== */
@@ -2893,6 +2971,20 @@ html.art-page main > .cv-state {
   font-family: var(--hp-font-mono);
   font-size: 12px;
   color: var(--hp-ink-3);
+}
+
+/* 元信息里的链接（作者名）：默认与其它项同色，靠下划线表达可点，
+   hover 转赭金——不额外加粗，避免在标题下方抢注意力。 */
+.cv-article__meta-link {
+  text-decoration: underline;
+  text-decoration-color: var(--hp-line-strong);
+  text-underline-offset: 3px;
+  transition: color 0.14s var(--hp-ease-state), text-decoration-color 0.14s var(--hp-ease-state);
+}
+
+.cv-article__meta-link:hover {
+  color: var(--hp-accent);
+  text-decoration-color: var(--hp-accent);
 }
 
 .cv-article__cover {

@@ -9,28 +9,36 @@
  *   中间 → 标准卡（6 列，2 列栅格）
  *   条目数 < 3 → 全部降级为标准卡（避免出现「只有一张精选卡」的怪图）
  */
-import type { Article, PaginatedResponse } from '~/types/api'
+import type { Article, Author, PaginatedResponse } from '~/types/api'
 import { useArticleList } from '~/composables/useArticleList'
 
 const { site } = useAppConfig()
 const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleList()
+/** 作者筛选状态存在 URL（`?author=<id>`）：刷新/后退/分享都能回到同一个视图 */
+const { authorId, selectAuthor } = useAuthorQuery()
 
 useSeoMeta({
   title: () => site.name,
   description: site.tagline,
 })
 
+/** 作者列表（SSR 拉一次）：筛选器的选项来源，只含有已发布文章的作者 */
+const { data: authorData } = await useAsyncData('home-authors', async () => {
+  const { data } = await useApi().get<{ items: Author[] }>('/authors/')
+  return data.items
+})
+const authors = computed(() => authorData.value ?? [])
+
 function fetchArticles() {
   return load(async (pageNum, size) => {
-    const { data } = await useApi().get<PaginatedResponse<Article>>('/articles/', {
-      page: pageNum,
-      page_size: size,
-    })
+    const params: Record<string, unknown> = { page: pageNum, page_size: size }
+    if (authorId.value !== null) params.author = authorId.value
+    const { data } = await useApi().get<PaginatedResponse<Article>>('/articles/', params)
     return data
   })
 }
 
-watch([page, pageSize], fetchArticles)
+watch([page, pageSize, authorId], fetchArticles)
 await fetchArticles()
 
 const lastPage = computed(() => Math.max(1, Math.ceil(total.value / Math.max(1, pageSize.value))))
@@ -105,6 +113,8 @@ function onPageSizeChange(next: number) {
     <section id="journal" class="cv-section" tabindex="-1" aria-labelledby="journal-heading">
       <CoverSectionHead :total="total" />
 
+      <CoverAuthorFilter :authors="authors" :current="authorId" @select="selectAuthor" />
+
       <!-- 三态语义与 ArticleListSection 保持字面一致（判断顺序也一样） -->
       <div v-if="loading && articles.length === 0" class="cv-state" role="status">
         正在加载游记…
@@ -116,7 +126,11 @@ function onPageSizeChange(next: number) {
       </div>
 
       <div v-else-if="total === 0" class="cv-state" role="status">
-        <p>还没有发布任何游记</p>
+        <p v-if="authorId !== null">这位作者还没有发布游记</p>
+        <p v-else>还没有发布任何游记</p>
+        <button v-if="authorId !== null" type="button" class="cv-state__retry" @click="selectAuthor(null)">
+          看全部文章
+        </button>
       </div>
 
       <div v-else-if="outOfRange" class="cv-state" role="status">
@@ -146,6 +160,7 @@ function onPageSizeChange(next: number) {
               :page="page"
               :is-last-page="page >= lastPage"
               :seal-char="sealChar"
+              :show-author="authorId !== null"
             />
           </li>
         </ul>

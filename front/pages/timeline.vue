@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { CSSProperties } from 'vue'
-import type { Article, Category, PaginatedResponse } from '~/types/api'
+import type { Article, Author, Category, PaginatedResponse } from '~/types/api'
 
 const articles = ref<Article[]>([])
 const categories = ref<Category[]>([])
+const authors = ref<Author[]>([])
 const total = ref(0)
 const loading = ref(true)
 const errorMsg = ref('')
@@ -11,6 +12,8 @@ const errorMsg = ref('')
 const keywordInput = ref('')
 const keyword = ref('')
 const categorySlug = ref('')
+/** 作者筛选：与分类一样在本地过滤（本页一次性取 100 篇） */
+const authorId = ref<number | null>(null)
 
 const viewMode = ref<'stack' | 'list'>('stack')
 /** 卡片堆栈的当前位置（始终为整数） */
@@ -49,13 +52,15 @@ useSeoMeta({
 })
 
 try {
-  const [articleRes, categoryRes] = await Promise.all([
+  const [articleRes, categoryRes, authorRes] = await Promise.all([
     useApi().get<PaginatedResponse<Article>>('/articles/', { page: 1, page_size: 100 }),
     useApi().get<Category[]>('/categories/'),
+    useApi().get<{ items: Author[] }>('/authors/'),
   ])
   articles.value = articleRes.data.items
   total.value = articleRes.data.total
   categories.value = categoryRes.data
+  authors.value = authorRes.data.items
 } catch (e) {
   errorMsg.value = errorMessage(e, '加载失败')
 } finally {
@@ -67,6 +72,7 @@ const filtered = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   return articles.value.filter((article) => {
     if (categorySlug.value && article.category?.slug !== categorySlug.value) return false
+    if (authorId.value !== null && article.author_id !== authorId.value) return false
     if (!kw) return true
     const haystack = [
       article.title,
@@ -197,6 +203,11 @@ function resetFilters() {
   keywordInput.value = ''
   keyword.value = ''
   categorySlug.value = ''
+  authorId.value = null
+}
+
+function selectAuthor(next: number | null) {
+  authorId.value = next
 }
 
 function coverFailed(id: number) {
@@ -330,6 +341,14 @@ watch(filtered, () => {
           <span class="tl-chip-count">{{ option.count }}</span>
         </button>
       </div>
+
+      <CoverAuthorFilter
+        v-if="authors.length > 1"
+        :authors="authors"
+        :current="authorId"
+        class="tl-authors"
+        @select="selectAuthor"
+      />
 
       <div v-if="loading" class="tl-status">正在加载…</div>
       <div v-else-if="errorMsg" class="tl-status tl-status--error">{{ errorMsg }}</div>

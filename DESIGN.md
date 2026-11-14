@@ -477,6 +477,12 @@ my_blog/                          # 项目根目录 (Git 仓库根)
   （不用 `User.annotate(Count('article'))` 那种 User 全表 LEFT JOIN 分组）
 - 缓存：`cached_public('authors', …)`，文章/分类/标签写操作与用户资料变更后失效
 
+**前端口径（首页/时间线的作者筛选器）**：`components/home/CoverAuthorFilter.vue` 一组 chips，
+「全部作者」+ 每人「名字 篇数」；**只有 1 位作者时整块不渲染**（那时「全部」与「某人」是同一批文章）。
+筛选状态写在 URL（`?author=<id>`，见 `composables/useAuthorQuery.ts`）：刷新/后退/分享都能回到同一视图，
+切换作者时**删除 page**（否则第 5 页切到只有 1 篇文章的作者会看到空页）。卡片上的作者名只在筛选生效时显示
+（默认视图保持原有信息密度）。时间线的筛选是本地过滤（它一次性取 100 篇），复用同一个 chips 组件。
+
 #### GET `/api/v1/articles/` (文章列表)
 
 **认证**：❌　仅返回已发布文章。

@@ -23,6 +23,8 @@ const props = defineProps<{
   isLastPage: boolean
   /** 印章字（站点名首字） */
   sealChar: string
+  /** 是否显示作者名：只在「按作者筛选」生效时显示，默认视图保持信息密度不变 */
+  showAuthor?: boolean
 }>()
 
 const failed = ref(false)
@@ -35,6 +37,7 @@ watch(coverUrl, () => {
 
 const href = computed(() => `/article/${props.article.slug}`)
 const categoryName = computed(() => props.article.category?.name ?? '')
+const authorName = computed(() => (props.showAuthor ? (props.article.author_name ?? '') : ''))
 /** location 为空时必须整行不渲染（否则会多出 13px 行高，卡片高度不齐） */
 const location = computed(() => shortPlace(props.article.location ?? ''))
 
@@ -73,6 +76,7 @@ const finText = computed(() => (props.isLastPage ? '本期终' : '本页终'))
             <span class="sr-only">{{ dateFull }}</span>
           </time>
           <template v-if="categoryName"> · {{ categoryName }}</template>
+          <template v-if="authorName"> · {{ authorName }}</template>
           <template v-if="viewsLabel"> · {{ viewsLabel }}</template>
         </p>
         <span class="cv-feat__seal" aria-hidden="true">{{ sealChar }}</span>
@@ -123,6 +127,7 @@ const finText = computed(() => (props.isLastPage ? '本期终' : '本页终'))
           <span aria-hidden="true">{{ dateCompact }}</span>
           <span class="sr-only">{{ dateFull }}</span>
         </time>
+        <span v-if="authorName" class="cv-card__author">{{ authorName }}</span>
         <span class="cv-wide__index" aria-hidden="true">· {{ index }} / {{ total }}</span>
       </p>
     </div>
@@ -156,6 +161,7 @@ const finText = computed(() => (props.isLastPage ? '本期终' : '本页终'))
           <span aria-hidden="true">{{ dateCompact }}</span>
           <span class="sr-only">{{ dateFull }}</span>
         </time>
+        <span v-if="authorName" class="cv-card__author">{{ authorName }}</span>
         <span class="cv-card__ext" aria-hidden="true">阅读 →</span>
       </p>
     </div>

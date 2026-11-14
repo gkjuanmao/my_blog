@@ -77,6 +77,14 @@ useHead(() => ({
       <h1 class="cv-article__title">{{ article.title }}</h1>
       <div class="cv-article__meta">
         <time :datetime="article.publish_time">{{ formatDate(article.publish_time) }}</time>
+        <!-- 作者名进筛选页：这就是 WordPress「作者归档页」的平替，不必新开路由 -->
+        <NuxtLink
+          v-if="article.author_name"
+          class="cv-article__meta-item cv-article__meta-link"
+          :to="{ path: '/', query: { author: String(article.author_id) } }"
+        >
+          {{ article.author_name }}
+        </NuxtLink>
         <span v-if="article.location" class="cv-article__meta-item">{{ article.location }}</span>
         <span v-if="article.views" class="cv-article__meta-item">{{ article.views }} 次阅读</span>
       </div>
