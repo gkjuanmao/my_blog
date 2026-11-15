@@ -140,6 +140,17 @@ export interface Author {
   avatar_url: string | null
 }
 
+/** 后台作者筛选项（articles/schemas.py AdminAuthorOut）：口径与 Author 不同——含草稿 */
+export interface AdminAuthor {
+  id: number
+  username: string
+  /** 全部稿件数（已发布 + 草稿） */
+  article_count: number
+  /** 其中已发布的数量 */
+  published_count: number
+  avatar_url: string | null
+}
+
 /** 文章详情（articles/schemas.py ArticleDetailOut）：正文为服务端渲染并消毒后的 HTML */
 export interface ArticleDetail extends Article {
   author: string

@@ -4,6 +4,7 @@
 // 本文件只保留「页面级」状态与调度：筛选条件、勾选集合、增删改导航、列表加载。
 // 视图与归档流程在 components/admin/ 下的组件里（桌面台账表 / 移动卡片 / 筛选 / 导出 / 导入）。
 import type {
+  AdminAuthor,
   Article,
   BulkDeleteResult,
   Category,
@@ -17,8 +18,11 @@ const route = useRoute()
 const keyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const categorySlug = ref(typeof route.query.category === 'string' ? route.query.category : '')
 const status = ref(typeof route.query.status === 'string' ? route.query.status : '') // '' | 'true' | 'false'
+// 作者筛选用 id（和首页一致）：用户名可被超管改，改了链接就失效
+const authorId = ref(typeof route.query.author === 'string' ? route.query.author : '')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const categories = ref<Category[]>([])
+const authors = ref<AdminAuthor[]>([])
 
 const { page, pageSize, articles, total, loading, errorMsg, load } = useArticleList()
 
@@ -36,7 +40,7 @@ const importVisible = ref(false)
 const bulkDeleting = ref(false)
 /** 转移归属：超管专属（后端 /admin/articles/bulk-author/ 同样是超级管理员鉴权） */
 const transferVisible = ref(false)
-const { isSuperuser, ensureMe } = useMe()
+const { isSuperuser, isStaff, ensureMe } = useMe()
 
 /** 抬头里的筛选说明：只说当前生效的条件 */
 const filterSummary = computed(() => {
@@ -45,6 +49,10 @@ const filterSummary = computed(() => {
   if (categorySlug.value) {
     const name = categories.value.find(c => c.slug === categorySlug.value)?.name
     if (name) parts.push(`栏目「${name}」`)
+  }
+  if (authorId.value) {
+    const name = authors.value.find(a => String(a.id) === authorId.value)?.username
+    if (name) parts.push(`作者「${name}」`)
   }
   if (status.value === 'true') parts.push('只看已发布')
   if (status.value === 'false') parts.push('只看草稿')
@@ -63,6 +71,7 @@ function fetchArticles() {
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     if (categorySlug.value) params.category_slug = categorySlug.value
     if (status.value) params.is_published = status.value
+    if (authorId.value) params.author = authorId.value
     const { data } = await useApi().get<PaginatedResponse<Article>>('/admin/articles/', params)
     return data
   }, clearSelection)
@@ -77,6 +86,20 @@ async function fetchCategories() {
   }
 }
 
+/** 作者筛选项：走 admin 专用端点（含草稿口径）；非 staff 只看得到自己的稿，筛选器无意义 */
+async function fetchAuthors() {
+  if (!isStaff.value) {
+    authors.value = []
+    return
+  }
+  try {
+    const { data } = await useApi().get<{ items: AdminAuthor[] }>('/admin/articles/authors/')
+    authors.value = data.items
+  } catch {
+    authors.value = []
+  }
+}
+
 /** 筛选/排序变化：回到第 1 页（已在第 1 页时直接刷新，避免 watch 不触发） */
 function applyFilters() {
   if (page.value === 1) fetchArticles()
@@ -87,6 +110,7 @@ function resetFilters() {
   keyword.value = ''
   categorySlug.value = ''
   status.value = ''
+  authorId.value = ''
   sortOrder.value = 'desc'
   applyFilters()
 }
@@ -181,10 +205,12 @@ async function doBulkDelete() {
 }
 
 watch([page, pageSize], fetchArticles)
-onMounted(() => {
+onMounted(async () => {
   fetchCategories()
   fetchArticles()
-  void ensureMe()
+  // 作者筛选项依赖「是不是 staff」：先等 /me/ 落地，否则 isStaff 恒 false，选项永远为空
+  await ensureMe()
+  fetchAuthors()
 })
 </script>
 
@@ -204,9 +230,11 @@ onMounted(() => {
     <ArticleAdminFilters
       v-model:keyword="keyword"
       v-model:category-slug="categorySlug"
+      v-model:author-id="authorId"
       v-model:status="status"
       v-model:sort-order="sortOrder"
       :categories="categories"
+      :authors="authors"
       @change="applyFilters"
       @search="applyFilters"
     >
@@ -216,6 +244,7 @@ onMounted(() => {
             :keyword="keyword"
             :category-slug="categorySlug"
             :status="status"
+            :author-id="authorId"
             :selected-ids="selectedIds"
           />
           <button class="ad-btn ad-btn--text ad-btn--sm" type="button" @click="resetFilters">

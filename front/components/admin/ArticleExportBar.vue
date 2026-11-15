@@ -13,6 +13,8 @@ const props = defineProps<{
   keyword: string
   categorySlug: string
   status: string
+  /** 作者筛选（用户 id 字符串，空串表示不限）——不带上它「导出全部」会导出全站 */
+  authorId: string
   /** 当前勾选的文章 id（导出所选时使用） */
   selectedIds: number[]
 }>()
@@ -25,6 +27,7 @@ function filterParams(): Record<string, unknown> {
   if (props.keyword.trim()) params.keyword = props.keyword.trim()
   if (props.categorySlug) params.category_slug = props.categorySlug
   if (props.status) params.is_published = props.status
+  if (props.authorId) params.author = props.authorId
   return params
 }
 

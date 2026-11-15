@@ -191,6 +191,29 @@ class AuthorListOut(Schema):
     items: list[AuthorOut] = []
 
 
+class AdminAuthorOut(Schema):
+    """后台作者筛选器的选项条目。
+
+    与 :class:`AuthorOut` 的区别只在口径：``article_count`` 统计**全部稿件（含草稿）**，
+    因为后台列表本身含草稿——只算已发布的话，一个「只有草稿的作者」在筛选器里会消失，
+    而他的稿子明明就在列表里。
+    """
+
+    id: int
+    username: str
+    #: 全部稿件数（已发布 + 草稿）
+    article_count: int
+    #: 其中已发布的数量，供筛选器显示「N 篇 / M 草稿」这类提示
+    published_count: int = 0
+    avatar_url: str | None = None
+
+
+class AdminAuthorListOut(Schema):
+    """后台作者筛选项列表（不分页）。"""
+
+    items: list[AdminAuthorOut] = []
+
+
 class ArticleOut(Schema):
     """文章列表响应：不含正文，附文件完整访问 URL。"""
 

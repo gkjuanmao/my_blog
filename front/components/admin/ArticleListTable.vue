@@ -62,10 +62,12 @@ function shownTags(row: Article) {
           </th>
           <th style="width: 60px">封面</th>
           <th>标题</th>
-          <th class="ad-col-md" style="width: 164px">标签</th>
-          <th class="ad-col-sm" style="width: 96px">栏目</th>
-          <th style="width: 86px">状态</th>
-          <th class="ad-col-md" style="width: 100px">
+          <th style="width: 92px">作者</th>
+          <th class="ad-col-lg" style="width: 132px">标签</th>
+          <th class="ad-col-le" style="width: 88px">栏目</th>
+          <th style="width: 108px">地点</th>
+          <th style="width: 76px">状态</th>
+          <th class="ad-col-md" style="width: 92px">
             <button
               class="ad-sort"
               type="button"
@@ -75,8 +77,8 @@ function shownTags(row: Article) {
               发布时间 <i aria-hidden="true">{{ order === 'desc' ? '↓' : '↑' }}</i>
             </button>
           </th>
-          <th class="ad-col-md num r" style="width: 66px">阅读</th>
-          <th style="width: 100px"><span class="ad-sr">操作</span></th>
+          <th class="ad-col-le num r" style="width: 58px">阅读</th>
+          <th style="width: 92px"><span class="ad-sr">操作</span></th>
         </tr>
       </thead>
       <tbody>
@@ -103,11 +105,13 @@ function shownTags(row: Article) {
             <NuxtLink class="ad-t-title" :to="`/administrator/articles/edit/${row.id}`" :title="row.title">
               {{ row.title }}
             </NuxtLink>
-            <span class="ad-t-sub" :title="`${row.slug} · ${row.author_name}`">
-              {{ row.slug }} · {{ row.author_name }}
-            </span>
+            <span class="ad-t-sub" :title="row.slug">{{ row.slug }}</span>
           </td>
-          <td class="ad-col-md">
+          <td>
+            <!-- 作者单独成列：归属会影响「这条稿子归谁」，不该只藏在 slug 后面当副标题 -->
+            <span class="ad-t-txt" :title="row.author_name">{{ row.author_name }}</span>
+          </td>
+          <td class="ad-col-lg">
             <div v-if="row.tags.length" class="ad-t-tags">
               <span v-for="tag in shownTags(row)" :key="tag.id" class="ad-t-tag">
                 <b>#</b>{{ tag.name }}
@@ -118,8 +122,12 @@ function shownTags(row: Article) {
             </div>
             <span v-else class="ad-t-sub">—</span>
           </td>
-          <td class="ad-col-sm">
+          <td class="ad-col-le">
             <span v-if="row.category" class="ad-chip">{{ row.category.name }}</span>
+            <span v-else class="ad-t-sub">—</span>
+          </td>
+          <td>
+            <span v-if="row.location" class="ad-t-txt" :title="row.location">{{ row.location }}</span>
             <span v-else class="ad-t-sub">—</span>
           </td>
           <td>
@@ -128,7 +136,7 @@ function shownTags(row: Article) {
             </span>
           </td>
           <td class="ad-table__date ad-col-md">{{ formatDateCompact(row.publish_time) }}</td>
-          <td class="num r ad-col-md">{{ row.is_published ? row.views : '—' }}</td>
+          <td class="num r ad-col-le">{{ row.is_published ? row.views : '—' }}</td>
           <td class="ad-table__acts">
             <button class="ad-link" type="button" @click="emit('edit', row.id)">
               {{ row.is_published ? '编辑' : '继续编辑' }}
@@ -139,7 +147,7 @@ function shownTags(row: Article) {
           </td>
         </tr>
         <tr v-if="!articles.length">
-          <td colspan="9">
+          <td colspan="11">
             <p class="ad-rows-empty">
               {{ loading ? '正在加载…' : '没有符合条件的稿件 —— 换个筛选条件，或者直接写一篇。' }}
             </p>

@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
- * 文章管理页的筛选行：工具带里的一排行内控件（搜索 / 栏目 / 状态 / 排序）。
+ * 文章管理页的筛选行：工具带里的一排行内控件（搜索 / 栏目 / 作者 / 状态 / 排序）。
  * 筛选值由页面持有（v-model），本组件只负责渲染与「什么时候该重新拉取」。
  */
-import type { Category } from '~/types/api'
+import type { AdminAuthor, Category } from '~/types/api'
 
-defineProps<{ categories: Category[] }>()
+defineProps<{
+  categories: Category[]
+  /** 作者选项：来自 /admin/articles/authors/（含草稿口径）；非 staff 时页面传空数组 */
+  authors: AdminAuthor[]
+}>()
 
 const emit = defineEmits<{
   /** 下拉/页签变化：由页面决定是回第 1 页还是直接刷新 */
@@ -16,6 +20,7 @@ const emit = defineEmits<{
 
 const keyword = defineModel<string>('keyword', { required: true })
 const categorySlug = defineModel<string>('categorySlug', { required: true })
+const authorId = defineModel<string>('authorId', { required: true })
 const status = defineModel<string>('status', { required: true })
 const sortOrder = defineModel<'asc' | 'desc'>('sortOrder', { required: true })
 
@@ -51,6 +56,17 @@ function pickStatus(value: string) {
       <select v-model="categorySlug" @change="emit('change')">
         <option value="">全部栏目</option>
         <option v-for="c in categories" :key="c.id" :value="c.slug">{{ c.name }}</option>
+      </select>
+    </label>
+
+    <!-- 只有一位作者时整块不渲染：那时「全部作者」与「某人的」是同一批稿 -->
+    <label v-if="authors.length > 1" class="ad-tool ad-tool--sel" style="min-width: 138px">
+      <span class="ad-sr">作者</span>
+      <select v-model="authorId" @change="emit('change')">
+        <option value="">全部作者</option>
+        <option v-for="a in authors" :key="a.id" :value="String(a.id)">
+          {{ a.username }}（{{ a.article_count }}）
+        </option>
       </select>
     </label>
 

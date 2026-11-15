@@ -1419,6 +1419,17 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 表格里的单行文本列（作者 / 地点）：与标题同一套截断手法，悬停看全文 */
+.ad-t-txt {
+  display: block;
+  max-width: 100%;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--hp-ink-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .ad-thumb {
   display: block;
   width: 48px;
@@ -2909,6 +2920,22 @@
   }
   .ad-split__aside {
     padding-inline: 20px;
+  }
+}
+
+/* 后台文章表列数偏多（勾选/封面/标题/作者/标签/栏目/地点/状态/发布时间/阅读/操作）。
+   窄屏先砍「补充信息」，作者与地点是主信息最后才让——砍的顺序按「列表里还需不需要看」排：
+   标签 132px（≤1240）→ 栏目 + 阅读（≤1080）→ 发布时间（≤980，沿用 .ad-col-md）。
+   实测各档之和都小于容器，标题列不会把自己挤成负宽度，也不会出现横向滚动。 */
+@media (max-width: 1240px) {
+  .ad-col-lg {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1080px) {
+  .ad-col-le {
+    display: none !important;
   }
 }
 

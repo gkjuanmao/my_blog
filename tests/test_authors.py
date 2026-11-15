@@ -123,3 +123,63 @@ class TestAuthorsEndpoint:
     def test_aut_008_is_public(self, api_client, three_authors):
         """AUT-008 匿名可访问（首页筛选器在未登录时也要能用）。"""
         assert api_client.get(AUTHORS_URL).status_code == 200
+
+
+ADMIN_AUTHORS_URL = '/api/v1/admin/articles/authors/'
+
+
+class TestAdminArticleAuthorsEndpoint:
+    """后台「按作者筛选」的选项来源（口径与公开 /authors/ 不同：含草稿）。"""
+
+    @pytest.fixture
+    def mixed(self, user):
+        """staff 甲 2 篇（1 已发布 + 1 草稿），乙只有 1 篇草稿，丙一篇都没有。"""
+        draft_only = get_user_model().objects.create_user(username='draft-only', password='x')
+        silent = get_user_model().objects.create_user(username='no-article', password='x')
+        make_article(user, 'jia-pub')
+        make_article(user, 'jia-draft', published=False)
+        make_article(draft_only, 'yi-draft-only', published=False)
+        return {'staff': user, 'draft_only': draft_only, 'silent': silent}
+
+    def test_aut_009_includes_draft_only_authors(self, api_client, auth_header, mixed):
+        """AUT-009 只有草稿的作者也要出现在后台筛选器里。
+
+        公开 /authors/ 只算已发布，这类账号会消失；后台列表却看得到他的稿子，
+        所以选项必须单独取（这里同时钉住路由没被 /articles/{article_id}/ 抢走）。
+        """
+        response = api_client.get(ADMIN_AUTHORS_URL, **auth_header)
+
+        assert response.status_code == 200
+        names = [item['username'] for item in response.json()['data']['items']]
+        assert 'draft-only' in names
+        assert 'no-article' not in names  # 一篇稿子都没有的人不该占位
+
+        public_names = [i['username'] for i in api_client.get(AUTHORS_URL).json()['data']['items']]
+        assert 'draft-only' not in public_names  # 对照：公开端点确实看不到他
+
+    def test_aut_010_counts_include_drafts(self, api_client, auth_header, mixed):
+        """AUT-010 article_count 含草稿，published_count 只算已发布。"""
+        items = api_client.get(ADMIN_AUTHORS_URL, **auth_header).json()['data']['items']
+        by_name = {item['username']: item for item in items}
+
+        staff_row = by_name[mixed['staff'].username]
+        assert staff_row['article_count'] == 2
+        assert staff_row['published_count'] == 1
+        assert by_name['draft-only']['article_count'] == 1
+        assert by_name['draft-only']['published_count'] == 0
+
+    def test_aut_011_requires_staff(self, api_client, plain_header):
+        """AUT-011 非 staff 一律 403（他会看到全员用户名，属于管理视角）。"""
+        assert api_client.get(ADMIN_AUTHORS_URL, **plain_header).status_code == 403
+        assert api_client.get(ADMIN_AUTHORS_URL).status_code == 401
+
+    def test_aut_012_field_whitelist(self, api_client, auth_header, mixed):
+        """AUT-012 字段白名单：不泄露 email / 权限 / 登录时间。"""
+        item = api_client.get(ADMIN_AUTHORS_URL, **auth_header).json()['data']['items'][0]
+
+        assert set(item) == {
+            'id', 'username', 'article_count', 'published_count', 'avatar_url',
+        }
+        for leaked in ('email', 'is_staff', 'is_superuser', 'last_login', 'date_joined'):
+            assert leaked not in item
+

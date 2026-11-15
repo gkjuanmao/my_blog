@@ -53,6 +53,8 @@ from .models import (
 from .rendering import render_markdown
 from .schemas import (
     AdminArticleDetailOut,
+    AdminAuthorListOut,
+    AdminAuthorOut,
     ArchiveImportPlanIn,
     ArchiveImportTaskIn,
     ArticleCreateIn,
@@ -423,6 +425,45 @@ def list_admin_articles(
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
 
 
+@admin_router.get(
+    '/articles/authors/', response=ApiResponse[AdminAuthorListOut], auth=staff_auth
+)
+def list_admin_article_authors(request: HttpRequest) -> dict:
+    """后台「按作者筛选」的选项来源（**覆盖含草稿的全部稿件**）。
+
+    不能复用公开 ``GET /authors/``：那个只统计 ``is_published=True``，
+    于是「只有草稿的账号」在筛选器里凭空消失，可他的稿子就在管理员眼前。
+    也不复用 ``GET /admin/users/``：那是超管专属，staff 会被 403。
+
+    ⚠️ 路由必须注册在 ``/articles/{article_id}/`` 之前（后者没有 int 转换器，
+    ``resolve()`` 会把 'authors' 当成 article_id）。
+
+    实现同 ``list_authors``：Article 按 author 分组（走索引）+ ``in_bulk`` 取用户，
+    不做 ``User.annotate(Count('article'))`` 那种 User 全表 LEFT JOIN 分组。
+    """
+    rows = list(
+        Article.objects.values('author_id')
+        .annotate(total=Count('id'), published=Count('id', filter=Q(is_published=True)))
+        .order_by('-total', 'author_id')
+    )
+    users = User.objects.in_bulk([row['author_id'] for row in rows])
+    items: list[dict] = []
+    for row in rows:
+        user = users.get(row['author_id'])
+        if user is None:  # 外键 CASCADE，正常不会有孤儿行；纯防御
+            continue
+        items.append(
+            AdminAuthorOut(
+                id=user.id,
+                username=user.username,
+                article_count=row['total'],
+                published_count=row['published'],
+                avatar_url=user.avatar.url if user.avatar else None,
+            ).model_dump()
+        )
+    return success_response({'items': items})
+
+
 @admin_router.get('/articles/export/', response=ApiResponse[dict], auth=staff_auth)
 def create_export(
     request: HttpRequest,
@@ -430,6 +471,7 @@ def create_export(
     keyword: str = Query('', description='标题关键词（与列表接口同义）'),
     category_slug: str = Query('', description='按分类别名过滤'),
     is_published: bool | None = Query(None, description='按发布状态过滤'),
+    author: int | None = Query(None, ge=1, description='按作者用户 id 过滤（与列表接口同义）'),
 ) -> dict:
     """创建导出票据（**不**直接回 zip）。
 
@@ -446,6 +488,7 @@ def create_export(
         keyword=keyword,
         category_slug=category_slug,
         is_published=is_published,
+        author_id=author,
     )
     if not articles:
         raise HttpError(400, '没有符合条件的文章')
@@ -491,6 +534,7 @@ def estimate_export(
     keyword: str = Query(''),
     category_slug: str = Query(''),
     is_published: bool | None = Query(None),
+    author: int | None = Query(None, ge=1),
 ) -> dict:
     """导出预估：篇数 / 源字节 / 条目数 / **是否可回导**。"""
     lim = archive_limits()
@@ -502,6 +546,7 @@ def estimate_export(
         keyword=keyword,
         category_slug=category_slug,
         is_published=is_published,
+        author_id=author,
     )
     estimate = archive_export.estimate_export(articles, lim=lim)
     return success_response(estimate.to_dict())

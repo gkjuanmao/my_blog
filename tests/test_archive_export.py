@@ -41,6 +41,7 @@ class TestArchiveRouting:
             '/api/v1/admin/articles/import/stage/',
             '/api/v1/admin/articles/import/tasks/',
             '/api/v1/admin/articles/import/limits/',
+            '/api/v1/admin/articles/authors/',
         ],
     )
     def test_archive_paths_have_no_article_id(self, path):
@@ -59,6 +60,29 @@ class TestArchiveRouting:
         """回归防护：详情路由没有 int 转换器，会把 'export' 当 article_id。"""
         match = resolve(EXPORT_URL)
         assert 'article_id' not in match.kwargs
+
+
+class TestExportAuthorFilter:
+    """`?author=` 与列表接口同义：界面上筛了某位作者，导出就不能静默导出全站。"""
+
+    def test_estimate_scoped_to_author(self, api_client, staff_header, article_factory,
+                                       staff_user, jpeg_factory):
+        other = type(staff_user).objects.create_user(username='other-author', password='x')
+        mine = article_factory(staff_user, slug='mine-1', cover_bytes=jpeg_factory())
+        article_factory(other, slug='other-1', cover_bytes=jpeg_factory())
+
+        all_resp = api_client.get(ESTIMATE_URL, **staff_header)
+        mine_resp = api_client.get(f'{ESTIMATE_URL}?author={staff_user.id}', **staff_header)
+        other_resp = api_client.get(f'{ESTIMATE_URL}?author={other.id}', **staff_header)
+
+        assert all_resp.json()['data']['count'] == 2
+        assert mine_resp.json()['data']['count'] == 1
+        assert other_resp.json()['data']['count'] == 1
+        # ids 优先于筛选：显式点选的稿件不受 author 影响
+        by_ids = api_client.get(
+            f'{ESTIMATE_URL}?ids={mine.id}&author={other.id}', **staff_header
+        )
+        assert by_ids.json()['data']['count'] == 1
 
 
 # --------------------------------------------------------------------------- 权限

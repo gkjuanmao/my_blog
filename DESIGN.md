@@ -267,6 +267,7 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | 方法 | 路径 | 认证 | 说明 |
 | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/admin/articles/` | ✅ | 文章列表 (含未发布草稿，分页，可按 `is_published`/`keyword`/`category_slug`/`author` 过滤，`ordering` 排序) |
+| GET | `/api/v1/admin/articles/authors/` | ✅ | 后台作者筛选项（**含草稿**口径，与公开 `/authors/` 不同） |
 | PUT | `/api/v1/admin/articles/{id}/` | ✅ | 更新文章；`author_id` **仅超管**可改（归属转移） |
 | POST | `/api/v1/admin/articles/bulk-author/` | ✅🔒 | 批量转移归属（仅超管，单次 ≤200 篇） |
 | POST | `/api/v1/admin/articles/` | ✅ | 创建文章 (含封面+附件上传) |
@@ -600,11 +601,46 @@ my_blog/                          # 项目根目录 (Git 仓库根)
 | is_published | bool | ❌ | 按发布状态过滤 |
 | keyword | string | ❌ | 标题关键词模糊搜索 |
 | category_slug | string | ❌ | 按分类别名过滤 |
+| author | int | ❌ | 按作者用户 id 过滤（与公开列表同义；作者不存在返回空列表而非 404） |
 | ordering | string | ❌ | 排序字段：`publish_time`（升序）/`-publish_time`（降序）；可选白名单 `created_at`/`updated_at`/`views`/`title`（前缀 `-` 降序）；不传按默认发布时间降序 |
 
 **响应** (200)：`data` 结构与公开 `GET /articles/` 一致（`items` 为 `ArticleOut` 数组 + `total`/`page`/`page_size`）。
 
 **错误**：400：`ordering` 不在白名单内（「不支持的排序字段」，信封格式）
+
+#### GET `/api/v1/admin/articles/authors/` (后台作者筛选项)
+
+**认证**：✅ staff（非 staff 403 —— 普通作者只看得到自己的稿，作者筛选对他没有意义）。
+
+供后台「按作者筛选」下拉使用。**口径与公开 `GET /authors/` 不同**：
+
+| | 公开 `/authors/` | 后台 `/admin/articles/authors/` |
+| :--- | :--- | :--- |
+| 计入范围 | 只算 `is_published=True` | **全部稿件（含草稿）** |
+| 没有文章的账号 | 不出现 | 不出现 |
+| 只有草稿的账号 | **不出现** | 出现 |
+
+差异的原因：后台列表本身含草稿，若按已发布口径取选项，「只有草稿的账号」在筛选器里会消失，
+可他的稿子就在管理员眼前。也不能复用 `/admin/users/`（超管专属，staff 会 403）。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { "items": [
+    { "id": 3, "username": "gkjuanmao", "article_count": 7, "published_count": 5, "avatar_url": null }
+  ] }
+}
+```
+
+- `article_count` = 全部稿件；`published_count` = 其中已发布
+- 排序：`article_count` 降序 → `author_id`；不分页
+- 字段白名单（不出 email / 权限 / 登录时间），`tests/test_authors.py::TestAdminArticleAuthorsEndpoint` 钉住
+- 实现：`Article` 按 `author_id` 分组（`Count` + `filter=Q(is_published=True)`）+ `in_bulk`，不走缓存（后台本来就要实时）
+- ⚠️ 路由必须在 `/articles/{article_id}/` **之前**注册（后者无 int 转换器，`'authors'` 会被当成 article_id）
+
+> **导出也吃 `?author=`**：`GET /admin/articles/export/` 与 `/export/estimate/` 的筛选参数与列表接口同义
+> （`ids` 优先）。否则「筛了某位作者再点导出全部」会静默导出全站，用户以为拿到的是自己那份。
 
 #### POST `/api/v1/admin/articles/` (创建文章)
 

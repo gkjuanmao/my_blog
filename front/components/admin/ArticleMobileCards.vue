@@ -38,7 +38,9 @@ const emit = defineEmits<{
       <div>
         <p class="ad-mcard__title">{{ row.title }}</p>
         <p class="ad-mcard__meta">
-          {{ row.category?.name ?? '未分类' }} · {{ formatDateCompact(row.publish_time) }}
+          {{ row.author_name }}
+          <template v-if="row.location"> · {{ row.location }}</template>
+          · {{ row.category?.name ?? '未分类' }} · {{ formatDateCompact(row.publish_time) }}
           · {{ row.is_published ? `${row.views} 次阅读` : '草稿' }}
         </p>
         <div class="ad-mcard__acts">

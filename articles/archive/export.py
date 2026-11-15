@@ -80,8 +80,13 @@ def select_articles(
     keyword: str = '',
     category_slug: str = '',
     is_published: bool | None = None,
+    author_id: int | None = None,
 ) -> list[Article]:
-    """按 id 或列表筛选条件取文章；导出顺序固定 publish_time DESC, id DESC。"""
+    """按 id 或列表筛选条件取文章；导出顺序固定 publish_time DESC, id DESC。
+
+    ``author_id`` 与后台列表接口 ``?author=`` 同义：筛了谁就只导出谁的稿，
+    否则「按作者筛选后点导出全部」会静默导出全站（用户以为只导了自己的那份）。
+    """
     qs = Article.objects.select_related('author', 'category').prefetch_related('tags')
     if ids:
         qs = qs.filter(pk__in=ids)
@@ -92,6 +97,8 @@ def select_articles(
             qs = qs.filter(category__slug=category_slug)
         if is_published is not None:
             qs = qs.filter(is_published=is_published)
+        if author_id is not None:
+            qs = qs.filter(author_id=author_id)
     # -id 次要键：publish_time 相同时保证 NNN 序号稳定
     return list(qs.order_by('-publish_time', '-id'))
 
