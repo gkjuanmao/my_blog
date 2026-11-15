@@ -2715,13 +2715,67 @@ html.is-hidden.is-settled.motion-ok .cv-scroll-cue__dot {
   color: var(--hp-accent);
 }
 
+/* 分页：结果末尾的「加载更多」，样式沿用芯片的胶囊形，避免在结果流里冒出一个陌生按钮 */
+.cv-bd__more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 10px;
+}
+
+.cv-bd__more-btn {
+  padding: 7px 18px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--hp-font-mono);
+  font-size: 12px;
+  color: var(--hp-ink-2);
+  cursor: pointer;
+  transition: border-color 160ms var(--hp-ease-state), color 160ms var(--hp-ease-state);
+}
+
+.cv-bd__more-btn:hover:not(:disabled) {
+  border-color: var(--hp-brand);
+  color: var(--hp-brand);
+}
+
+.cv-bd__more-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cv-bd__done {
+  margin: 0 0 2px;
+  font-family: var(--hp-font-mono);
+  font-size: 10.5px;
+  color: var(--hp-ink-3);
+}
+
 .cv-bd__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   margin: 4px 0 0;
   padding-top: 10px;
   border-top: 1px solid var(--hp-line);
   font-family: var(--hp-font-mono);
   font-size: 11px;
   color: var(--hp-ink-3);
+}
+
+.cv-bd__all {
+  flex: none;
+  font-family: var(--hp-font-sans);
+  font-size: 12px;
+  color: var(--hp-brand);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(30, 61, 56, 0.3);
+  padding-bottom: 1px;
+}
+
+.cv-bd__all:hover {
+  border-bottom-color: currentColor;
 }
 
 @media (max-width: 767px) {

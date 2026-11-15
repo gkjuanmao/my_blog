@@ -29,6 +29,13 @@ export interface PaginatedResponse<T> {
   page_size: number
 }
 
+/** /articles/stats/：已发布总篇数 + 每个分类/标签下的篇数（键是 slug） */
+export interface ArticleStats {
+  total: number
+  by_category: Record<string, number>
+  by_tag: Record<string, number>
+}
+
 export interface LoginResponse {
   access: string
   refresh: string

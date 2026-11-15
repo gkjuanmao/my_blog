@@ -5,10 +5,19 @@
  * 交互遵循 02-ux-spec §3：原生 `<dialog>` 拿焦点陷阱与 Esc；结果行整行可点，
  * 单一交互元素；关闭后焦点回触发按钮。数据走 /articles/search/、/articles/?category_slug=、
  * /articles/?tag_slug= 三条真实接口，不做本地过滤。
+ *
+ * 三个刻意的决定：
+ * 1. 结果按 20 条一页、点「加载更多」追加，而不是一次拉一大页：弹窗是「快速定位」，
+ *    首屏要快；想看全量的人有明确出口（页脚「查看全部」→ 带分页的独立页面）。
+ * 2. 栏目/标签上的篇数走 /articles/stats/ 的聚合值，不再拉一页文章本地数——
+ *    后者超过窗口上限会静默少算，芯片之和还会和「全部」对不上。
+ * 3. 每次请求带序号，只认最后一次的回包：翻页和改关键词会并发，慢请求不能覆盖新结果。
  */
-import type { Article, Category, PaginatedResponse, Tag } from '~/types/api'
+import type { Article, ArticleStats, Category, PaginatedResponse, Tag } from '~/types/api'
 
 type BrowseMode = 'search' | 'category' | 'tag'
+
+const PAGE_SIZE = 20
 
 const props = withDefaults(
   defineProps<{
@@ -31,89 +40,145 @@ const activeTag = ref('') // slug，'' = 全部
 
 const categories = ref<Category[]>([])
 const tags = ref<Tag[]>([])
+const stats = ref<ArticleStats | null>(null)
+
 const results = ref<Article[]>([])
 const total = ref(0)
+const page = ref(1)
 const loading = ref(false)
+const loadingMore = ref(false)
 const errorMsg = ref('')
 
-/** 计数用的全量快照（最多 200 篇，足够本站规模） */
-const allArticles = ref<Article[]>([])
+/** 请求序号：翻页/改筛选并发时只认最后一次 */
+let seq = 0
 
 const MODE_LABEL: Record<BrowseMode, string> = { search: '搜索', category: '分类', tag: '标签' }
 
-const countMap = computed(() => {
-  const byCategory = new Map<string, number>()
-  const byTag = new Map<string, number>()
-  for (const a of allArticles.value) {
-    if (a.category) byCategory.set(a.category.slug, (byCategory.get(a.category.slug) ?? 0) + 1)
-    for (const t of a.tags) byTag.set(t.slug, (byTag.get(t.slug) ?? 0) + 1)
-  }
-  return { byCategory, byTag }
-})
+const hasMore = computed(() => results.value.length < total.value)
 
+/** 芯片上的篇数来自聚合接口；取不到（接口失败）时退化成「只显示名称」，不给假数字 */
 const categoryChips = computed(() =>
-  categories.value.map((c) => ({
+  categories.value.map(c => ({
     slug: c.slug,
     name: c.name,
-    count: countMap.value.byCategory.get(c.slug) ?? 0,
+    count: stats.value ? (stats.value.by_category[c.slug] ?? 0) : undefined,
   })),
 )
 const tagChips = computed(() =>
-  tags.value.map((t) => ({
+  tags.value.map(t => ({
     slug: t.slug,
     name: t.name,
-    count: countMap.value.byTag.get(t.slug) ?? 0,
+    count: stats.value ? (stats.value.by_tag[t.slug] ?? 0) : undefined,
   })),
 )
+/** 「全部」用聚合 total（真值），拿不到才退回当前结果集的总数 */
+const allCount = computed(() => stats.value?.total ?? total.value)
 
 const showChips = computed(() => mode.value !== 'search')
 const hintText = computed(() => {
-  if (mode.value === 'category') return '按分类筛选本页游记'
-  if (mode.value === 'tag') return '按标签筛选本页游记'
-  return '在标题、摘要、地点里查找游记'
+  if (mode.value === 'category') return '按分类筛选已发布的游记'
+  if (mode.value === 'tag') return '按标签筛选已发布的游记'
+  return '在标题、摘要、正文里查找游记'
 })
 
-async function fetchResults() {
+/** 页脚出口：去带完整分页的独立页面看全量 */
+const exit = computed<{ to: string; label: string }>(() => {
+  if (mode.value === 'search') {
+    const word = keyword.value.trim()
+    // 没输关键词时不该甩去「搜索页」（那页要求有关键词），改为按分类浏览
+    return word
+      ? { to: `/search?keyword=${encodeURIComponent(word)}`, label: '在搜索页查看全部' }
+      : { to: '/categories', label: '按分类浏览' }
+  }
+  if (mode.value === 'category') {
+    return activeCategory.value
+      ? { to: `/category/${activeCategory.value}`, label: '查看该分类全部' }
+      : { to: '/categories', label: '查看全部分类' }
+  }
+  return activeTag.value
+    ? { to: `/tag/${activeTag.value}`, label: '查看该标签全部' }
+    : { to: '/tags', label: '查看全部标签' }
+})
+
+function queryPath(): string {
+  // 搜索接口要求 keyword 非空；空关键词时用普通列表（等于「全部游记」）
+  return mode.value === 'search' && keyword.value.trim() ? '/articles/search/' : '/articles/'
+}
+
+function queryParams(target: number): Record<string, string | number> {
+  const params: Record<string, string | number> = { page: target, page_size: PAGE_SIZE }
+  if (mode.value === 'search') {
+    const word = keyword.value.trim()
+    if (word) params.keyword = word
+  } else if (mode.value === 'category') {
+    if (activeCategory.value) params.category_slug = activeCategory.value
+  } else if (activeTag.value) {
+    params.tag_slug = activeTag.value
+  }
+  return params
+}
+
+async function loadFirstPage() {
+  const token = ++seq
   loading.value = true
+  loadingMore.value = false
   errorMsg.value = ''
   try {
-    const params: Record<string, string | number> = { page: 1, page_size: 20 }
-    if (mode.value === 'search') {
-      if (!keyword.value.trim()) {
-        results.value = allArticles.value.slice(0, 20)
-        total.value = allArticles.value.length
-        return
-      }
-      params.keyword = keyword.value.trim()
-    } else if (mode.value === 'category') {
-      if (activeCategory.value) params.category_slug = activeCategory.value
-    } else if (activeTag.value) {
-      params.tag_slug = activeTag.value
-    }
-    const path = mode.value === 'search' ? '/articles/search/' : '/articles/'
-    const { data } = await useApi().get<PaginatedResponse<Article>>(path, params)
+    const { data } = await useApi().get<PaginatedResponse<Article>>(
+      queryPath(),
+      queryParams(1),
+    )
+    if (token !== seq) return
     results.value = data.items
     total.value = data.total
+    page.value = 1
   } catch (e) {
+    if (token !== seq) return
+    results.value = []
+    total.value = 0
     errorMsg.value = errorMessage(e, '加载失败')
   } finally {
-    loading.value = false
+    if (token === seq) loading.value = false
+  }
+}
+
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMore.value) return
+  const token = seq
+  loadingMore.value = true
+  try {
+    const next = page.value + 1
+    const { data } = await useApi().get<PaginatedResponse<Article>>(
+      queryPath(),
+      queryParams(next),
+    )
+    if (token !== seq) return
+    // 翻页期间可能有人刚发布文章，边界会重复；按 id 去重再追加
+    const seen = new Set(results.value.map(item => item.id))
+    results.value = [...results.value, ...data.items.filter(item => !seen.has(item.id))]
+    total.value = data.total
+    page.value = next
+  } catch (e) {
+    if (token !== seq) return
+    errorMsg.value = errorMessage(e, '加载更多失败')
+  } finally {
+    if (token === seq) loadingMore.value = false
   }
 }
 
 async function ensureMeta() {
-  if (categories.value.length && tags.value.length && allArticles.value.length) return
+  if (categories.value.length && tags.value.length && stats.value) return
   try {
-    const [c, t, a] = await Promise.all([
+    const [catRes, tagRes, statsRes] = await Promise.all([
       useApi().get<Category[]>('/categories/'),
       useApi().get<Tag[]>('/tags/'),
-      useApi().get<PaginatedResponse<Article>>('/articles/', { page: 1, page_size: 100 }),
+      useApi().get<ArticleStats>('/articles/stats/'),
     ])
-    categories.value = c.data
-    tags.value = t.data
-    allArticles.value = a.data.items
-    total.value = a.data.total
+    categories.value = catRes.data
+    tags.value = tagRes.data
+    stats.value = statsRes.data
   } catch (e) {
+    // 聚合失败不该让弹窗打不开：芯片退化成纯名称，列表照常
     errorMsg.value = errorMessage(e, '加载失败')
   }
 }
@@ -128,17 +193,17 @@ function resetFor(next: BrowseMode) {
 function setMode(next: BrowseMode) {
   if (mode.value === next) return
   resetFor(next)
-  void fetchResults()
+  void loadFirstPage()
 }
 
 function toggleCategory(slug: string) {
   activeCategory.value = activeCategory.value === slug ? '' : slug
-  void fetchResults()
+  void loadFirstPage()
 }
 
 function toggleTag(slug: string) {
   activeTag.value = activeTag.value === slug ? '' : slug
-  void fetchResults()
+  void loadFirstPage()
 }
 
 function go(slug: string) {
@@ -152,7 +217,7 @@ watch(open, async (v) => {
   if (v) {
     resetFor(props.initialMode)
     await ensureMeta()
-    await fetchResults()
+    await loadFirstPage()
     await nextTick()
     // 原生 modal：拿焦点陷阱 / Esc / 背景 inert
     if (dlg && !dlg.open) dlg.showModal()
@@ -164,7 +229,7 @@ watch(open, async (v) => {
 
 watch(keyword, () => {
   if (mode.value !== 'search') return
-  void fetchResults()
+  void loadFirstPage()
 })
 </script>
 
@@ -218,7 +283,7 @@ watch(keyword, () => {
           :aria-pressed="(mode === 'category' ? !activeCategory : !activeTag)"
           @click="mode === 'category' ? toggleCategory('') : toggleTag('')"
         >
-          全部 ({{ total || allArticles.length }})
+          全部 ({{ allCount }})
         </button>
         <template v-if="mode === 'category'">
           <button
@@ -229,7 +294,7 @@ watch(keyword, () => {
             :aria-pressed="activeCategory === c.slug"
             @click="toggleCategory(c.slug)"
           >
-            {{ c.name }} ({{ c.count }})
+            {{ c.name }}<template v-if="c.count !== undefined"> ({{ c.count }})</template>
           </button>
         </template>
         <template v-else>
@@ -241,7 +306,7 @@ watch(keyword, () => {
             :aria-pressed="activeTag === t.slug"
             @click="toggleTag(t.slug)"
           >
-            #{{ t.name }} ({{ t.count }})
+            #{{ t.name }}<template v-if="t.count !== undefined"> ({{ t.count }})</template>
           </button>
         </template>
       </div>
@@ -276,11 +341,21 @@ watch(keyword, () => {
             </button>
           </li>
         </ul>
+
+        <div v-if="!loading && !errorMsg && results.length" class="cv-bd__more">
+          <button v-if="hasMore" type="button" class="cv-bd__more-btn" :disabled="loadingMore" @click="loadMore">
+            {{ loadingMore ? '加载中…' : `加载更多（还有 ${total - results.length} 篇）` }}
+          </button>
+          <p v-else class="cv-bd__done">已显示全部 {{ total }} 篇</p>
+        </div>
       </div>
 
-      <p class="cv-bd__foot">
-        共 {{ total }} 篇 · 点击标题在本页打开
-      </p>
+      <div class="cv-bd__foot">
+        <span>点标题在本页打开</span>
+        <NuxtLink class="cv-bd__all" :to="exit.to" @click="open = false">
+          {{ exit.label }} →
+        </NuxtLink>
+      </div>
     </div>
   </dialog>
 </template>

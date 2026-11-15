@@ -61,6 +61,7 @@ from .schemas import (
     ArticleDetailOut,
     ArticleOut,
     ArticlePreviewIn,
+    ArticleStatsOut,
     ArticleUpdateIn,
     AuthorListOut,
     AuthorOut,
@@ -352,6 +353,36 @@ def search_articles(
     start = (page - 1) * page_size
     items = [article_to_out(request, article) for article in qs[start:start + page_size]]
     return success_response({'items': items, 'total': total, 'page': page, 'page_size': page_size})
+
+
+@router.get('/articles/stats/', response=ApiResponse[ArticleStatsOut])
+def article_stats(request: HttpRequest) -> dict:
+    """公开统计：已发布总篇数 + 每个分类 / 标签下的篇数。
+
+    首页浏览弹窗的栏目、标签芯片需要「各有多少篇」。此前前端拉一页文章在本地数，
+    一旦超过窗口上限（100）就会静默少算，而且各芯片之和与「全部」对不上。
+    这里用两条 GROUP BY 给出精确值，口径与 ``/articles/`` 的 total 同源
+    （都走 ``_published_articles()``），前端不必再维护一份窗口计数。
+    """
+
+    def build() -> dict:
+        base = _published_articles()
+
+        # values().annotate() 会受 queryset 上残留的 order_by 影响被带进 GROUP BY，
+        # 这里显式清空排序；None 分类/无标签的文章不进任何一个桶（不加进任何芯片）。
+        by_category = {
+            row['category__slug']: row['count']
+            for row in base.values('category__slug').annotate(count=Count('id')).order_by()
+            if row['category__slug']
+        }
+        by_tag = {
+            row['tags__slug']: row['count']
+            for row in base.values('tags__slug').annotate(count=Count('id')).order_by()
+            if row['tags__slug']
+        }
+        return {'total': base.count(), 'by_category': by_category, 'by_tag': by_tag}
+
+    return success_response(cached_public('stats', build))
 
 
 def _count_view_once(request: HttpRequest, article_id: int) -> bool:

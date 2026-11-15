@@ -100,6 +100,18 @@ class TagOut(Schema):
     slug: str
 
 
+class ArticleStatsOut(Schema):
+    """公开统计口径：已发布总篇数 + 每个分类/标签下的篇数。
+
+    首页浏览弹窗的栏目/标签芯片需要「各有多少篇」。此前由前端拉一页文章本地数，
+    超过窗口上限就会静默少算，且各芯片之和与「全部」对不上；这里用一次聚合给出精确值。
+    """
+
+    total: int
+    by_category: dict[str, int]
+    by_tag: dict[str, int]
+
+
 class CategoryIn(Schema):
     """创建分类的请求数据。"""
 
