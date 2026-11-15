@@ -15,3 +15,13 @@ export type AdminIconName =
   | 'close'
   | 'download'
   | 'refresh'
+
+/** 后台自绘下拉（components/admin/AdminSelect.vue）的选项 */
+export interface SelectOption {
+  value: string
+  label: string
+  /** 右侧等宽小字（如作者名下的稿件数） */
+  hint?: string
+  /** 「全部 / 不限」这类默认项：文字压一档墨色 */
+  muted?: boolean
+}

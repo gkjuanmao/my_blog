@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
- * 文章管理页的筛选行：工具带里的一排行内控件（搜索 / 栏目 / 作者 / 状态 / 排序）。
+ * 文章管理页的筛选行：工具带里的一排行内控件（搜索 / 栏目 / 作者 / 状态 ｜ 排序）。
  * 筛选值由页面持有（v-model），本组件只负责渲染与「什么时候该重新拉取」。
+ *
+ * 三个下拉都走 AdminSelect（自绘列表）：原生 select 的弹层是系统样式，
+ * 且 option 里塞不下「作者（36）」这种右侧数字。
  */
 import type { AdminAuthor, Category } from '~/types/api'
+import type { SelectOption } from '~/types/admin'
 
-defineProps<{
+const props = defineProps<{
   categories: Category[]
   /** 作者选项：来自 /admin/articles/authors/（含草稿口径）；非 staff 时页面传空数组 */
   authors: AdminAuthor[]
@@ -30,6 +34,25 @@ const statusOptions = [
   { value: 'false', label: '草稿' },
 ]
 
+const categoryOptions = computed<SelectOption[]>(() => [
+  { value: '', label: '全部栏目', muted: true },
+  ...props.categories.map(c => ({ value: c.slug, label: c.name })),
+])
+
+const authorOptions = computed<SelectOption[]>(() => [
+  { value: '', label: '全部作者', muted: true },
+  ...props.authors.map(a => ({
+    value: String(a.id),
+    label: a.username,
+    hint: `${a.article_count}`,
+  })),
+])
+
+const sortOptions: SelectOption[] = [
+  { value: 'desc', label: '发布时间 · 新 → 旧' },
+  { value: 'asc', label: '发布时间 · 旧 → 新' },
+]
+
 function pickStatus(value: string) {
   if (status.value === value) return
   status.value = value
@@ -51,24 +74,23 @@ function pickStatus(value: string) {
       >
     </label>
 
-    <label class="ad-tool ad-tool--sel" style="min-width: 126px">
-      <span class="ad-sr">栏目</span>
-      <select v-model="categorySlug" @change="emit('change')">
-        <option value="">全部栏目</option>
-        <option v-for="c in categories" :key="c.id" :value="c.slug">{{ c.name }}</option>
-      </select>
-    </label>
+    <AdminSelect
+      v-model="categorySlug"
+      label="按栏目筛选"
+      :options="categoryOptions"
+      style="min-width: 126px"
+      @change="emit('change')"
+    />
 
     <!-- 只有一位作者时整块不渲染：那时「全部作者」与「某人的」是同一批稿 -->
-    <label v-if="authors.length > 1" class="ad-tool ad-tool--sel" style="min-width: 138px">
-      <span class="ad-sr">作者</span>
-      <select v-model="authorId" @change="emit('change')">
-        <option value="">全部作者</option>
-        <option v-for="a in authors" :key="a.id" :value="String(a.id)">
-          {{ a.username }}（{{ a.article_count }}）
-        </option>
-      </select>
-    </label>
+    <AdminSelect
+      v-if="authors.length > 1"
+      v-model="authorId"
+      label="按作者筛选"
+      :options="authorOptions"
+      style="min-width: 138px"
+      @change="emit('change')"
+    />
 
     <div class="ad-segs" role="group" aria-label="按发布状态筛选">
       <button
@@ -83,13 +105,15 @@ function pickStatus(value: string) {
       </button>
     </div>
 
-    <label class="ad-tool ad-tool--sel" style="min-width: 168px">
-      <span class="ad-sr">排序</span>
-      <select v-model="sortOrder" @change="emit('change')">
-        <option value="desc">发布时间 · 新 → 旧</option>
-        <option value="asc">发布时间 · 旧 → 新</option>
-      </select>
-    </label>
+    <span class="ad-toolbar__div" aria-hidden="true" />
+
+    <AdminSelect
+      v-model="sortOrder"
+      label="排序方式"
+      :options="sortOptions"
+      style="min-width: 168px"
+      @change="emit('change')"
+    />
 
     <button class="ad-btn ad-btn--ghost ad-btn--sm" type="button" @click="emit('search')">
       搜索

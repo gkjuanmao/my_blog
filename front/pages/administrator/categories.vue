@@ -7,6 +7,7 @@
  * 这样搜索框能留在统一的工具带里。
  */
 import type { Article, PaginatedResponse } from '~/types/api'
+import type { SelectOption } from '~/types/admin'
 import { useCrudTable } from '~/composables/useCrudTable'
 
 definePageMeta({ layout: 'admin' })
@@ -21,6 +22,11 @@ const articleTotal = ref(0)
 
 const query = ref('')
 const sortBy = ref<'count' | 'name'>('count')
+
+const sortOptions: SelectOption[] = [
+  { value: 'count', label: '按稿件数排序' },
+  { value: 'name', label: '按名称排序' },
+]
 
 async function fetchCounts() {
   try {
@@ -88,13 +94,12 @@ onMounted(refresh)
         <input v-model="query" type="search" placeholder="搜栏目名或 slug…" aria-label="搜索栏目">
       </label>
 
-      <label class="ad-tool ad-tool--sel" style="min-width: 132px">
-        <span class="ad-sr">排序</span>
-        <select v-model="sortBy">
-          <option value="count">按稿件数排序</option>
-          <option value="name">按名称排序</option>
-        </select>
-      </label>
+      <AdminSelect
+        v-model="sortBy"
+        label="栏目排序方式"
+        :options="sortOptions"
+        style="min-width: 148px"
+      />
 
       <span class="ad-toolbar__spacer" />
       <span class="ad-toolbar__note">删除栏目不会删除文章</span>

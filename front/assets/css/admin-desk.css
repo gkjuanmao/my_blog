@@ -646,6 +646,14 @@
   gap: 9px;
   flex: none;
 }
+/* 「筛什么」与「怎么排」之间的细分隔线 */
+.ad-toolbar__div {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: var(--hp-line-strong);
+  opacity: 0.8;
+}
 
 /* 工具带里的行内控件（带图标或下拉箭头） */
 .ad-tool {
@@ -670,8 +678,7 @@
   width: 14px;
   height: 14px;
 }
-.ad-tool input,
-.ad-tool select {
+.ad-tool input {
   width: 100%;
   min-width: 0;
   border: 0;
@@ -681,27 +688,6 @@
   font-size: 12.5px;
   color: var(--hp-ink);
   cursor: text;
-}
-.ad-tool select {
-  appearance: none;
-  cursor: pointer;
-  color: var(--hp-ink-2);
-  padding-right: 14px;
-}
-.ad-tool--sel {
-  position: relative;
-}
-.ad-tool--sel::after {
-  content: '';
-  position: absolute;
-  right: 9px;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-right: 1.4px solid var(--hp-ink-3);
-  border-bottom: 1.4px solid var(--hp-ink-3);
-  transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
 }
 .ad-tool input::placeholder {
   color: #9aa69f;
@@ -1131,6 +1117,134 @@
   box-shadow: 0 1px 3px rgba(22, 33, 31, 0.09);
 }
 .ad-seg:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 下拉：触发器与工具带同高，浮层是一张安静的白纸，不用系统 select 的蓝底列表 */
+.ad-select {
+  position: relative;
+  flex: none;
+}
+.ad-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px 0 11px;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: var(--ad-r-ctl);
+  background: var(--hp-surface);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--hp-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.14s var(--ad-ease), box-shadow 0.14s var(--ad-ease);
+}
+.ad-select__trigger:hover {
+  border-color: var(--hp-ink-3);
+}
+.ad-select.is-open .ad-select__trigger {
+  border-color: var(--hp-brand);
+  box-shadow: 0 0 0 3px rgba(30, 61, 56, 0.08);
+}
+.ad-select__value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+/* 「全部…」= 当前没筛，压回正常字重与次级墨色 */
+.ad-select__value.is-muted {
+  font-weight: 400;
+  color: var(--hp-ink-2);
+}
+.ad-select__chev {
+  flex: none;
+  width: 10px;
+  height: 6px;
+  color: var(--hp-ink-3);
+  transition: transform 0.16s var(--ad-ease), color 0.14s var(--ad-ease);
+}
+.ad-select.is-open .ad-select__chev {
+  transform: rotate(180deg);
+  color: var(--hp-brand);
+}
+.ad-select__panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 45;
+  width: max-content;
+  min-width: 100%;
+  max-width: 340px;
+  max-height: 268px;
+  margin: 0;
+  padding: 5px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--hp-line-strong);
+  border-radius: 8px;
+  background: var(--hp-surface);
+  box-shadow: 0 18px 34px -24px rgba(22, 33, 31, 0.5), 0 2px 6px -4px rgba(22, 33, 31, 0.16);
+}
+.ad-select__opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 8px 0 9px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--hp-ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ad-select__opt.is-active {
+  background: #f2f5ee;
+}
+.ad-select__opt.is-muted {
+  color: var(--hp-ink-2);
+}
+.ad-select__opt[aria-selected='true'] {
+  color: var(--hp-brand);
+  font-weight: 600;
+}
+.ad-select__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-select__empty {
+  padding: 8px 9px;
+  font-size: 12px;
+  color: var(--hp-ink-3);
+}
+.ad-select__hint {
+  font-family: var(--hp-font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--hp-ink-3);
+}
+.ad-select__tick {
+  flex: none;
+  width: 11px;
+  height: 9px;
+  color: var(--hp-accent-lume);
+}
+.ad-select__tick path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ad-select.is-disabled .ad-select__trigger {
   opacity: 0.5;
   cursor: not-allowed;
 }
