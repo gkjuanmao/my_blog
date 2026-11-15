@@ -1007,7 +1007,6 @@
   color: var(--hp-ink-2);
 }
 .ad-field > input,
-.ad-field > select,
 .ad-field > textarea {
   width: 100%;
   height: 33px;
@@ -1026,20 +1025,15 @@
   resize: vertical;
   line-height: 1.7;
 }
-.ad-field > select {
-  appearance: none;
-  padding-right: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2366736c' stroke-width='1.2'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  cursor: pointer;
+/* 表单里的下拉统一走 AdminSelect（32px 触发器），这里把它的高度对齐 33px 的输入框 */
+.ad-field > .ad-select .ad-select__trigger {
+  height: 33px;
 }
 .ad-field > input::placeholder,
 .ad-field > textarea::placeholder {
   color: #a3aea7;
 }
 .ad-field > input:focus,
-.ad-field > select:focus,
 .ad-field > textarea:focus {
   outline: none;
   border-color: var(--hp-brand);
@@ -1174,15 +1168,10 @@
   transform: rotate(180deg);
   color: var(--hp-brand);
 }
+/* 浮层 teleport 到 body：后台的侧栏/抽屉都是滚动容器，留在原地会被 overflow 切掉 */
 .ad-select__panel {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  z-index: 45;
-  width: max-content;
-  min-width: 100%;
-  max-width: 340px;
-  max-height: 268px;
+  position: fixed;
+  z-index: 80;
   margin: 0;
   padding: 5px;
   overflow-y: auto;
@@ -1247,6 +1236,37 @@
 .ad-select.is-disabled .ad-select__trigger {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 行内小下拉：不画框，像一句话里的可点词组（页脚「每页 10 篇」用它） */
+.ad-select--inline .ad-select__trigger {
+  height: 22px;
+  padding: 0 4px;
+  gap: 4px;
+  border-color: transparent;
+  background: none;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--hp-ink-2);
+}
+.ad-select--inline .ad-select__trigger:hover {
+  border-color: transparent;
+  background: var(--hp-bg-2);
+  color: var(--hp-ink);
+}
+.ad-select--inline.is-open .ad-select__trigger,
+.ad-select--inline.is-open .ad-select__trigger:hover {
+  border-color: transparent;
+  background: var(--hp-bg-2);
+  color: var(--hp-brand);
+  box-shadow: none;
+}
+.ad-select--inline .ad-select__value {
+  font-weight: 400;
+}
+.ad-select--inline .ad-select__chev {
+  width: 8px;
+  height: 5px;
 }
 
 /* 分类 chip */
@@ -2162,17 +2182,6 @@
 .ad-pager__meta b {
   font-weight: 500;
   color: var(--hp-ink);
-}
-.ad-pager__size {
-  appearance: none;
-  padding: 3px 4px;
-  border: 1px solid var(--hp-line-strong);
-  border-radius: 4px;
-  background: var(--hp-surface);
-  font-family: var(--hp-font-mono);
-  font-size: 11px;
-  color: var(--hp-ink-2);
-  cursor: pointer;
 }
 .ad-pager__nav {
   display: flex;

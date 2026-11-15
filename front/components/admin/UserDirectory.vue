@@ -10,6 +10,7 @@
  *    真到多账号规模时再换成服务端候选接口。
  */
 import type { AdminUser } from '~/types/api'
+import type { SelectOption } from '~/types/admin'
 
 const props = defineProps<{
   users: AdminUser[]
@@ -40,12 +41,30 @@ const newPassword = ref('')
 const resetting = ref(false)
 const resetError = ref('')
 
-const transferTarget = ref<number | null>(null)
+const transferTarget = ref('')
 const busy = ref(false)
 
 const transferCandidates = computed(() =>
   props.users.filter(user => user.id !== selected.value?.id && user.is_active),
 )
+
+/** 转移目标用 id 的字符串形式（AdminSelect 的模型是字符串），空串表示「还没选」 */
+const transferOptions = computed<SelectOption[]>(() => [
+  { value: '', label: '选择账号', muted: true },
+  ...transferCandidates.value.map(user => ({ value: String(user.id), label: user.username })),
+])
+
+const roleOptions: SelectOption[] = ROLE_OPTIONS.map(option => ({
+  value: option.value,
+  label: option.label,
+}))
+/** 角色是联合类型，AdminSelect 只吐字符串：这里做一层收窄，别把 as Role 散到模板里 */
+const roleModel = computed({
+  get: () => form.role,
+  set: (next: string) => {
+    form.role = next as Role
+  },
+})
 
 function roleLabel(user: AdminUser): string {
   if (user.is_superuser) return '超级管理员'
@@ -56,7 +75,7 @@ function select(id: number) {
   selectedId.value = selectedId.value === id ? null : id
   newPassword.value = ''
   resetError.value = ''
-  transferTarget.value = null
+  transferTarget.value = ''
 }
 
 function roleFlags(role: Role) {
@@ -167,7 +186,7 @@ function handleDelete(user: AdminUser) {
 }
 
 function handleTransferAndDelete(user: AdminUser) {
-  const target = transferCandidates.value.find(item => item.id === transferTarget.value)
+  const target = transferCandidates.value.find(item => String(item.id) === transferTarget.value)
   if (!target) {
     ElMessage.warning('请选择接收稿件的用户')
     return
@@ -298,15 +317,14 @@ function handleTransferAndDelete(user: AdminUser) {
             该账号名下有 {{ selected.article_count }} 篇稿件。直接把稿件转给其他人再删除，
             比强制删掉更安全。
           </p>
-          <label class="ad-field" style="margin-top: 10px">
+          <div class="ad-field" style="margin-top: 10px">
             <span>转移稿件给</span>
-            <select v-model="transferTarget">
-              <option :value="null">选择账号</option>
-              <option v-for="user in transferCandidates" :key="user.id" :value="user.id">
-                {{ user.username }}
-              </option>
-            </select>
-          </label>
+            <AdminSelect
+              v-model="transferTarget"
+              label="接收稿件的账号"
+              :options="transferOptions"
+            />
+          </div>
           <div class="ad-form__acts" style="margin-top: 10px">
             <button
               class="ad-btn ad-btn--danger ad-btn--sm"
@@ -375,15 +393,11 @@ function handleTransferAndDelete(user: AdminUser) {
               @input="createError = ''"
             >
           </label>
-          <label class="ad-field">
+          <div class="ad-field">
             <span>角色</span>
-            <select v-model="form.role">
-              <option v-for="option in ROLE_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+            <AdminSelect v-model="roleModel" label="角色" :options="roleOptions" />
             <span class="ad-hint">{{ ROLE_OPTIONS.find(option => option.value === form.role)?.hint }}</span>
-          </label>
+          </div>
           <span v-if="createError" class="ad-error">{{ createError }}</span>
           <div class="ad-form__acts">
             <button class="ad-btn ad-btn--primary" type="submit" :disabled="creating">

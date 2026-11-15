@@ -5,6 +5,8 @@
  * 与 `AppPagination`（Element Plus，公开页共用）分开：公开页的皮肤不能改，
  * 后台需要「第 N / M 页 · 共 K 篇」这种台账式脚注。
  */
+import type { SelectOption } from '~/types/admin'
+
 const props = withDefaults(
   defineProps<{
     total: number
@@ -41,12 +43,19 @@ function go(next: number) {
   if (target !== page.value) page.value = target
 }
 
-function onSizeChange(event: Event) {
-  const value = Number((event.target as HTMLSelectElement).value)
-  if (!Number.isFinite(value) || value === pageSize.value) return
-  pageSize.value = value
-  page.value = 1
-}
+/** 每页条数：AdminSelect 只吃字符串，这里做一层 Number 桥接（换页数要回到第 1 页） */
+const sizeOptions = computed<SelectOption[]>(() =>
+  props.pageSizes.map(size => ({ value: String(size), label: `每页 ${size} ${props.unit}` })),
+)
+const sizeModel = computed({
+  get: () => String(pageSize.value),
+  set: (next: string) => {
+    const value = Number(next)
+    if (!Number.isFinite(value) || value === pageSize.value) return
+    pageSize.value = value
+    page.value = 1
+  },
+})
 </script>
 
 <template>
@@ -57,12 +66,7 @@ function onSizeChange(event: Event) {
         <span aria-hidden="true">·</span> 共 {{ total }} {{ unit }}
         <template v-if="sizeSelectable">
           <span aria-hidden="true">·</span>
-          <label>
-            <span class="ad-sr">每页条数</span>
-            <select class="ad-pager__size" :value="pageSize" @change="onSizeChange">
-              <option v-for="size in pageSizes" :key="size" :value="size">每页 {{ size }} {{ unit }}</option>
-            </select>
-          </label>
+          <AdminSelect v-model="sizeModel" label="每页条数" variant="inline" :options="sizeOptions" />
         </template>
         <template v-else>
           <span aria-hidden="true">·</span> 每页 {{ pageSize }} {{ unit }}
